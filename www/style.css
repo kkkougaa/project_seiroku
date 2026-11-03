@@ -1,17 +1,17 @@
 @font-face{font-family:"Pretendard Variable";font-weight:45 920;font-style:normal;font-display:swap;src:url("fonts/PretendardVariable.woff2") format("woff2-variations")}
 
 :root{
-  --page:#f2f4f6; --card:#ffffff; --ink:#191f28; --ink2:#4e5968; --ink3:#8b95a1; --line:#e5e8eb; --fill:#f2f4f6; --press:#e5e8eb;
-  --blue:#3182f6; --blue-press:#1b64da; --blue-soft:#e8f3ff; --red:#f04452; --red-soft:#ffeeee; --orange:#f08a00; --green:#00a661;
+  --page:#f2f4f6; --card:#ffffff; --ink:#191f28; --ink2:#4e5968; --ink3:#6b7684; --line:#e5e8eb; --fill:#f2f4f6; --press:#e5e8eb;
+  --blue:#3182f6; --blue-press:#1b64da; --blue-soft:#e8f3ff; --red:#f04452; --red-soft:#ffeeee; --orange:#d97a00; --orange-soft:#fff4e6; --green:#00a661;
   --dim:rgba(0,0,0,.42); --toast:#191f28; --toast-ink:#ffffff;
   --font:"Pretendard Variable","Pretendard","Apple SD Gothic Neo",-apple-system,BlinkMacSystemFont,"Noto Sans KR",system-ui,sans-serif;
   --sat:env(safe-area-inset-top,0px); --sab:env(safe-area-inset-bottom,0px); --sal:env(safe-area-inset-left,0px); --sar:env(safe-area-inset-right,0px);
   color-scheme:light;
 }
 @media (prefers-color-scheme: dark){:root{
-  --page:#101013; --card:#1e1e24; --ink:#ececee; --ink2:#b0b0b8; --ink3:#7e7e88; --line:#2c2c35; --fill:#2a2a32; --press:#34343d;
-  --blue:#4593fc; --blue-press:#2f7ce6; --blue-soft:#18273d; --red:#f7606c; --red-soft:#3a1d21; --orange:#f5a640; --green:#2fc285;
-  --dim:rgba(0,0,0,.6); --toast:#3a3a44; color-scheme:dark}}
+  --page:#101013; --card:#1e1e24; --ink:#f2f2f4; --ink2:#cfcfd6; --ink3:#a3a3ae; --line:#34343e; --fill:#2c2c35; --press:#3a3a44;
+  --blue:#6aa8ff; --blue-press:#4a90f0; --blue-soft:#1f3a63; --red:#ff7e88; --red-soft:#4a2228; --orange:#ffb54d; --orange-soft:#3d2c12; --green:#4fd69c;
+  --dim:rgba(0,0,0,.6); --toast:#4a4a56; color-scheme:dark}}
 
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;margin:0}
@@ -101,7 +101,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--blue);outline-o
 .who{margin:6px 0 2px;font-size:24px;font-weight:700;letter-spacing:-.02em}
 .badge{display:inline-flex;align-items:center;height:26px;border-radius:8px;padding:0 9px;font-size:13px;font-weight:600;white-space:nowrap}
 .badge.blue{background:var(--blue-soft);color:var(--blue)}
-.badge.gray{background:var(--fill);color:var(--ink2)}
+.badge.gray{background:var(--fill);color:var(--ink)}
 .badge.red{background:var(--red-soft);color:var(--red)}
 .list{margin-top:14px;border-top:1px solid var(--line)}
 .list .row{border-bottom:1px solid var(--line)}
@@ -157,12 +157,12 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--blue);outline-o
 .box+.box{margin-top:12px}
 .side .box+.box{margin-top:0}
 .box h2{font-size:17px;font-weight:700;margin:0 0 6px}
-.box .cap{font-size:13.5px;color:var(--ink3);margin:0 0 6px}
+.box .cap{font-size:14px;color:var(--ink2);margin:0 0 6px}
 .sr{display:flex;align-items:center;gap:14px;padding:13px 0;border-bottom:1px solid var(--line)}
 .sr:last-child{border-bottom:0}
 .sr .l{flex:1;min-width:0}
-.sr .t{font-weight:500}
-.sr .s{font-size:13px;color:var(--ink3)}
+.sr .t{font-weight:600;font-size:16px}
+.sr .s{font-size:14px;color:var(--ink2);margin-top:1px}
 .sr .r{text-align:right;flex:none}
 .sr .r b{font-size:16px;font-weight:700;display:block}
 .sr .r small{font-size:12.5px;color:var(--ink3)}
@@ -220,6 +220,33 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--blue);outline-o
 .row.tall{align-items:flex-start}
 .box.notice{background:var(--red-soft)}
 .box.notice h2{color:var(--red)}
+.undo-btn{display:flex;flex-direction:column;align-items:flex-start;line-height:1.2;margin-left:auto;margin-bottom:10px;padding:6px 12px;border-radius:10px;background:var(--fill);color:var(--ink);font-weight:700;font-size:14px;max-width:220px}
+.undo-btn small{font-size:11.5px;font-weight:500;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:196px}
+.undo-btn + .saved{margin-left:12px}
+.counts{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
+.cnt{min-width:0}
+.cnt{background:var(--fill);border-radius:12px;padding:8px 10px;display:flex;flex-direction:column;line-height:1.15}
+.cnt b{font-size:28px;font-weight:800;letter-spacing:-.03em;color:var(--ink)}
+.cnt small{font-size:11.5px;font-weight:600;color:var(--ink2);margin-top:2px;white-space:nowrap;letter-spacing:-.03em}
+.tile.low .cnt.site{background:var(--orange-soft)}
+.tile.low .cnt.site b,.tile.low .cnt.site small{color:var(--orange)}
+.tile.out .cnt.site{background:var(--red-soft)}
+.tile.out .cnt.site b,.tile.out .cnt.site small{color:var(--red)}
+.cnt.pre.on{background:var(--blue-soft)}
+.cnt.pre.on b,.cnt.pre.on small{color:var(--blue)}
+.cnt.pre:not(.on) b{color:var(--ink3)}
+.cta.sub2{height:48px;font-size:15px;background:var(--fill);color:var(--ink)}
+.cta.sub2:active{background:var(--press)}
+.lastrecv{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--fill);border-radius:12px;padding:10px 12px;font-size:14px;color:var(--ink)}
+.lastrecv .num{color:var(--ink2)}
+.lastrecv button{color:var(--red);font-weight:700;font-size:14px;white-space:nowrap}
+.recvcount{margin:4px 0 0;font-size:20px;font-weight:700;color:var(--ink2)}
+.recvcount b{color:var(--blue);font-size:26px}
+.recvcount.done{color:var(--green)}
+.l4{color:var(--ink2);font-weight:500}
+.mini.red{background:var(--red-soft);color:var(--red)}
+.fld{display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--ink2);font-weight:600;width:116px;flex:none}
+.fld input{height:40px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:0 10px;font:inherit;font-size:16px;font-weight:600;width:100%}
 .toast{position:absolute;left:50%;bottom:calc(24px + var(--sab));transform:translateX(-50%);background:var(--toast);color:var(--toast-ink);border-radius:16px;padding:13px 18px;display:flex;align-items:center;gap:16px;font-size:15px;font-weight:500;z-index:8;max-width:calc(100% - 32px);animation:fade .2s;box-shadow:0 6px 20px rgba(0,0,0,.18)}
 .toast button{color:#7fb3ff;font-weight:600;white-space:nowrap}
 
