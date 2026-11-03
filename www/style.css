@@ -55,7 +55,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--blue);outline-o
 .tile.low .st{color:var(--orange);font-weight:600}
 .tile.out .nm,.tile.out .pr{color:var(--ink3)}
 .soldout{position:absolute;z-index:3;left:-12%;right:-12%;top:50%;transform:translateY(-50%) rotate(-14deg);background:#d6262f;color:#fff;
-  font-size:30px;font-weight:900;letter-spacing:.12em;text-align:center;padding:10px 0;box-shadow:0 4px 14px rgba(0,0,0,.35);
+  font-size:30px;font-weight:950;font-variation-settings:'wght' 950;letter-spacing:.06em;text-align:center;padding:2px 0;line-height:1.15;-webkit-text-stroke:1.2px #fff;font-family:'Arial Black','Pretendard Variable',sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.35);
   background-image:repeating-linear-gradient(90deg,rgba(255,255,255,.06) 0 6px,transparent 6px 12px);
   -webkit-mask:linear-gradient(90deg,transparent 0,#000 2%,#000 98%,transparent 100%);mask:linear-gradient(90deg,transparent 0,#000 2%,#000 98%,transparent 100%)}
 .tile.out .st{color:var(--red);font-weight:600}
