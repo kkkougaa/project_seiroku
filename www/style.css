@@ -13,6 +13,7 @@
   --blue:#6aa8ff; --blue-press:#4a90f0; --blue-soft:#1f3a63; --red:#ff7e88; --red-soft:#4a2228; --orange:#ffb54d; --orange-soft:#3d2c12; --green:#4fd69c;
   --dim:rgba(0,0,0,.6); --toast:#4a4a56; color-scheme:dark}}
 
+[hidden]{display:none!important}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;margin:0}
 body{background:var(--page);color:var(--ink);font-family:var(--font);font-size:22px;line-height:1.5;letter-spacing:-.01em;-webkit-font-smoothing:antialiased;overflow:hidden;

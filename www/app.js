@@ -10,6 +10,7 @@ const dataKey = b => 'boothpos:v1:' + b;
 const REASONS_OUT = ['파손·불량', '전시용 샘플', '증정·서비스', '분실', '기타'];
 const REASONS_IN = ['추가 입고', '재고 정정', '기타'];
 const BACKUP_WARN_MIN = 60;
+const APP_VERSION = '7';
 
 /* ---------------- 저장소 ---------------- */
 const ls = {
@@ -141,7 +142,7 @@ const tpl = document.createElement('div');
 function render() {
   const app = $('#app');
   tpl.innerHTML = !booth ? welcomeView()
-    : topView() + (tab === 'sell' ? sellView() : tab === 'list' ? listView() : tab === 'stock' ? stockView() : settingsView()) + sheetView();
+    : topView() + sellView(tab !== 'sell') + (tab === 'list' ? listView() : tab === 'stock' ? stockView() : tab === 'settings' ? settingsView() : '') + sheetView();
   morph(app, tpl, true);
   renderToast();
 }
@@ -174,7 +175,7 @@ function thumb(p) {
     ${p.badge ? `<span class="setno num">${esc(p.badge)}</span>` : ''}</span>`;
 }
 
-function sellView() {
+function sellView(hide) {
   const sel = selected();
   const pickItems = mode === 'pre' && sel && !sel.at && !justDone ? sel.items : {};
   const tiles = sellable().map(p => {
@@ -189,7 +190,7 @@ function sellView() {
       <span class="cnt pre ${wt ? 'on' : ''}"><b class="num">${wt}</b><small>선입금 대기</small></span></span></span></button>`;
   }).join('');
   const c = cnt(cart);
-  return `<div class="sell"><div class="goods"><div class="goods-h"><h2>상품</h2><span>누르면 현장 구매에 담겨요</span></div><div class="grid">${tiles}</div></div>
+  return `<div class="sell" ${hide ? 'hidden' : ''}><div class="goods"><div class="goods-h"><h2>상품</h2><span>누르면 현장 구매에 담겨요</span></div><div class="grid">${tiles}</div></div>
     <div class="panel"><div class="seg" role="tablist">
       <button role="tab" aria-selected="${mode === 'pre'}" data-mode="pre">선입금 수령</button>
       <button role="tab" aria-selected="${mode === 'sale'}" data-mode="sale">현장 구매${c ? ' ' + c : ''}</button></div>
@@ -366,6 +367,7 @@ function settingsView() {
       <div class="kv"><span>부스</span><b>${esc(B().name)}</b></div>
       <div class="kv"><span>상품</span><b class="num">${products().length}개</b></div>
       <div class="kv"><span>저장 위치</span><b>이 기기 안</b></div>
+      <div class="kv"><span>앱 버전</span><b class="num">${APP_VERSION}</b></div>
       <button class="link" data-act="switchBooth"><span>다른 부스로 바꾸기<span class="s">부스마다 데이터가 따로 있어서 지워지지 않아요</span></span><span class="chev">›</span></button></div>
     <div class="box"><button class="link danger" data-act="askReset"><span>이 부스 데이터 모두 지우기<span class="s">명단, 판매, 재고 조정 기록이 사라져요</span></span><span class="chev">›</span></button></div>
   </div></div></div>`;
@@ -791,7 +793,13 @@ try { navigator.storage && navigator.storage.persist && navigator.storage.persis
 async function keepAwake() { try { if ('wakeLock' in navigator && document.visibilityState === 'visible') await navigator.wakeLock.request('screen'); } catch {} }
 document.addEventListener('visibilitychange', keepAwake); keepAwake();
 const native = window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
-if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !native) navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !native) {
+  // 새 버전이 설치되면 한 번 새로고침해서 바로 적용해요
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !reloaded && !sheet) { reloaded = true; location.reload(); } });
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(r => r.update()).catch(() => {});
+}
 
 render();
 })();
