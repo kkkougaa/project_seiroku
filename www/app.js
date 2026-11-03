@@ -10,7 +10,7 @@ const dataKey = b => 'boothpos:v1:' + b;
 const REASONS_OUT = ['파손·불량', '전시용 샘플', '증정·서비스', '분실', '기타'];
 const REASONS_IN = ['추가 입고', '재고 정정', '기타'];
 const BACKUP_WARN_MIN = 60;
-const APP_VERSION = '19';
+const APP_VERSION = '20';
 
 /* ---------------- 저장소 ---------------- */
 const ls = {
@@ -317,8 +317,8 @@ function sellView(hide) {
       ${pick ? `<span class="pk">선입금 ${pick}</span>` : inCart ? `<span class="inc num">${inCart}</span>` : ''}
       <span class="tb"><span class="nm">${esc(p.name)}</span>${p.sub ? `<span class="sb">${esc(p.sub)}</span>` : ''}
       <span class="pr num">${p.price ? won(p.price) : '가격 미정 · 설정에서 넣어 주세요'}</span>
-      <span class="counts ${showSite ? '' : 'one'}">${showSite ? `<span class="cnt site"><b class="num">${Math.max(0, av)}</b><small>${av <= 0 ? '현장 품절' : '현장 재고'}</small></span>` : ''}
-      <span class="cnt pre ${wt ? 'on' : ''}"><b class="num">${wt}</b><small>선입금 대기</small></span></span></span></button>`;
+      <span class="counts ${showSite ? '' : 'one'}">${showSite ? `<span class="cnt site"><b class="num">${Math.max(0, av)}<i class="u">${p.pool ? keyInfo(skey(p)).unit : '개'}</i></b><small>${av <= 0 ? '현장 품절' : '현장 재고'}</small></span>` : ''}
+      <span class="cnt pre ${wt ? 'on' : ''}"><b class="num">${wt}<i class="u">개</i></b><small>선입금 잔여</small></span></span></span></button>`;
   }).join('');
   const c = cnt(cart);
   return `<div class="sell" ${hide ? 'hidden' : ''}><div class="goods"><div class="goods-h"><h2>상품</h2></div><div class="grid">${tiles}</div></div>
