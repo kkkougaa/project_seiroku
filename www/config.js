@@ -24,22 +24,24 @@ self.BOOTH_CONFIG = {
       name: '초건전회지위원회',
       account: { bank: '은행 이름', number: '계좌번호를 넣어 주세요', owner: '예금주' },
       pools: {
-        photocard: { name: '랜덤 포토카드', unit: '세트', stock: TODO }, // 1세트 기준 전체 수량
+        photocard: { name: '랜덤 포토카드', unit: '세트', stock: 500 }, // 1세트 기준 전체 수량
       },
       products: [
-        { id: 'postcardbook', name: '엽서북', sub: '청록 : WORK!', price: TODO, stock: TODO, image: 'images/postcardbook.jpg' },
-        { id: 'pc1', name: '랜덤 포토카드 1세트', price: TODO, pool: 'photocard', units: 1, badge: '1', image: 'images/photocard.jpg' },
-        { id: 'pc5', name: '랜덤 포토카드 5세트', price: TODO, pool: 'photocard', units: 5, badge: '5', image: 'images/photocard.jpg' },
-        { id: 'pc10', name: '랜덤 포토카드 10세트', price: TODO, pool: 'photocard', units: 10, badge: '10', image: 'images/photocard.jpg' },
-        { id: 'jokja', name: '족자봉', price: TODO, preorderOnly: true, variants: 'ABCDEFGHIJKLMNOPQRSTUVWXY'.split('') },
+        { id: 'postcardbook', name: '엽서북', sub: '청록 : WORK!', price: 20000, stock: 300, image: 'images/postcardbook.jpg' },
+        { id: 'pc1', name: '랜덤 포토카드 1세트', price: 2000, pool: 'photocard', units: 1, badge: '1', image: 'images/photocard.jpg' },
+        { id: 'pc5', name: '랜덤 포토카드 5세트', price: 10000, // 임시: 1세트 가격 × 5
+          pool: 'photocard', units: 5, badge: '5', image: 'images/photocard.jpg' },
+        { id: 'pc10', name: '랜덤 포토카드 10세트', price: 20000, // 임시: 1세트 가격 × 10
+          pool: 'photocard', units: 10, badge: '10', image: 'images/photocard.jpg' },
+        { id: 'jokja', name: '족자봉', price: 20000, preorderOnly: true, variants: 'ABCDEFGHIJKLMNOPQRSTUVWXY'.split('') },
       ],
     },
     B: {
       name: 'PPPP2',
       account: { bank: '은행 이름', number: '계좌번호를 넣어 주세요', owner: '예금주' },
       products: [
-        { id: 'pppp2', name: 'PPPP2', price: TODO, stock: TODO, image: 'images/pppp2.jpg' },
-        { id: 'dakimakura', name: '쿠로쿠모 다키마쿠라', price: TODO, stock: TODO, image: 'images/dakimakura.jpg' },
+        { id: 'pppp2', name: 'PPPP2', price: 15000, stock: 300, image: 'images/pppp2.jpg' },
+        { id: 'dakimakura', name: '쿠로쿠모 다키마쿠라', price: 100000, stock: 50, image: 'images/dakimakura.jpg' },
       ],
     },
   },
