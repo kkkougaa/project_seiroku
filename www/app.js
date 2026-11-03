@@ -10,7 +10,7 @@ const dataKey = b => 'boothpos:v1:' + b;
 const REASONS_OUT = ['파손·불량', '전시용 샘플', '증정·서비스', '분실', '기타'];
 const REASONS_IN = ['추가 입고', '재고 정정', '기타'];
 const BACKUP_WARN_MIN = 60;
-const APP_VERSION = '9';
+const APP_VERSION = '10';
 
 /* ---------------- 저장소 ---------------- */
 const ls = {
@@ -186,7 +186,7 @@ function topView() {
 
 function welcomeView() {
   return `<div class="welcome"><div class="in">
-    <h1>이 기기는<br>어느 부스에서 쓰나요?</h1><p>부스마다 데이터가 따로 저장돼요. 나중에 설정에서 바꿀 수 있어요.</p>
+    <h1>부스 선택</h1>
     ${Object.entries(CFG.booths).map(([k, b]) => `<button class="bpick" data-pick="${k}"><span>${esc(b.name)}<small>상품 ${b.products.filter(p => !p.preorderOnly).length}개</small></span><span class="chev">›</span></button>`).join('')}
   </div></div>`;
 }
@@ -214,7 +214,7 @@ function sellView(hide) {
       <span class="cnt pre ${wt ? 'on' : ''}"><b class="num">${wt}</b><small>선입금 대기</small></span></span></span></button>`;
   }).join('');
   const c = cnt(cart);
-  return `<div class="sell" ${hide ? 'hidden' : ''}><div class="goods"><div class="goods-h"><h2>상품</h2><span>누르면 현장 구매에 담겨요</span></div><div class="grid">${tiles}</div></div>
+  return `<div class="sell" ${hide ? 'hidden' : ''}><div class="goods"><div class="goods-h"><h2>상품</h2></div><div class="grid">${tiles}</div></div>
     <div class="panel"><div class="seg" role="tablist">
       <button role="tab" aria-selected="${mode === 'pre'}" data-mode="pre">선입금 수령</button>
       <button role="tab" aria-selected="${mode === 'sale'}" data-mode="sale">현장 구매${c ? ' ' + c : ''}</button></div>
@@ -228,7 +228,7 @@ function panelSale() {
       <div class="step"><button data-decpool="${esc(g.key)}" aria-label="마지막으로 담은 묶음 빼기">−</button><span class="num">${g.qty}</span><button data-addlast="${esc(g.key)}" aria-label="마지막으로 담은 묶음 더하기">+</button></div></div>`
     : `<div class="row"><div class="l"><div class="t">${esc(g.name)}</div><div class="s num">${g.sub ? esc(g.sub) + ' · ' : ''}${won(g.total)}</div></div>
       <div class="step"><button data-dec="${g.key}" aria-label="하나 빼기">−</button><span class="num">${g.qty}</span><button data-add="${g.key}" aria-label="하나 더하기">+</button></div></div>`).join('')
-    : `<div class="empty"><b>담긴 상품이 없어요</b>왼쪽 상품을 누르면 여기 담겨요</div>`;
+    : `<div class="empty"><b>담긴 상품 없음</b></div>`;
   return `<div class="pbody">${body}</div><div class="pfoot">
     ${lines.length ? `<div class="total"><span>${groupItems(cart).map(g => `${esc(g.name.replace('랜덤 ', ''))} ${g.qty}${g.unit}`).join(', ')}</span><b class="num">${won(total)}</b></div>` : ''}
     <button class="cta" data-act="pay" ${lines.length ? '' : 'disabled'}>${lines.length ? won(total) + ' 받기' : '결제하기'}</button>
@@ -249,7 +249,7 @@ function panelPre() {
     justDone = null;
   }
   const total = D.preorders.length, done = D.preorders.filter(p => p.at).length;
-  if (!total) return `<div class="pbody"><div class="empty"><b>선입금 명단이 비어 있어요</b>설정에서 CSV 파일을 불러와 주세요</div></div>
+  if (!total) return `<div class="pbody"><div class="empty"><b>선입금 명단 없음</b></div></div>
     <div class="pfoot"><button class="cta weak" data-tab="settings">명단 불러오러 가기</button></div>`;
   if (digits.length < 4) {
     const cells = [0, 1, 2, 3].map(i => `<div class="num ${digits[i] ? 'on' : ''} ${i === digits.length ? 'cur' : ''}">${digits[i] || ''}</div>`).join('');
@@ -257,16 +257,16 @@ function panelPre() {
       k === 'clr' ? '<button class="fn" data-k="clr">전체 삭제</button>'
         : k === 'del' ? `<button class="fn" data-k="del" aria-label="한 자리 지우기">${IC.del}</button>`
           : `<button class="num" data-k="${k}">${k}</button>`).join('');
-    return `<div class="pbody"><p class="ask">전화번호 뒷자리를<br>눌러주세요</p><p class="sub">손님께 4자리를 여쭤봐요</p><div class="digits">${cells}</div>
+    return `<div class="pbody"><p class="ask">전화번호 뒷자리</p><div class="digits">${cells}</div>
       <div class="pad">${keys}</div></div><div class="pfoot" style="padding-top:4px"><p class="meta num">${done}명 받아갔어요 · 남은 ${total - done}명</p></div>`;
   }
   const res = D.preorders.filter(p => p.last4 === digits);
-  if (!res.length) return `<div class="pbody"><div class="empty"><b>${digits}(으)로 찾은 선입금이 없어요</b>번호를 다시 여쭤보거나<br>선입금 명단 탭에서 이름으로 찾아보세요</div></div>
+  if (!res.length) return `<div class="pbody"><div class="empty"><b>${digits} 선입금 없음</b></div></div>
     <div class="pfoot"><button class="cta weak" data-act="reset">다시 입력하기</button></div>`;
   let sel = selected();
   if (res.length === 1) { sel = res[0]; selKey = sel.key; }
   if (!sel || !res.includes(sel)) {
-    return `<div class="pbody"><p class="ask">뒷자리가 같은 분이<br>${res.length}명 있어요</p><p class="sub">이름을 확인해 주세요</p>
+    return `<div class="pbody"><p class="ask">${digits} · ${res.length}명</p>
       <div class="list">${res.map(p => `<button class="row pick-row" data-sel="${esc(p.key)}"><div class="l"><div class="t">${esc(p.name)}</div><div class="s">${p.at ? hhmm(p.at) + '에 받아갔어요' : '상품 ' + cnt(p.items) + '개'}</div></div><span class="chev">›</span></button>`).join('')}</div></div>
       <div class="pfoot"><button class="txtbtn" data-act="reset">다시 입력하기</button></div>`;
   }
@@ -287,7 +287,6 @@ function preDetail(p) {
     <p class="who">${esc(p.name)}님</p><p class="sub num">010-••••-${esc(p.last4)}${p.no ? ' · ' + esc(p.no) : ''}</p>
     <div class="list big">${lines.map(g => `<div class="row ${p.vars && p.vars[g.key] ? 'tall' : ''}"><div class="l"><div class="t">${esc(g.name)}${g.sub ? ` <span class="s">${esc(g.sub)}</span>` : ''}${g.pool && g.parts.length > 1 ? ` <span class="s num">${partsText(g)}</span>` : ''}</div>
       ${p.vars && p.vars[g.key] ? vchips(p.vars[g.key]) : ''}</div><span class="num qty">${g.qty}${g.unit}</span></div>`).join('')}</div>
-    ${p.at ? '' : `<p class="sub" style="margin-top:12px">왼쪽 파란 테두리 상품${hasOnly ? '과 위의 선입금 전용 상품' : ''}을 챙겨주세요</p>`}
   </div><div class="pfoot">
     ${p.at ? `<button class="cta weak" data-act="reset">다른 번호 찾기</button><button class="txtbtn" data-act="cancelGive">이 분 전달 취소하기</button>`
       : `<button class="cta" data-act="give">전달 완료</button><button class="txtbtn" data-act="reset">다른 번호 찾기</button>`}</div>`;
@@ -298,8 +297,8 @@ function listRows() {
   const s = qs.trim().toLowerCase();
   const rows = D.preorders.filter(p => (lf === 'all' || (lf === 'wait' ? !p.at : !!p.at)) &&
     (!s || p.name.toLowerCase().includes(s) || p.last4.includes(s) || (p.no || '').toLowerCase().includes(s)));
-  if (!D.preorders.length) return `<div class="empty" style="padding:40px 0"><b>아직 명단이 없어요</b>설정 탭에서 선입금 CSV를 불러오거나, 위의 직접 추가를 눌러주세요</div>`;
-  if (!rows.length) return `<div class="empty" style="padding:40px 0"><b>찾는 분이 없어요</b>이름이나 뒷자리를 다시 확인해 주세요</div>`;
+  if (!D.preorders.length) return `<div class="empty" style="padding:40px 0"><b>명단 없음</b></div>`;
+  if (!rows.length) return `<div class="empty" style="padding:40px 0"><b>검색 결과 없음</b></div>`;
   return rows.map(p => `<div class="sr"><div class="l"><div class="t">${esc(p.name)} <span class="num l4">${esc(p.last4)}</span></div>
     <div class="s num">${itemsText(p.items, p.vars)}</div></div>
     ${p.at ? `<span class="badge gray">${hhmm(p.at)} 수령</span>` : `<button class="mini" data-go="${esc(p.key)}">수령 처리</button>`}</div>`).join('');
@@ -314,7 +313,7 @@ function listView() {
       <button class="mini gray" data-act="openAddPre" style="height:46px;padding:0 16px">직접 추가</button></div>
     <div id="prelist">${listRows()}</div></div>
     <div class="box"><h2>최근 수령</h2>${recent(10).map(p => `<div class="sr"><div class="l"><div class="t">${esc(p.name)} <span class="num l4">${esc(p.last4)}</span></div><div class="s num">${hhmm(p.at)} · ${itemsText(p.items, p.vars)}</div></div>
-      <button class="mini red" data-ungive="${esc(p.key)}">수령 취소</button></div>`).join('') || '<p class="cap">아직 수령한 분이 없어요</p>'}</div></div>`;
+      <button class="mini red" data-ungive="${esc(p.key)}">수령 취소</button></div>`).join('') || '<p class="cap">없음</p>'}</div></div>`;
 }
 
 /* ---------- 재고·정산 ---------- */
@@ -353,14 +352,14 @@ function stockView() {
   const saleLog = D.sales.slice().reverse().slice(0, 40).map(s => `<div class="sr ${s.canceled ? 'canceled' : ''}"><div class="l"><div class="t num">${won(s.total)} <span style="color:var(--ink3);font-weight:400;font-size:13px">${s.m === 'cash' ? '현금' : '계좌이체'} · ${hhmm(s.ts)}</span></div>
     <div class="s">${itemsText(s.items)}${s.canceled ? ' · 취소됨' : ''}</div></div>${s.canceled ? '' : `<button class="txtbtn" data-unsale="${s.n}">판매 취소</button>`}</div>`).join('');
   return `<div class="page"><div class="cols">
-    <div><div class="box"><h2>재고</h2><p class="cap">현장 판매 가능 수량은 아직 안 가져간 선입금 몫을 빼고 계산해요</p>${rows}</div>
+    <div><div class="box"><h2>재고</h2>${rows}</div>
       ${preorderOnlyBoxes()}
-      <div class="box"><h2>현장 판매 기록</h2>${saleLog || '<p class="cap">아직 판매 기록이 없어요</p>'}</div></div>
+      <div class="box"><h2>현장 판매 기록</h2>${saleLog || '<p class="cap">없음</p>'}</div></div>
     <div class="side">
       <div class="box"><p class="cap">현장 매출</p><p class="money num">${won(cash + tr)}</p>
         <div class="kv"><span>현금</span><b class="num">${won(cash)}</b></div><div class="kv"><span>계좌이체</span><b class="num">${won(tr)}</b></div><div class="kv"><span>판매 건수</span><b class="num">${live.length}건</b></div></div>
       <div class="box"><p class="cap">선입금 전달</p><p class="money num" style="margin-bottom:0">${done} / ${all}명</p><div class="prog"><i style="width:${all ? done / all * 100 : 0}%"></i></div></div>
-      <div class="box"><h2 style="margin-bottom:0">재고 조정 내역</h2>${adjLog || '<p class="cap">아직 조정한 재고가 없어요</p>'}</div>
+      <div class="box"><h2 style="margin-bottom:0">재고 조정 내역</h2>${adjLog || '<p class="cap">없음</p>'}</div>
     </div></div></div>`;
 }
 
@@ -371,10 +370,10 @@ function settingsView() {
     ${mp.length ? `<p class="cap">가격: ${mp.map(p => esc(p.name)).join(', ')}</p>` : ''}
     ${ms.length ? `<p class="cap">재고: ${ms.map(k => esc(keyInfo(k).name)).join(', ')}</p>` : ''}
     ${/넣어 주세요/.test(B().account.number) ? '<p class="cap">계좌번호</p>' : ''}
-    <p class="cap" style="margin:0">아래 가격과 처음 재고에서 바로 고칠 수 있어요. 계좌번호는 config.js에서 고쳐요</p></div>` : '';
+    </div>` : '';
   return `<div class="page"><div class="cols"><div>
     ${warn}
-    <div class="box"><h2>가격과 처음 재고</h2><p class="cap">바꾸면 바로 저장돼요. 이 기기에만 적용돼요</p>
+    <div class="box"><h2>가격과 처음 재고</h2>
       ${products().map(p => `<div class="sr"><div class="l"><div class="t">${esc(p.name)}</div><div class="s">${p.preorderOnly ? '선입금 전용' : p.pool ? keyInfo(skey(p)).name + ' 공용 재고 · ' + units(p) + '세트씩' : ''}</div></div>
         <label class="fld"><span>가격</span><input class="num" type="number" inputmode="numeric" min="0" step="500" data-ovp="${p.id}" value="${p.price || 0}"></label>
         ${!p.pool && !p.preorderOnly ? `<label class="fld"><span>처음 재고</span><input class="num" type="number" inputmode="numeric" min="0" data-ovs="${p.id}" value="${p.stock || 0}"></label>` : '<span class="fld"></span>'}</div>`).join('')}
@@ -382,21 +381,21 @@ function settingsView() {
         <label class="fld"><span>처음 재고</span><input class="num" type="number" inputmode="numeric" min="0" data-ovs="${esc(k)}" value="${i.stock}"></label></div>`; }).join('')}
       ${Object.keys(ov().price).length || Object.keys(ov().stock).length ? '<button class="txtbtn" data-act="ovReset" style="padding-left:0">config.js 값으로 되돌리기</button>' : ''}</div>
     <div class="box"><h2>선입금 명단</h2>
-      <button class="link" data-act="importCsv"><span>CSV 파일 불러오기<span class="s">${ii ? `${esc(ii.file)} · ${mdhm(ii.ts)} · ${ii.count}명` : '구글폼이나 엑셀에서 저장한 CSV'}</span></span><span class="chev">›</span></button>
-      <button class="link" data-act="loadTest"><span>테스트용 선입금 넣기<span class="s">가짜 손님 40명이에요. 뒷자리 1234가 3명 있어요</span></span><span class="chev">›</span></button>
-      <button class="link" data-act="sampleCsv"><span>양식 예시 파일 받기<span class="s">열 이름을 이 파일처럼 맞추면 돼요</span></span><span class="chev">›</span></button></div>
+      <button class="link" data-act="importCsv"><span>CSV 파일 불러오기<span class="s">${ii ? `${esc(ii.file)} · ${mdhm(ii.ts)} · ${ii.count}명` : ''}</span></span><span class="chev">›</span></button>
+      <button class="link" data-act="loadTest"><span>테스트용 선입금 넣기<span class="s">가짜 40명</span></span><span class="chev">›</span></button>
+      <button class="link" data-act="sampleCsv"><span>양식 예시 파일 받기</span><span class="chev">›</span></button></div>
     <div class="box"><h2>백업</h2>
-      <button class="link" data-act="backup"><span>백업 파일 내보내기<span class="s">${D.backupAt ? '마지막 백업 ' + mdhm(D.backupAt) : '아직 백업한 적이 없어요'}</span></span><span class="chev">›</span></button>
-      <button class="link" data-act="restore"><span>백업 파일로 되살리기<span class="s">지금 기기 데이터를 백업 파일 내용으로 바꿔요</span></span><span class="chev">›</span></button>
-      <button class="link" data-act="exportCsv"><span>정산 CSV 내보내기<span class="s">현장 판매와 선입금 전달 기록을 엑셀로 열 수 있어요</span></span><span class="chev">›</span></button></div>
+      <button class="link" data-act="backup"><span>백업 파일 내보내기<span class="s">${D.backupAt ? '마지막 백업 ' + mdhm(D.backupAt) : '백업 없음'}</span></span><span class="chev">›</span></button>
+      <button class="link" data-act="restore"><span>백업 파일로 되살리기</span><span class="chev">›</span></button>
+      <button class="link" data-act="exportCsv"><span>정산 CSV 내보내기</span><span class="chev">›</span></button></div>
   </div><div class="side">
     <div class="box"><h2>이 기기</h2>
       <div class="kv"><span>부스</span><b>${esc(B().name)}</b></div>
       <div class="kv"><span>상품</span><b class="num">${products().length}개</b></div>
       <div class="kv"><span>저장 위치</span><b>이 기기 안</b></div>
       <div class="kv"><span>앱 버전</span><b class="num">${APP_VERSION}</b></div>
-      <button class="link" data-act="switchBooth"><span>다른 부스로 바꾸기<span class="s">부스마다 데이터가 따로 있어서 지워지지 않아요</span></span><span class="chev">›</span></button></div>
-    <div class="box"><button class="link danger" data-act="askReset"><span>이 부스 데이터 모두 지우기<span class="s">명단, 판매, 재고 조정 기록이 사라져요</span></span><span class="chev">›</span></button></div>
+      <button class="link" data-act="switchBooth"><span>다른 부스로 바꾸기</span><span class="chev">›</span></button></div>
+    <div class="box"><button class="link danger" data-act="askReset"><span>이 부스 데이터 모두 지우기</span><span class="chev">›</span></button></div>
   </div></div></div>`;
 }
 
@@ -405,9 +404,9 @@ function sheetView() {
   if (!sheet) return '';
   const total = sumItems(cart);
   let h = '';
-  if (sheet === 'method') h = `<h3>어떻게 받을까요?</h3><p class="amt num">${won(total)}</p>
-    <button class="opt" data-m="cash"><span class="ico">${IC.cash}</span><span><span class="t">현금</span><br><span class="s">거스름돈을 계산해 드려요</span></span></button>
-    <button class="opt" data-m="transfer"><span class="ico">${IC.bank}</span><span><span class="t">계좌이체</span><br><span class="s">손님께 계좌번호를 보여드려요</span></span></button>`;
+  if (sheet === 'method') h = `<h3>결제 방법</h3><p class="amt num">${won(total)}</p>
+    <button class="opt" data-m="cash"><span class="ico">${IC.cash}</span><span><span class="t">현금</span></span></button>
+    <button class="opt" data-m="transfer"><span class="ico">${IC.bank}</span><span><span class="t">계좌이체</span></span></button>`;
   if (sheet === 'cash') {
     const ch = cashIn - total;
     h = `<h3>받은 금액</h3><p class="bigamt num ${cashIn ? '' : 'zero'}">${won(cashIn)}</p>
@@ -418,13 +417,13 @@ function sheetView() {
   }
   if (sheet === 'transfer') {
     const a = B().account;
-    h = `<h3>이 계좌로 받아주세요</h3><p class="amt">손님께 화면을 보여드려요</p>
+    h = `<h3>계좌이체</h3>
     <div class="acct"><div class="bank">${esc(a.bank)}</div><div class="no num">${esc(a.number)}</div><div class="own">예금주 ${esc(a.owner)}</div></div>
     <div class="kv hl"><span>받을 금액</span><b class="num">${won(total)}</b></div>
     <div class="foot"><button class="back" data-act="back">이전</button><button class="cta" data-act="done">입금 확인했어요</button></div>`;
   }
   if (sheet === 'adj' && !adj.id) {
-    h = `<h3>어떤 상품을 재고에서 뺄까요?</h3><p class="amt">파손, 샘플, 증정 같은 이유로 빠지는 수량을 기록해요</p>
+    h = `<h3>재고에서 제외</h3>
     ${stockKeys().map(k => { const i = keyInfo(k), u = usage(k); return `<button class="opt" data-adjpick="${esc(k)}"><span style="flex:1"><span class="t">${esc(i.name)}</span><br><span class="s num">${i.sub ? esc(i.sub) + ' · ' : ''}남은 재고 ${u.left}${i.unit}</span></span><span class="chev">›</span></button>`; }).join('')}
     <div class="foot"><button class="back" style="flex:1" data-act="close">닫기</button></div>`;
   } else if (sheet === 'adj') {
@@ -440,10 +439,10 @@ function sheetView() {
   }
   if (sheet === 'addpre') {
     const ok = addPreOk();
-    h = `<h3>선입금 직접 추가</h3><p class="amt">명단에 없는데 입금이 확인된 분을 넣어요</p>
+    h = `<h3>선입금 직접 추가</h3>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><input id="apName" class="search" placeholder="이름" value="${esc(addPre.name)}" autocomplete="off">
     <input id="apLast4" class="search num" style="flex:0 0 140px;min-width:0" inputmode="numeric" maxlength="4" placeholder="뒷자리 4자리" value="${esc(addPre.last4)}" autocomplete="off"></div>
-    <div class="list" style="margin-top:12px">${products().map(p => p.variants ? `<div class="row tall"><div class="l"><div class="t">${esc(p.name)} <span class="s">누를 때마다 1개씩 더해져요</span></div>
+    <div class="list" style="margin-top:12px">${products().map(p => p.variants ? `<div class="row tall"><div class="l"><div class="t">${esc(p.name)}</div>
       <div class="vpick">${p.variants.map(L => { const n = (addPre.vars[p.id] || {})[L] || 0; return `<button class="${n ? 'on' : ''}" data-apv="${p.id}" data-l="${L}">${L}${n > 1 ? `<small>${n}</small>` : ''}</button>`; }).join('')}</div>
       ${addPre.items[p.id] ? `<button class="txtbtn" style="padding-left:0" data-apvclr="${p.id}">${esc(p.name)} 선택 지우기</button>` : ''}</div><span class="num" style="font-weight:600">${addPre.items[p.id] || 0}개</span></div>`
       : `<div class="row"><div class="l"><div class="t">${esc(p.name)}</div><div class="s num">${p.sub ? esc(p.sub) + ' · ' : ''}${won(p.price)}</div></div>
@@ -461,7 +460,6 @@ function sheetView() {
     <div class="preview">찾은 상품 열: ${r.matched.length ? r.matched.map(esc).join(', ') : '<b style="color:var(--red)">없음</b>'}
       ${r.unknown.length ? `<ul><li>모르는 열이라 건너뛴 것: ${r.unknown.map(esc).join(', ')}</li></ul>` : ''}</div>
     ${r.missingCols.length ? `<p class="warnline">${r.missingCols.join(', ')} 열을 찾지 못했어요. 양식 예시 파일과 열 이름을 맞춰 주세요</p>` : ''}
-    ${r.keep ? `<p class="sub" style="margin-top:6px">이미 받아간 ${r.keep}명의 수령 기록은 그대로 둬요</p>` : ''}
     <div class="foot"><button class="back" data-act="close">닫기</button><button class="cta" data-act="importGo" ${r.list.length && !r.missingCols.length ? '' : 'disabled'}>${r.list.length}명 불러오기</button></div>`;
   }
   if (sheet === 'restore') {
@@ -473,9 +471,9 @@ function sheetView() {
     <p class="warnline">지금 이 기기의 ${esc(CFG.booths[r.booth]?.name || r.booth)} 데이터는 백업 내용으로 바뀌어요</p>
     <div class="foot"><button class="back" data-act="close">닫기</button><button class="cta" data-act="restoreGo">되살리기</button></div>`;
   }
-  if (sheet === 'reset') h = `<h3>${esc(B().name)} 데이터를 모두 지울까요?</h3><p class="amt">선입금 명단, 판매 기록, 재고 조정 기록이 사라지고 되돌릴 수 없어요. 먼저 백업 파일을 내보내 두세요.</p>
+  if (sheet === 'reset') h = `<h3>${esc(B().name)} 데이터를 모두 지울까요?</h3><p class="amt">되돌릴 수 없어요</p>
     <div class="foot"><button class="back" data-act="close">닫기</button><button class="cta danger" data-act="resetGo">모두 지우기</button></div>`;
-  if (sheet === 'booth') h = `<h3>어느 부스로 바꿀까요?</h3><p class="amt">부스마다 데이터가 따로 저장돼요</p>
+  if (sheet === 'booth') h = `<h3>부스 선택</h3>
     ${Object.entries(CFG.booths).map(([k, b]) => `<button class="opt" data-pick="${k}"><span><span class="t">${esc(b.name)}</span><br><span class="s">${k === booth ? '지금 쓰는 부스' : '상품 ' + b.products.length + '개'}</span></span></button>`).join('')}`;
   return `<div class="dim" data-act="close"></div><div class="sheet" role="dialog" aria-modal="true"><div class="grab"></div>${h}</div>`;
 }
