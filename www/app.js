@@ -10,7 +10,7 @@ const dataKey = b => 'boothpos:v1:' + b;
 const REASONS_OUT = ['파손·불량', '전시용 샘플', '증정·서비스', '분실', '기타'];
 const REASONS_IN = ['추가 입고', '재고 정정', '기타'];
 const BACKUP_WARN_MIN = 60;
-const APP_VERSION = '21';
+const APP_VERSION = '22';
 
 /* ---------------- 저장소 ---------------- */
 const ls = {
@@ -37,7 +37,22 @@ const nextId = () => ++D.seq;
 
 /* ---------------- 상품·재고 ---------------- */
 const $ = s => document.querySelector(s);
-const B = () => CFG.booths[booth];
+// 설정에서 고친 부스 이름·상품 목록이 있으면 그걸 쓰고, 없으면 config.js 기본값을 써요
+const B = () => {
+  const c = CFG.booths[booth], cat = D && D.catalog;
+  return cat ? { ...c, name: cat.name || c.name, products: cat.products, pools: cat.pools || {} } : c;
+};
+const IMG_KEY = id => 'boothpos:img:' + booth + ':' + id;
+const imgSrc = p => (p.image && p.image.startsWith('local:') ? ls.get(IMG_KEY(p.image.slice(6))) : p.image);
+function ensureCatalog() {
+  if (D.catalog) return D.catalog;
+  const c = CFG.booths[booth], o = ov();
+  const pools = JSON.parse(JSON.stringify(c.pools || {}));
+  for (const id of Object.keys(pools)) if (o.stock['pool:' + id] != null) pools[id].stock = o.stock['pool:' + id];
+  D.catalog = { name: c.name, pools, products: products().map(p => JSON.parse(JSON.stringify(p))) };
+  D.ov = { price: {}, stock: {}, r18: {} };
+  return D.catalog;
+}
 const ov = () => { D.ov = D.ov || { price: {}, stock: {} }; D.ov.r18 = D.ov.r18 || {}; return D.ov; };
 const products = () => { const o = ov(); return B().products.map(p => ({ ...p, price: o.price[p.id] ?? p.price, stock: o.stock[p.id] ?? p.stock, r18: o.r18[p.id] ?? !!p.r18 })); };
 const sellable = () => products().filter(p => !p.preorderOnly);
@@ -121,6 +136,7 @@ const stockMissing = () => stockKeys().filter(k => !keyInfo(k).stock);
 
 /* ---------------- 화면 상태 ---------------- */
 let tab = 'sell', mode = 'pre', cart = {}, digits = '', selKey = null, justDone = null;
+let pe = null;
 let cartOrder = [], nameMode = false, nq = '', splitCash = 0, failDraft = null;
 let sheet = null, cashIn = 0, adj = null, addPre = null, importDraft = null, restoreDraft = null;
 let qs = '', lf = 'all', toastState = null, toastTimer = null, hist = [];
@@ -291,7 +307,7 @@ function topView() {
 function welcomeView() {
   return `<div class="welcome"><div class="in">
     <h1>부스 선택</h1>
-    ${Object.entries(CFG.booths).map(([k, b]) => `<button class="bpick" data-pick="${k}"><span>${esc(b.name)}<small>상품 ${b.products.filter(p => !p.preorderOnly).length}개</small></span><span class="chev">›</span></button>`).join('')}
+    ${Object.entries(CFG.booths).map(([k, b]) => `<button class="bpick" data-pick="${k}"><span>${esc((load(k).catalog || {}).name || b.name)}<small>상품 ${b.products.filter(p => !p.preorderOnly).length}개</small></span><span class="chev">›</span></button>`).join('')}
   </div></div>`;
 }
 
@@ -299,7 +315,7 @@ function welcomeView() {
 function selected() { return D.preorders.find(p => p.key === selKey) || null; }
 
 function thumb(p, soldOut) {
-  return `<span class="thumb">${soldOut ? '<span class="soldout">SOLD OUT</span>' : ''}${p.image && !badImg.has(p.image) ? `<img src="${esc(p.image)}" alt="" onerror="__imgfail(this)">` : ''}<span class="ph">${esc(p.name.slice(0, 1))}</span>
+  return `<span class="thumb">${soldOut ? '<span class="soldout">SOLD OUT</span>' : ''}${(() => { const src = imgSrc(p); return src && !badImg.has(src) ? `<img src="${esc(src)}" alt="" onerror="__imgfail(this)">` : ''; })()}<span class="ph">${esc(p.name.slice(0, 1))}</span>
     ${p.badge ? `<span class="setno num">${esc(p.badge)}</span>` : ''}</span>`;
 }
 
@@ -555,14 +571,18 @@ function settingsView() {
     </div>` : '';
   return `<div class="page"><div class="cols"><div>
     ${warn}
-    <div class="box"><h2>가격과 처음 재고</h2>
-      ${products().map(p => `<div class="sr"><div class="l"><div class="t">${esc(p.name)}</div><div class="s">${p.preorderOnly ? '선입금 전용' : p.pool ? keyInfo(skey(p)).name + ' 공용 재고 · ' + units(p) + '세트씩' : ''}</div></div>
-        ${p.preorderOnly ? '<span class="fld sm"></span>' : `<label class="fld sm chk"><span>R18</span><input type="checkbox" data-ovr="${p.id}" ${p.r18 ? 'checked' : ''}></label>`}
-        <label class="fld"><span>가격</span><input class="num" type="number" inputmode="numeric" min="0" step="500" data-ovp="${p.id}" value="${p.price || 0}"></label>
-        ${!p.pool && !p.preorderOnly ? `<label class="fld"><span>처음 재고</span><input class="num" type="number" inputmode="numeric" min="0" data-ovs="${p.id}" value="${p.stock || 0}"></label>` : '<span class="fld"></span>'}</div>`).join('')}
-      ${Object.keys(B().pools || {}).map(id => { const k = 'pool:' + id, i = keyInfo(k); return `<div class="sr"><div class="l"><div class="t">${esc(i.name)} 공용 재고</div><div class="s">${esc(i.sub)} · ${i.unit} 단위</div></div><span class="fld"></span>
-        <label class="fld"><span>처음 재고</span><input class="num" type="number" inputmode="numeric" min="0" data-ovs="${esc(k)}" value="${i.stock}"></label></div>`; }).join('')}
-      ${Object.keys(ov().price).length || Object.keys(ov().stock).length ? '<button class="txtbtn" data-act="ovReset" style="padding-left:0">config.js 값으로 되돌리기</button>' : ''}</div>
+    <div class="box"><h2>부스</h2>
+      <div class="sr"><div class="l"><div class="t">부스 이름</div></div>
+        <label class="fld wide"><span>이름</span><input id="boothName" value="${esc(B().name)}" autocomplete="off"></label></div></div>
+    <div class="box"><div class="lhead"><h2>상품</h2><button class="mini" data-act="peNew">+ 상품 추가</button></div>
+      ${products().map((p, i) => `<div class="sr"><span class="pthumb">${(() => { const src = imgSrc(p); return src ? `<img src="${esc(src)}" alt="">` : esc(p.name.slice(0, 1)); })()}</span>
+        <div class="l"><div class="t">${esc(p.name)}${p.r18 ? ' <span class="badge red">R18</span>' : ''}</div>
+        <div class="s num">${p.preorderOnly ? '선입금 전용' : won(p.price)}${p.pool ? ' · ' + esc(keyInfo(skey(p)).name) + ' 공용 · ' + units(p) + '씩' : p.preorderOnly ? '' : ' · 처음 재고 ' + (p.stock || 0)}${p.variants ? ' · 종류 ' + p.variants.length + '개' : ''}</div></div>
+        <span class="ord"><button class="mini gray" data-pmove="${i}" data-d="-1" aria-label="위로" ${i ? '' : 'disabled'}>↑</button><button class="mini gray" data-pmove="${i}" data-d="1" aria-label="아래로" ${i < products().length - 1 ? '' : 'disabled'}>↓</button></span>
+        <button class="mini gray" data-pedit="${esc(p.id)}">편집</button></div>`).join('')}
+      ${Object.keys(B().pools || {}).map(id => { const k = 'pool:' + id, i = keyInfo(k); return `<div class="sr"><div class="l"><div class="t">${esc(i.name)} <span class="s">공용 재고</span></div><div class="s">${esc(i.sub)}</div></div>
+        <label class="fld"><span>처음 재고 (${esc(i.unit)})</span><input class="num" type="number" inputmode="numeric" min="0" data-ovs="${esc(k)}" value="${i.stock}"></label></div>`; }).join('')}
+      ${D.catalog ? '<button class="txtbtn" data-act="catReset" style="padding-left:0">config.js 기본 상품으로 되돌리기</button>' : ''}</div>
     <div class="box"><h2>현금 시재</h2>
       <div class="sr"><div class="l"><div class="t">시작 현금</div></div>
         <label class="fld"><span>금액</span><input class="num" type="number" inputmode="numeric" min="0" step="1000" data-cashstart value="${D.cashStart || 0}"></label></div>
@@ -619,6 +639,37 @@ function sheetView() {
     h = `<h3>계좌이체</h3><p class="bigamt num">${won(total)}</p>
     <div class="foot"><button class="back" data-act="back">이전</button><button class="cta" data-act="done">입금 확인했어요</button></div>`;
   }
+  if (sheet === 'prod') {
+    const pools = B().pools || {}, e = pe;
+    h = `<h3>${e.isNew ? '상품 추가' : '상품 편집'}</h3>
+    <div class="pform">
+      <div class="pimg">${e.img ? `<img src="${esc(e.img)}" alt="">` : '<span>사진 없음</span>'}${e.badge ? `<span class="setno num">${esc(e.badge)}</span>` : ''}</div>
+      <div class="pimgbtn"><button class="mini gray" data-act="peImg">사진 고르기</button>${e.img ? '<button class="mini gray" data-act="peImgDel">사진 빼기</button>' : ''}</div>
+      <label class="frow"><span>이름</span><input id="pe_name" class="search" value="${esc(e.name)}" autocomplete="off"></label>
+      <label class="frow"><span>부제</span><input id="pe_sub" class="search" value="${esc(e.sub)}" placeholder="이름 아래 작게" autocomplete="off"></label>
+      <div class="frow2">
+        <label class="frow"><span>가격</span><input id="pe_price" class="search num" type="number" inputmode="numeric" min="0" step="500" value="${e.price}"></label>
+        ${!e.pool && !e.preorderOnly ? `<label class="frow"><span>처음 재고</span><input id="pe_stock" class="search num" type="number" inputmode="numeric" min="0" value="${e.stock}"></label>` : ''}
+      </div>
+      <label class="frow"><span>사진 위 큰 글자</span><input id="pe_badge" class="search" value="${esc(e.badge)}" placeholder="예: 1, 5, 10" maxlength="4" autocomplete="off"></label>
+      <div class="toggles">
+        <button class="tg ${e.r18 ? 'on' : ''}" data-ptg="r18">R18</button>
+        <button class="tg ${e.preorderOnly ? 'on' : ''}" data-ptg="preorderOnly">선입금 전용</button>
+        <button class="tg ${e.varOn ? 'on' : ''}" data-ptg="varOn">종류 (알파벳)</button>
+      </div>
+      ${e.varOn ? `<label class="frow"><span>종류 목록</span><input id="pe_letters" class="search" value="${esc(e.letters)}" placeholder="예: A-Y 또는 A,B,C" autocomplete="off"></label>` : ''}
+      ${!e.preorderOnly ? `<p class="lbl">공용 재고</p><div class="chips">
+        <button class="${!e.pool && !e.newPool ? 'on' : ''}" data-ppool="">따로 관리</button>
+        ${Object.entries(pools).map(([id, pl]) => `<button class="${e.pool === id ? 'on' : ''}" data-ppool="${esc(id)}">${esc(pl.name)}</button>`).join('')}
+        <button class="${e.newPool ? 'on' : ''}" data-act="pePoolNew">+ 새 그룹</button></div>
+        ${e.newPool ? `<div class="frow2"><label class="frow"><span>새 그룹 이름</span><input id="pe_pname" class="search" value="${esc(e.newPool.name)}" autocomplete="off"></label>
+          <label class="frow"><span>단위</span><input id="pe_punit" class="search" value="${esc(e.newPool.unit)}" autocomplete="off"></label></div>` : ''}
+        ${e.pool || e.newPool ? `<label class="frow"><span>한 번에 쓰는 수량</span><input id="pe_units" class="search num" type="number" inputmode="numeric" min="1" value="${e.units}"></label>` : ''}` : ''}
+    </div>
+    <div class="foot">${e.isNew ? '' : '<button class="back" data-act="peDel" style="color:var(--red)">삭제</button>'}<button class="back" data-act="close">닫기</button><button class="cta" id="pego" data-act="peSave" ${e.name.trim() ? '' : 'disabled'}>저장</button></div>`;
+  }
+  if (sheet === 'prodDel') h = `<h3>${esc(pe.name)} 삭제할까요?</h3><p class="amt">판매·선입금 기록은 그대로 남아요</p>
+    <div class="foot"><button class="back" data-act="peBack">취소</button><button class="cta danger" data-act="peDelGo">삭제</button></div>`;
   if (sheet === 'fail') {
     const p = D.preorders.find(x => x.key === failDraft.key), n = cnt(failDraft.items), need = failDraft.reason === '기타' && !failDraft.memo.trim();
     const fo = failedOf(p);
@@ -856,6 +907,59 @@ function settlementCSV() {
   return toCSV(rows);
 }
 
+/* ================= 상품 사진 (기기 안에 저장) ================= */
+function resizeImage(file) {
+  return new Promise((ok, no) => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      const W = 600, H = 800, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+      const r = Math.max(W / img.width, H / img.height), w = img.width * r, h = img.height * r;
+      const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, W, H); g.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
+      URL.revokeObjectURL(url); ok(cv.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); no(new Error('이미지를 읽지 못했어요')); };
+    img.src = url;
+  });
+}
+function parseLetters(t) {
+  t = String(t || '').toUpperCase().replace(/\s/g, '');
+  const m = t.match(/^([A-Z])-([A-Z])$/);
+  if (m) { const a = m[1].charCodeAt(0), b = m[2].charCodeAt(0), out = []; for (let c = Math.min(a, b); c <= Math.max(a, b); c++) out.push(String.fromCharCode(c)); return out; }
+  return [...new Set(t.split(/[,/·]+/).filter(Boolean))];
+}
+function lettersText(v) {
+  const range = v.length > 2 && v.every((L, i) => !i || L.charCodeAt(0) === v[i - 1].charCodeAt(0) + 1);
+  return range ? v[0] + '-' + v[v.length - 1] : v.join(',');
+}
+function openEditor(p) {
+  pe = p ? { isNew: false, id: p.id, name: p.name, sub: p.sub || '', price: p.price || 0, stock: p.stock || 0, badge: p.badge || '', r18: !!p.r18, preorderOnly: !!p.preorderOnly,
+    varOn: !!p.variants, letters: p.variants ? lettersText(p.variants) : 'A-Y', pool: p.pool || '', units: p.units || 1, img: imgSrc(p) || '', imgNew: null, imgDel: false, newPool: null }
+    : { isNew: true, id: 'p' + Date.now().toString(36), name: '', sub: '', price: 0, stock: 0, badge: '', r18: false, preorderOnly: false, varOn: false, letters: 'A-Y', pool: '', units: 1, img: '', imgNew: null, imgDel: false, newPool: null };
+  sheet = 'prod';
+}
+function saveEditor() {
+  const cat = ensureCatalog(), e = pe;
+  if (e.newPool && e.newPool.name.trim()) {
+    const pid = 'g' + Date.now().toString(36);
+    cat.pools[pid] = { name: e.newPool.name.trim(), unit: e.newPool.unit.trim() || '개', stock: 0 }; e.pool = pid;
+  }
+  const old = cat.products.find(x => x.id === e.id);
+  const p = { id: e.id, name: e.name.trim(), price: Math.max(0, Math.round(+e.price || 0)) };
+  if (e.sub.trim()) p.sub = e.sub.trim();
+  if (e.badge.trim()) p.badge = e.badge.trim();
+  if (e.r18) p.r18 = true;
+  if (e.preorderOnly) p.preorderOnly = true;
+  if (e.varOn) { const v = parseLetters(e.letters); if (v.length) p.variants = v; }
+  if (!e.preorderOnly && e.pool) { p.pool = e.pool; p.units = Math.max(1, Math.round(+e.units || 1)); }
+  else if (!e.preorderOnly) p.stock = Math.max(0, Math.round(+e.stock || 0));
+  if (e.imgNew) { if (!ls.set(IMG_KEY(e.id), e.imgNew)) toast('저장 공간이 부족해서 사진을 넣지 못했어요'); else p.image = 'local:' + e.id; }
+  else if (e.imgDel) ls.del(IMG_KEY(e.id));
+  else if (old && old.image) p.image = old.image;
+  if (old) { Object.keys(old).forEach(k => delete old[k]); Object.assign(old, p); } else cat.products.push(p);
+  for (const id of Object.keys(cat.pools)) if (!cat.products.some(x => x.pool === id)) delete cat.pools[id];
+  save(); pe = null; sheet = null; toast('상품을 저장했어요');
+}
+
 /* ================= 파일 저장 ================= */
 async function saveFile(name, text, mime) {
   const cap = window.Capacitor;
@@ -894,6 +998,7 @@ app.addEventListener('click', e => {
   const tb = g('[data-tab]'), md = g('[data-mode]'), k = g('[data-k]'), sl = g('[data-sel]'), add = g('[data-add]'), dec = g('[data-dec]'),
     m = g('[data-m]'), c = g('[data-cash]'), lfb = g('[data-lf]'), go = g('[data-go]'), ad = g('[data-adj]'), aq = g('[data-aq]'), rs = g('[data-rs]'),
     dir = g('[data-dir]'), un = g('[data-unadj]'), us = g('[data-unsale]'), apq = g('[data-apq]'), apv = g('[data-apv]'), apvc = g('[data-apvclr]'),
+    pedit = g('[data-pedit]'), pmove = g('[data-pmove]'), ptg = g('[data-ptg]'), ppool = g('[data-ppool]'),
     ug = g('[data-ungive]'), ap = g('[data-adjpick]'), pn = g('[data-pickname]'), sp = g('[data-split]'), fq = g('[data-fq]'), frs = g('[data-frs]'), uf = g('[data-unfail]');
   if (pn) { const p = D.preorders.find(x => x.key === pn.dataset.pickname); if (p) { selKey = p.key; digits = p.last4; nameMode = false; nq = ''; } }
   if (sp) { const v = +sp.dataset.split; splitCash = v ? splitCash + v : 0; }
@@ -904,6 +1009,10 @@ app.addEventListener('click', e => {
     if (!failDraft.items[id]) delete failDraft.items[id]; }
   if (frs) failDraft.reason = frs.dataset.frs;
   if (uf) { const f = fails().find(x => x.n === +uf.dataset.unfail); f.canceled = true; save(); toast('미전달 기록을 취소했어요'); render(); return; }
+  if (pedit) { openEditor(products().find(x => x.id === pedit.dataset.pedit)); }
+  if (pmove) { const cat = ensureCatalog(), i = +pmove.dataset.pmove, j = i + (+pmove.dataset.d); if (j >= 0 && j < cat.products.length) { [cat.products[i], cat.products[j]] = [cat.products[j], cat.products[i]]; save(); } }
+  if (ptg) { pe[ptg.dataset.ptg] = !pe[ptg.dataset.ptg]; if (ptg.dataset.ptg === 'preorderOnly' && pe.preorderOnly) { pe.pool = ''; pe.newPool = null; } }
+  if (ppool) { pe.pool = ppool.dataset.ppool; pe.newPool = null; }
   if (ug) { const p = D.preorders.find(x => x.key === ug.dataset.ungive); hist = hist.filter(h => h.key !== ug.dataset.ungive); redo = redo.filter(h => h.key !== ug.dataset.ungive); if (p) { p.at = null; if (justDone === p.key) justDone = null; save(); toast(`${p.name}님 수령을 취소했어요`); } render(); return; }
   if (ap) { adj.id = ap.dataset.adjpick; }
 
@@ -987,17 +1096,28 @@ app.addEventListener('click', e => {
     }
     case 'importCsv': $('#fileCsv').value = ''; $('#fileCsv').click(); return;
     case 'importGo': applyImport(importDraft); toast(`선입금 ${importDraft.list.length}명을 불러왔어요`); importDraft = null; sheet = null; break;
+    case 'peNew': openEditor(null); break;
+    case 'peImg': $('#fileImg').value = ''; $('#fileImg').click(); return;
+    case 'peImgDel': pe.img = ''; pe.imgNew = null; pe.imgDel = true; break;
+    case 'pePoolNew': pe.newPool = { name: '', unit: '세트' }; pe.pool = ''; break;
+    case 'peSave': if (pe && pe.name.trim()) saveEditor(); break;
+    case 'peDel': sheet = 'prodDel'; break;
+    case 'peBack': sheet = 'prod'; break;
+    case 'peDelGo': { const cat = ensureCatalog(); cat.products = cat.products.filter(x => x.id !== pe.id); for (const id of Object.keys(cat.pools)) if (!cat.products.some(x => x.pool === id)) delete cat.pools[id]; ls.del(IMG_KEY(pe.id)); delete cart[pe.id]; save(); toast(`${pe.name} 상품을 삭제했어요`); pe = null; sheet = null; break; }
+    case 'catReset': D.catalog = null; save(); toast('config.js 기본 상품으로 되돌렸어요'); break;
     case 'loadTest': { const rows = parseCSV(testCSV().replace(/^\uFEFF/, '')); importDraft = analyzeCSV(rows, '테스트 데이터 (가짜 40명)'); sheet = 'import'; break; }
     case 'sampleCsv': doSave('선입금_양식_예시.csv', sampleCSV(), 'text/csv'); return;
     case 'backup': {
       const ts = Date.now();
-      const payload = JSON.stringify({ app: 'booth-pos', v: 1, booth, exportedAt: ts, data: { ...D, backupAt: ts } }, null, 1);
+      const images = {}; for (const p of products()) if (p.image && p.image.startsWith('local:')) { const d = ls.get(IMG_KEY(p.image.slice(6))); if (d) images[p.image.slice(6)] = d; }
+      const payload = JSON.stringify({ app: 'booth-pos', v: 1, booth, exportedAt: ts, data: { ...D, backupAt: ts }, images }, null, 1);
       doSave(`부스포스_${booth}_백업_${stamp()}.json`, payload, 'application/json', () => { D.backupAt = ts; save(); });
       return;
     }
     case 'restore': $('#fileBackup').value = ''; $('#fileBackup').click(); return;
     case 'restoreGo': {
       const r = restoreDraft; ls.set(dataKey(r.booth), JSON.stringify(Object.assign(emptyData(), r.data)));
+      for (const [id, d] of Object.entries(r.images || {})) ls.set('boothpos:img:' + r.booth + ':' + id, d);
       booth = r.booth; ls.set(DEVICE_KEY, booth); D = load(booth); hist = []; redo = []; restoreDraft = null; sheet = null;
       cart = {}; digits = ''; selKey = null; justDone = null; toast('백업 내용으로 되살렸어요'); break;
     }
@@ -1016,6 +1136,12 @@ document.addEventListener('click', e => {
 app.addEventListener('input', e => {
   const id = e.target.id;
   if (id === 'q') { qs = e.target.value; $('#prelist').innerHTML = listRows(); }
+  if (id && id.startsWith('pe_') && pe) {
+    const f = id.slice(3), v = e.target.value;
+    if (f === 'pname') pe.newPool.name = v; else if (f === 'punit') pe.newPool.unit = v; else pe[f] = v;
+    if (f === 'badge') { const b = $('.pimg .setno'); if (b) b.textContent = v; }
+    $('#pego').disabled = !pe.name.trim();
+  }
   if (id === 'nq') { nq = e.target.value; $('#nres').innerHTML = nameRows(); }
   if (id === 'failMemo' && failDraft) { failDraft.memo = e.target.value; $('#failgo').disabled = !(cnt(failDraft.items) && failDraft.reason && !(failDraft.reason === '기타' && !failDraft.memo.trim())); }
   if (id === 'memo' && adj) { adj.memo = e.target.value; $('#adjgo').disabled = !adj.reason || (adj.reason === '기타' && !adj.memo.trim()); }
@@ -1029,8 +1155,10 @@ app.addEventListener('change', e => {
   const t = e.target, v = Math.max(0, Math.round(+t.value || 0));
   if (t.dataset.ovp) { ov().price[t.dataset.ovp] = v; save(); toast('가격을 바꿨어요'); render(); }
   if (t.dataset.ovr) { ov().r18[t.dataset.ovr] = t.checked; save(); toast(t.checked ? 'R18 상품으로 표시했어요' : 'R18 표시를 껐어요'); render(); return; }
+  if (t.id === 'boothName') { const nm = t.value.trim(); if (nm) { ensureCatalog().name = nm; save(); toast('부스 이름을 바꿨어요'); render(); } return; }
   if (t.hasAttribute('data-cashstart')) { D.cashStart = v; save(); toast('시작 현금을 저장했어요'); render(); return; }
   if (t.hasAttribute('data-cashcount')) { D.cashCount = t.value === '' ? null : v; D.cashCountAt = Date.now(); save(); render(); return; }
+  if (t.dataset.ovs && D.catalog && t.dataset.ovs.startsWith('pool:')) { const pl = D.catalog.pools[t.dataset.ovs.slice(5)]; if (pl) { pl.stock = v; save(); toast('처음 재고를 바꿨어요'); render(); } return; }
   if (t.dataset.ovs) { ov().stock[t.dataset.ovs] = v; save(); toast('처음 재고를 바꿨어요'); render(); }
 });
 
@@ -1051,6 +1179,10 @@ $('#fileCsv').addEventListener('change', async e => {
     importDraft = analyzeCSV(rows, f.name); sheet = 'import'; render();
   } catch (err) { toast('CSV 파일을 읽지 못했어요'); }
 });
+$('#fileImg').addEventListener('change', async e => {
+  const f = e.target.files[0]; if (!f || !pe) return;
+  try { pe.imgNew = await resizeImage(f); pe.img = pe.imgNew; pe.imgDel = false; render(); } catch { toast('이 사진은 쓸 수 없어요'); }
+});
 $('#fileSound').addEventListener('change', e => {
   const f = e.target.files[0]; if (!f) return;
   if (f.size > 1024 * 1024) { toast('1MB보다 작은 소리 파일을 골라 주세요'); return; }
@@ -1069,7 +1201,7 @@ $('#fileBackup').addEventListener('change', async e => {
   try {
     const j = JSON.parse(await readTextFile(f));
     if (j.app !== 'booth-pos' || !j.data || !CFG.booths[j.booth]) throw new Error();
-    restoreDraft = { file: f.name, booth: j.booth, exportedAt: j.exportedAt, data: Object.assign(emptyData(), j.data) }; sheet = 'restore'; render();
+    restoreDraft = { file: f.name, booth: j.booth, exportedAt: j.exportedAt, data: Object.assign(emptyData(), j.data), images: j.images || {} }; sheet = 'restore'; render();
   } catch { toast('부스 포스 백업 파일이 아니에요'); }
 });
 
