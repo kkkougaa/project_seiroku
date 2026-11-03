@@ -106,7 +106,7 @@ function toast(msg, undo) {
 function renderToast() {
   let t = $('#toast');
   if (!toastState) { t && t.remove(); return; }
-  if (!t) { t = document.createElement('div'); t.id = 'toast'; t.className = 'toast'; t.setAttribute('role', 'status'); $('#app').appendChild(t); }
+  if (!t) { t = document.createElement('div'); t.id = 'toast'; t.className = 'toast'; t.setAttribute('role', 'status'); document.body.appendChild(t); }
   t.innerHTML = `<span>${esc(toastState.msg)}</span>${toastState.undo ? '<button data-act="undo">되돌리기</button>' : ''}`;
 }
 
@@ -119,13 +119,34 @@ const IC = {
 };
 
 /* ================= 렌더 ================= */
+// 화면 전체를 갈아끼우지 않고 바뀐 부분만 고쳐요 (사진 깜빡임, 시트 다시 올라오기 방지)
+function morph(from, to, root) {
+  if (from.nodeType === 1 && !root) {
+    for (const a of [...from.attributes]) if (!to.hasAttribute(a.name)) from.removeAttribute(a.name);
+    for (const a of [...to.attributes]) if (from.getAttribute(a.name) !== a.value) from.setAttribute(a.name, a.value);
+    if (from.tagName === 'INPUT' && document.activeElement !== from) { const v = to.getAttribute('value') ?? ''; if (from.value !== v) from.value = v; }
+  }
+  const fc = [...from.childNodes], tc = [...to.childNodes];
+  for (let i = 0; i < tc.length; i++) {
+    const f = fc[i], t = tc[i];
+    if (!f) { from.appendChild(t); continue; }
+    if (f.nodeType !== t.nodeType || f.nodeName !== t.nodeName) { from.replaceChild(t, f); continue; }
+    if (f.nodeType !== 1) { if (f.nodeValue !== t.nodeValue) f.nodeValue = t.nodeValue; continue; }
+    if (f.tagName === 'IMG' && f.getAttribute('src') === t.getAttribute('src')) continue;
+    morph(f, t);
+  }
+  for (let i = fc.length - 1; i >= tc.length; i--) from.removeChild(fc[i]);
+}
+const tpl = document.createElement('div');
 function render() {
   const app = $('#app');
-  if (!booth) { app.innerHTML = welcomeView(); return; }
-  const body = tab === 'sell' ? sellView() : tab === 'list' ? listView() : tab === 'stock' ? stockView() : settingsView();
-  app.innerHTML = topView() + body + sheetView();
+  tpl.innerHTML = !booth ? welcomeView()
+    : topView() + (tab === 'sell' ? sellView() : tab === 'list' ? listView() : tab === 'stock' ? stockView() : settingsView()) + sheetView();
+  morph(app, tpl, true);
   renderToast();
 }
+const badImg = new Set();
+window.__imgfail = el => { badImg.add(el.getAttribute('src')); el.remove(); };
 
 function topView() {
   const old = !D.backupAt || Date.now() - D.backupAt > BACKUP_WARN_MIN * 60000;
@@ -149,7 +170,7 @@ function welcomeView() {
 function selected() { return D.preorders.find(p => p.key === selKey) || null; }
 
 function thumb(p) {
-  return `<span class="thumb">${p.image ? `<img src="${esc(p.image)}" alt="" loading="lazy" onerror="this.remove()">` : ''}<span class="ph">${esc(p.name.slice(0, 1))}</span>
+  return `<span class="thumb">${p.image && !badImg.has(p.image) ? `<img src="${esc(p.image)}" alt="" onerror="__imgfail(this)">` : ''}<span class="ph">${esc(p.name.slice(0, 1))}</span>
     ${p.badge ? `<span class="setno num">${esc(p.badge)}</span>` : ''}</span>`;
 }
 
@@ -164,7 +185,7 @@ function sellView() {
       ${pick ? `<span class="pk">선입금 ${pick}</span>` : inCart ? `<span class="inc num">${inCart}</span>` : ''}
       <span class="tb"><span class="nm">${esc(p.name)}</span>${p.sub ? `<span class="sb">${esc(p.sub)}</span>` : ''}
       <span class="pr num">${p.price ? won(p.price) : '가격 미정 · 설정에서 넣어 주세요'}</span>
-      <span class="counts"><span class="cnt site"><b class="num">${Math.max(0, av)}</b><small>${av <= 0 ? '현장 품절' : '현장 남음'}</small></span>
+      <span class="counts"><span class="cnt site"><b class="num">${Math.max(0, av)}</b><small>${av <= 0 ? '현장 품절' : '현장 재고'}</small></span>
       <span class="cnt pre ${wt ? 'on' : ''}"><b class="num">${wt}</b><small>선입금 대기</small></span></span></span></button>`;
   }).join('');
   const c = cnt(cart);
@@ -230,7 +251,8 @@ function lastRecv() {
   return `<div class="lastrecv"><span>마지막 수령 <b>${esc(p.name)}</b> <span class="num">${esc(p.last4)} · ${hhmm(p.at)}</span></span><button data-ungive="${esc(p.key)}">수령 취소</button></div>`;
 }
 function preDetail(p) {
-  const lines = Object.entries(p.items);
+  // 족자봉처럼 종류를 골라 챙겨야 하는 상품을 맨 위에 보여줘요
+  const lines = Object.entries(p.items).sort(([a], [b]) => !!(p.vars && p.vars[b]) - !!(p.vars && p.vars[a]));
   const hasOnly = lines.some(([k]) => prod(k)?.preorderOnly);
   return `<div class="pbody">
     ${p.at ? `<p class="recvcount done num">${hhmm(p.at)}에 받아갔어요</p>` : `<p class="recvcount num">받을 상품 <b>${cnt(p.items)}개</b></p>`}${p.manual ? '<span class="badge gray">직접 추가</span>' : ''}
@@ -572,7 +594,7 @@ function testCSV() {
       if (p.variants) {
         if (rnd(10) < 5) { any = true; const n = 1 + rnd(3), picks = []; for (let k = 0; k < n; k++) picks.push(p.variants[rnd(p.variants.length)]); row.push(picks.join(', ')); }
         else row.push('');
-      } else if (rnd(10) < 4) { any = true; row.push(p.id === 'dakimakura' ? 1 : 1 + rnd(2)); } else row.push(0);
+      } else if (rnd(10) < 4) { any = true; row.push(['dakimakura', 'pc5', 'pc10'].includes(p.id) ? 1 : 1 + rnd(2)); } else row.push(0);
     }
     if (!any) row[5 + 0] = 1;
     rows.push(row);
@@ -716,6 +738,10 @@ app.addEventListener('click', e => {
     case 'resetGo': ls.del(dataKey(booth)); D = emptyData(); hist = []; sheet = null; cart = {}; digits = ''; selKey = null; justDone = null; toast('이 부스 데이터를 모두 지웠어요'); break;
   }
   render();
+});
+
+document.addEventListener('click', e => {
+  if (e.target.closest('#toast [data-act="undo"]')) { clearTimeout(toastTimer); toastState = null; undoLast(); render(); }
 });
 
 app.addEventListener('input', e => {

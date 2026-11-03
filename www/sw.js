@@ -1,5 +1,5 @@
 // 오프라인 캐시. 파일을 고치면 VERSION 숫자를 올려 주세요.
-const VERSION = 'booth-pos-v5';
+const VERSION = 'booth-pos-v6';
 importScripts('config.js');
 const IMAGES = Object.values(self.BOOTH_CONFIG.booths).flatMap(b => b.products).map(p => p.image).filter(Boolean);
 const FILES = ['./', 'index.html', 'style.css', 'app.js', 'config.js', 'manifest.webmanifest',
