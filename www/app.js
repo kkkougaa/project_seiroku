@@ -10,7 +10,7 @@ const dataKey = b => 'boothpos:v1:' + b;
 const REASONS_OUT = ['파손·불량', '전시용 샘플', '증정·서비스', '분실', '기타'];
 const REASONS_IN = ['추가 입고', '재고 정정', '기타'];
 const BACKUP_WARN_MIN = 60;
-const APP_VERSION = '13';
+const APP_VERSION = '14';
 
 /* ---------------- 저장소 ---------------- */
 const ls = {
@@ -151,12 +151,26 @@ function alertBanner(msg) {
 }
 
 // 결제 완료 '띵동' 소리. 음원 파일 없이 기기에서 직접 만들어요
-let actx = null;
+let actx = null, customBuf = null, customLoaded = false;
+const SOUND_KEY = 'boothpos:sound';
+// 형이 기기에서 고른 소리 파일 (이 기기에만 저장)
+async function loadCustomSound() {
+  customLoaded = true; customBuf = null;
+  const url = ls.get(SOUND_KEY); if (!url) return;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const bin = atob(url.split(',')[1]), arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    customBuf = await new Promise((ok, no) => actx.decodeAudioData(arr.buffer, ok, no));
+  } catch { customBuf = null; }
+}
 function chime() {
   if (D && D.sound === false) return;
   try {
     actx = actx || new (window.AudioContext || window.webkitAudioContext)();
     if (actx.state === 'suspended') actx.resume();
+    if (!customLoaded) { loadCustomSound().then(() => customBuf && playBuf()); return; }
+    if (customBuf) { playBuf(); return; }
     const t0 = actx.currentTime + 0.01;
     const note = (f, at, dur, vol) => {
       for (const [mul, v] of [[1, 1], [2, 0.18], [3, 0.06]]) {
@@ -171,6 +185,7 @@ function chime() {
     note(1760, t0 + 0.12, 0.9, 0.28);    // 동 (A6)
   } catch {}
 }
+function playBuf() { try { const src = actx.createBufferSource(); src.buffer = customBuf; src.connect(actx.destination); src.start(); } catch {} }
 
 function renderToast() {
   let t = $('#toast');
@@ -456,7 +471,9 @@ function settingsView() {
       <div class="sr"><div class="l"><div class="t">시작 현금</div></div>
         <label class="fld"><span>금액</span><input class="num" type="number" inputmode="numeric" min="0" step="1000" data-cashstart value="${D.cashStart || 0}"></label></div>
       <div class="sr"><div class="l"><div class="t">결제 소리</div></div>
-        <button class="mini ${D.sound === false ? 'gray' : ''}" data-act="toggleSound">${D.sound === false ? '꺼짐' : '켜짐'}</button><button class="mini gray" data-act="testSound">들어보기</button></div></div>
+        <button class="mini ${D.sound === false ? 'gray' : ''}" data-act="toggleSound">${D.sound === false ? '꺼짐' : '켜짐'}</button><button class="mini gray" data-act="testSound">들어보기</button></div>
+      <div class="sr"><div class="l"><div class="t">소리 파일</div><div class="s">${ls.get(SOUND_KEY) ? esc(ls.get(SOUND_KEY + ':name') || '내 소리 파일') : '기본 띵동'}</div></div>
+        <button class="mini gray" data-act="pickSound">파일 고르기</button>${ls.get(SOUND_KEY) ? '<button class="mini gray" data-act="clearSound">기본으로</button>' : ''}</div></div>
     <div class="box"><h2>선입금 명단</h2>
       <button class="link" data-act="importCsv"><span>CSV 파일 불러오기<span class="s">${ii ? `${esc(ii.file)} · ${mdhm(ii.ts)} · ${ii.count}명` : ''}</span></span><span class="chev">›</span></button>
       <button class="link" data-act="loadTest"><span>테스트용 선입금 넣기<span class="s">가짜 40명</span></span><span class="chev">›</span></button>
@@ -794,6 +811,8 @@ app.addEventListener('click', e => {
     case 'clear': cart = {}; break;
     case 'toggleSound': D.sound = D.sound === false; save(); if (D.sound) chime(); break;
     case 'testSound': chime(); return;
+    case 'pickSound': $('#fileSound').value = ''; $('#fileSound').click(); return;
+    case 'clearSound': ls.del(SOUND_KEY); ls.del(SOUND_KEY + ':name'); customLoaded = false; customBuf = null; toast('기본 소리로 바꿨어요'); break;
     case 'openOut': adj = { id: null, dir: 'out', q: 1, reason: '', memo: '' }; sheet = 'adj'; break;
     case 'ovReset': D.ov = { price: {}, stock: {} }; save(); toast('config.js 값으로 되돌렸어요'); break;
     case 'done': {
@@ -887,6 +906,19 @@ $('#fileCsv').addEventListener('change', async e => {
     if (rows.length < 2) { toast('파일에 명단이 없어요'); return; }
     importDraft = analyzeCSV(rows, f.name); sheet = 'import'; render();
   } catch (err) { toast('CSV 파일을 읽지 못했어요'); }
+});
+$('#fileSound').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return;
+  if (f.size > 1024 * 1024) { toast('1MB보다 작은 소리 파일을 골라 주세요'); return; }
+  const r = new FileReader();
+  r.onload = async () => {
+    if (!ls.set(SOUND_KEY, r.result)) { toast('소리 파일을 저장하지 못했어요'); return; }
+    ls.set(SOUND_KEY + ':name', f.name);
+    await loadCustomSound();
+    if (customBuf) { toast('소리를 바꿨어요'); playBuf(); } else { ls.del(SOUND_KEY); ls.del(SOUND_KEY + ':name'); toast('이 파일은 재생할 수 없어요'); }
+    render();
+  };
+  r.readAsDataURL(f);
 });
 $('#fileBackup').addEventListener('change', async e => {
   const f = e.target.files[0]; if (!f) return;
