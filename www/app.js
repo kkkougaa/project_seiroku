@@ -10,7 +10,7 @@ const dataKey = b => 'boothpos:v1:' + b;
 const REASONS_OUT = ['파손·불량', '전시용 샘플', '증정·서비스', '분실', '기타'];
 const REASONS_IN = ['추가 입고', '재고 정정', '기타'];
 const BACKUP_WARN_MIN = 60;
-const APP_VERSION = '20';
+const APP_VERSION = '21';
 
 /* ---------------- 저장소 ---------------- */
 const ls = {
@@ -313,7 +313,7 @@ function sellView(hide) {
     const showSite = !p.pool || units(p) === Math.min(...sellable().filter(x => x.pool === p.pool).map(units));
     const cls = !p.price || av <= 0 ? 'out' : !showSite ? '' : av <= 10 || ratio <= 0.1 ? 'lv3' : ratio <= 0.2 ? 'lv1' : '';
     const wt = waitOf(p.id);
-    return `<button class="tile ${cls} ${pick ? 'pick' : ''}" data-add="${p.id}">${thumb(p, p.price && av <= 0)}
+    return `<button class="tile ${cls} ${p.price && av <= 0 ? 'soldout-tile' : ''} ${pick ? 'pick' : ''}" data-add="${p.id}">${thumb(p, p.price && av <= 0)}
       ${pick ? `<span class="pk">선입금 ${pick}</span>` : inCart ? `<span class="inc num">${inCart}</span>` : ''}
       <span class="tb"><span class="nm">${esc(p.name)}</span>${p.sub ? `<span class="sb">${esc(p.sub)}</span>` : ''}
       <span class="pr num">${p.price ? won(p.price) : '가격 미정 · 설정에서 넣어 주세요'}</span>

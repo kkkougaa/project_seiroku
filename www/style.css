@@ -54,6 +54,9 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--blue);outline-o
 .tile .st{margin-top:2px;font-size:20px;color:var(--ink3)}
 .tile.low .st{color:var(--orange);font-weight:600}
 .tile.out .nm,.tile.out .pr{color:var(--ink3)}
+.tile.soldout-tile{background:var(--fill)}
+.tile.soldout-tile .thumb img,.tile.soldout-tile .thumb .ph{filter:grayscale(1);opacity:.4}
+.tile.soldout-tile .tb{filter:grayscale(1);opacity:.45}
 .soldout{position:absolute;z-index:3;left:-12%;right:-12%;top:50%;transform:translateY(-50%) rotate(-14deg);background:#d6262f;color:#fff;
   font-size:30px;font-weight:950;font-variation-settings:'wght' 950;letter-spacing:.06em;text-align:center;padding:2px 0;line-height:1.15;-webkit-text-stroke:1.2px #fff;font-family:'Arial Black','Pretendard Variable',sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.35);
   background-image:repeating-linear-gradient(90deg,rgba(255,255,255,.06) 0 6px,transparent 6px 12px);
