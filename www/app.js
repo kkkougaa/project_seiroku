@@ -10,7 +10,7 @@ const dataKey = b => 'boothpos:v1:' + b;
 const REASONS_OUT = ['파손·불량', '전시용 샘플', '증정·서비스', '분실', '기타'];
 const REASONS_IN = ['추가 입고', '재고 정정', '기타'];
 const BACKUP_WARN_MIN = 60;
-const APP_VERSION = '8';
+const APP_VERSION = '9';
 
 /* ---------------- 저장소 ---------------- */
 const ls = {
@@ -179,7 +179,7 @@ function topView() {
   const t = (k, l) => `<button role="tab" aria-selected="${tab === k}" data-tab="${k}">${l}</button>`;
   return `<div class="top"><span class="booth">${esc(B().name)}</span>
     <div class="tabs" role="tablist">${t('sell', '판매')}${t('list', '선입금 명단')}${t('stock', '재고·정산')}${t('settings', '설정')}</div>
-    ${hist.length ? `<button class="undo-btn" data-act="undo" title="${esc(hist[hist.length - 1].label)}">↶ 되돌리기<small>${esc(hist[hist.length - 1].label)}</small></button>` : ''}
+    ${hist.length ? `<button class="undo-btn" data-act="undo" title="${esc(hist[hist.length - 1].label)}">되돌리기<small>${esc(hist[hist.length - 1].label)}</small></button>` : ''}
     ${old && hasData ? `<button class="saved" data-tab="settings" style="color:var(--orange);font-weight:600">${D.backupAt ? '백업한 지 1시간이 넘었어요' : '아직 백업하지 않았어요'}</button>`
       : `<span class="saved"><i></i>이 기기에 저장됨${D.savedAt ? ' · ' + hhmm(D.savedAt) : ''}</span>`}</div>`;
 }
@@ -258,7 +258,7 @@ function panelPre() {
         : k === 'del' ? `<button class="fn" data-k="del" aria-label="한 자리 지우기">${IC.del}</button>`
           : `<button class="num" data-k="${k}">${k}</button>`).join('');
     return `<div class="pbody"><p class="ask">전화번호 뒷자리를<br>눌러주세요</p><p class="sub">손님께 4자리를 여쭤봐요</p><div class="digits">${cells}</div>
-      <div class="pad">${keys}</div></div><div class="pfoot" style="padding-top:4px">${lastRecv()}<p class="meta num">${done}명 받아갔어요 · 남은 ${total - done}명</p></div>`;
+      <div class="pad">${keys}</div></div><div class="pfoot" style="padding-top:4px"><p class="meta num">${done}명 받아갔어요 · 남은 ${total - done}명</p></div>`;
   }
   const res = D.preorders.filter(p => p.last4 === digits);
   if (!res.length) return `<div class="pbody"><div class="empty"><b>${digits}(으)로 찾은 선입금이 없어요</b>번호를 다시 여쭤보거나<br>선입금 명단 탭에서 이름으로 찾아보세요</div></div>
@@ -289,7 +289,7 @@ function preDetail(p) {
       ${p.vars && p.vars[g.key] ? vchips(p.vars[g.key]) : ''}</div><span class="num qty">${g.qty}${g.unit}</span></div>`).join('')}</div>
     ${p.at ? '' : `<p class="sub" style="margin-top:12px">왼쪽 파란 테두리 상품${hasOnly ? '과 위의 선입금 전용 상품' : ''}을 챙겨주세요</p>`}
   </div><div class="pfoot">
-    ${p.at ? `<button class="cta" disabled>이미 전달했어요</button><button class="txtbtn" data-act="cancelGive">전달 취소하기</button>`
+    ${p.at ? `<button class="cta weak" data-act="reset">다른 번호 찾기</button><button class="txtbtn" data-act="cancelGive">이 분 전달 취소하기</button>`
       : `<button class="cta" data-act="give">전달 완료</button><button class="txtbtn" data-act="reset">다른 번호 찾기</button>`}</div>`;
 }
 
@@ -686,7 +686,7 @@ app.addEventListener('click', e => {
   if (ap) { adj.id = ap.dataset.adjpick; }
 
   if (tb) { tab = tb.dataset.tab; sheet = null; }
-  if (md) mode = md.dataset.mode;
+  if (md) { if (md.dataset.mode === 'pre' && mode === 'sale') { cart = {}; cartOrder = []; } mode = md.dataset.mode; }
   if (k) { const v = k.dataset.k; if (v === 'clr') digits = ''; else if (v === 'del') digits = digits.slice(0, -1); else if (digits.length < 4) digits += v; selKey = null; }
   if (sl) selKey = sl.dataset.sel;
   if (add && !g('.sheet')) {
