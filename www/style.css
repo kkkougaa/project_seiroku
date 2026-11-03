@@ -270,4 +270,42 @@ a.link{color:inherit;text-decoration:none}
   .goods,.page{padding-left:max(16px,var(--sal));padding-right:max(16px,var(--sar))}
   .dim,.sheet,.toast{position:fixed}
 }
+
+/* 이름 검색, 미전달 */
+.askrow{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.kbtn{height:48px;min-width:72px;padding:0 14px;border-radius:12px;background:var(--fill);color:var(--ink);font-size:20px;font-weight:700}
+.kbtn:active{background:var(--press)}
+.recvrow{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.siren{width:48px;height:48px;border-radius:12px;display:grid;place-items:center;color:var(--ink3);flex:none}
+.siren:active{background:var(--fill)}
+.failnote{margin-top:8px;padding:10px 12px;border-radius:12px;background:var(--red-soft);color:var(--red);font-size:18px;font-weight:600}
+/* 현장 재고 경고 단계 */
+.tile.lv1 .cnt.site{background:#e8590c}
+.tile.lv2 .cnt.site{background:#ff8787}
+.tile.lv3 .cnt.site{background:#c92a2a}
+.tile.lv1 .cnt.site b,.tile.lv1 .cnt.site small,.tile.lv2 .cnt.site b,.tile.lv2 .cnt.site small,.tile.lv3 .cnt.site b,.tile.lv3 .cnt.site small{color:#fff}
+/* 판매 현황 */
+.tiles4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:12px}
+.tiles4 .box+.box{margin-top:0}
+.tiles4 .money{font-size:30px;margin:2px 0 0}
+.chart{overflow-x:auto;margin-top:8px}
+.chart svg{display:block;max-width:none}
+.chart .axis{stroke:var(--line);stroke-width:2}
+.chart .bar-fill{fill:var(--blue)}
+.chart .v{fill:var(--ink);font-size:18px;font-weight:700;font-family:var(--font)}
+.chart .lb{fill:var(--ink2);font-size:17px;font-weight:600;font-family:var(--font)}
+.chart .lb2{fill:var(--ink3);font-size:14px;font-family:var(--font)}
+.tbl{overflow-x:auto}
+.tbl table{border-collapse:collapse;width:100%;font-size:18px}
+.tbl th,.tbl td{padding:10px 8px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+.tbl th{font-size:15px;color:var(--ink2);font-weight:600}
+.tbl th:first-child,.tbl td:first-child{text-align:left;white-space:normal}
+.tbl tr:last-child td{border-bottom:0}
+.paybar{height:14px;border-radius:7px;background:var(--orange);overflow:hidden;margin:10px 0 6px}
+.paybar i{display:block;height:100%;background:var(--green)}
+.dot{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:8px;vertical-align:middle}
+.dot.cash{background:var(--green)}
+.dot.tr{background:var(--orange)}
+@media (max-width:900px){.tiles4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}

@@ -10,7 +10,7 @@ const dataKey = b => 'boothpos:v1:' + b;
 const REASONS_OUT = ['파손·불량', '전시용 샘플', '증정·서비스', '분실', '기타'];
 const REASONS_IN = ['추가 입고', '재고 정정', '기타'];
 const BACKUP_WARN_MIN = 60;
-const APP_VERSION = '15';
+const APP_VERSION = '16';
 
 /* ---------------- 저장소 ---------------- */
 const ls = {
@@ -18,7 +18,7 @@ const ls = {
   set(k, v) { try { localStorage.setItem(k, v); return true; } catch { return false; } },
   del(k) { try { localStorage.removeItem(k); } catch {} },
 };
-const emptyData = () => ({ v: 1, preorders: [], sales: [], adj: [], seq: 0, savedAt: null, backupAt: null, importInfo: null, ov: { price: {}, stock: {} } });
+const emptyData = () => ({ v: 1, preorders: [], sales: [], adj: [], seq: 0, savedAt: null, backupAt: null, importInfo: null, ov: { price: {}, stock: {} }, fails: [] });
 
 let booth = ls.get(DEVICE_KEY);
 if (booth && !CFG.booths[booth]) booth = null;
@@ -58,18 +58,36 @@ function stockKeys() {
   for (const p of sellable()) { const k = skey(p); if (!seen.has(k)) { seen.add(k); out.push(k); } }
   return out;
 }
+// 선입금 중 '전달 못 한' 수량 (취소되지 않은 미전달 기록 합계)
+const fails = () => (D.fails = D.fails || []);
+function failedOf(p) {
+  const it = {}, vars = {};
+  for (const f of fails()) if (!f.canceled && f.key === p.key) {
+    for (const [id, q] of Object.entries(f.items)) it[id] = (it[id] || 0) + q;
+    for (const [id, v] of Object.entries(f.vars || {})) { vars[id] = vars[id] || {}; for (const [L, q] of Object.entries(v)) vars[id][L] = (vars[id][L] || 0) + q; }
+  }
+  return { items: it, vars };
+}
+const effQty = (p, id) => Math.max(0, (p.items[id] || 0) - (failedOf(p).items[id] || 0));
+const saleCash = s => s.m === 'cash' ? s.total : s.m === 'split' ? s.cashPart : 0;
+const saleTr = s => s.m === 'transfer' ? s.total : s.m === 'split' ? s.trPart : 0;
+const mLabel = s => s.m === 'cash' ? '현금' : s.m === 'transfer' ? '계좌이체' : `복합 (현금 ${won(s.cashPart)} + 이체 ${won(s.trPart)})`;
+function cho(str) {
+  const C = 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
+  return [...str].map(ch => { const c = ch.charCodeAt(0) - 0xAC00; return c >= 0 && c < 11172 ? C[Math.floor(c / 588)] : ch; }).join('');
+}
 function usage(k) {
   let sold = 0, done = 0, wait = 0, out = 0;
   const w = id => { const p = prod(id); return p && !p.preorderOnly && skey(p) === k ? units(p) : 0; };
   for (const s of D.sales) if (!s.canceled) for (const [id, q] of Object.entries(s.items)) sold += q * w(id);
-  for (const p of D.preorders) for (const [id, q] of Object.entries(p.items)) { const n = q * w(id); if (n) p.at ? done += n : wait += n; }
+  for (const p of D.preorders) for (const id of Object.keys(p.items)) { const n = effQty(p, id) * w(id); if (n) p.at ? done += n : wait += n; }
   for (const a of D.adj) if (!a.canceled && a.id === k) out += a.q;
   const left = keyInfo(k).stock - sold - done - out;
   return { sold, done, wait, out, left, avail: left - wait };
 }
 const cartUnits = k => Object.entries(cart).reduce((s, [id, q]) => { const p = prod(id); return s + (p && skey(p) === k ? q * units(p) : 0); }, 0);
 const availFor = p => Math.floor((usage(skey(p)).avail - cartUnits(skey(p))) / units(p));
-const waitOf = id => D.preorders.reduce((s, o) => s + (o.at ? 0 : o.items[id] || 0), 0);
+const waitOf = id => D.preorders.reduce((s, o) => s + (o.at ? 0 : effQty(o, id)), 0);
 
 /* ---------------- 유틸 ---------------- */
 const won = n => (n || 0).toLocaleString('ko-KR') + '원';
@@ -103,7 +121,7 @@ const stockMissing = () => stockKeys().filter(k => !keyInfo(k).stock);
 
 /* ---------------- 화면 상태 ---------------- */
 let tab = 'sell', mode = 'pre', cart = {}, digits = '', selKey = null, justDone = null;
-let cartOrder = [];
+let cartOrder = [], nameMode = false, nq = '', splitCash = 0, failDraft = null;
 let sheet = null, cashIn = 0, adj = null, addPre = null, importDraft = null, restoreDraft = null;
 let qs = '', lf = 'all', toastState = null, toastTimer = null, hist = [];
 // 되돌리기는 '판매 완료'와 '선입금 수령'만 해요. 그 사이 다른 기록은 건드리지 않아요.
@@ -201,6 +219,7 @@ function renderToast() {
 
 /* ---------------- 아이콘 ---------------- */
 const IC = {
+  siren: '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6.5 18v-5.5a5.5 5.5 0 0111 0V18" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M4 18h16v2.5H4z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 9.5v4M12 2.5v2M4.2 5.2l1.4 1.4M19.8 5.2l-1.4 1.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
   check: '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   del: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 6h10a1 1 0 011 1v10a1 1 0 01-1 1H9l-5-6 5-6z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 10l4 4M16 10l-4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   cash: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="2.5" y="6" width="19" height="12" rx="2.5" stroke="var(--green)" stroke-width="1.8"/><circle cx="12" cy="12" r="2.6" stroke="var(--green)" stroke-width="1.8"/></svg>',
@@ -230,7 +249,7 @@ const tpl = document.createElement('div');
 function render() {
   const app = $('#app');
   tpl.innerHTML = !booth ? welcomeView()
-    : topView() + sellView(tab !== 'sell') + (tab === 'list' ? listView() : tab === 'stock' ? stockView() : tab === 'settings' ? settingsView() : '') + sheetView();
+    : topView() + sellView(tab !== 'sell') + (tab === 'list' ? listView() : tab === 'stock' ? stockView() : tab === 'report' ? reportView() : tab === 'settings' ? settingsView() : '') + sheetView();
   morph(app, tpl, true);
   renderToast();
   publishMonitor();
@@ -263,7 +282,7 @@ function topView() {
   const hasData = D.sales.length || D.preorders.some(p => p.at) || D.adj.length;
   const t = (k, l) => `<button role="tab" aria-selected="${tab === k}" data-tab="${k}">${l}</button>`;
   return `<div class="top"><span class="booth">${esc(B().name)}</span>
-    <div class="tabs" role="tablist">${t('sell', '판매')}${t('list', '선입금 명단')}${t('stock', '재고·정산')}${t('settings', '설정')}</div>
+    <div class="tabs" role="tablist">${t('sell', '판매')}${t('list', '선입금 명단')}${t('stock', '재고·정산')}${t('report', '판매 현황')}${t('settings', '설정')}</div>
     ${hist.length || redo.length ? `<span class="undo-wrap">${hist.length ? `<button class="undo-btn" data-act="undo">되돌리기<small>${esc(hist[hist.length - 1].label)}</small></button>` : ''}${redo.length ? `<button class="undo-btn" data-act="redo">다시 실행<small>${esc(redo[redo.length - 1].label)}</small></button>` : ''}</span>` : ''}
     ${old && hasData ? `<button class="saved" data-tab="settings" style="color:var(--orange);font-weight:600">${D.backupAt ? '백업한 지 1시간이 넘었어요' : '아직 백업하지 않았어요'}</button>`
       : `<span class="saved"><i></i>이 기기에 저장됨${D.savedAt ? ' · ' + hhmm(D.savedAt) : ''}</span>`}</div>`;
@@ -286,10 +305,11 @@ function thumb(p) {
 
 function sellView(hide) {
   const sel = selected();
-  const pickItems = mode === 'pre' && sel && !sel.at && !justDone ? sel.items : {};
+  const pickItems = {}; if (mode === 'pre' && sel && !sel.at && !justDone) for (const id of Object.keys(sel.items)) { const q = effQty(sel, id); if (q) pickItems[id] = q; }
   const tiles = sellable().map(p => {
     const inCart = cart[p.id] || 0, av = availFor(p), pick = pickItems[p.id];
-    const cls = !p.price ? 'out' : av <= 0 ? 'out' : av <= 3 ? 'low' : '';
+    const k = skey(p), stockAll = keyInfo(k).stock, ratio = stockAll ? (usage(k).avail - cartUnits(k)) / stockAll : 0;
+    const cls = !p.price || av <= 0 ? 'out' : av <= 10 ? 'lv3' : ratio <= 0.1 ? 'lv2' : ratio <= 0.2 ? 'lv1' : '';
     const wt = waitOf(p.id);
     return `<button class="tile ${cls} ${pick ? 'pick' : ''}" data-add="${p.id}">${thumb(p)}
       ${pick ? `<span class="pk">선입금 ${pick}</span>` : inCart ? `<span class="inc num">${inCart}</span>` : ''}
@@ -342,7 +362,10 @@ function panelPre() {
       k === 'clr' ? '<button class="fn" data-k="clr">전체 삭제</button>'
         : k === 'del' ? `<button class="fn" data-k="del" aria-label="한 자리 지우기">${IC.del}</button>`
           : `<button class="num" data-k="${k}">${k}</button>`).join('');
-    return `<div class="pbody"><p class="ask">전화번호 뒷자리</p><div class="digits">${cells}</div>
+    if (nameMode) return `<div class="pbody"><div class="askrow"><p class="ask">이름 검색</p><button class="kbtn" data-act="numMode">123</button></div>
+      <input id="nq" class="search" placeholder="이름 또는 초성" value="${esc(nq)}" autocomplete="off" style="width:100%;margin-top:14px;flex:none">
+      <div id="nres" class="list">${nameRows()}</div></div>`;
+    return `<div class="pbody"><div class="askrow"><p class="ask">전화번호 뒷자리</p><button class="kbtn" data-act="nameMode">ㄱㄴㄷ</button></div><div class="digits">${cells}</div>
       <div class="pad">${keys}</div></div><div class="pfoot" style="padding-top:4px"><p class="meta num">${done}명 받아갔어요 · 남은 ${total - done}명</p></div>`;
   }
   const res = D.preorders.filter(p => p.last4 === digits);
@@ -363,12 +386,22 @@ function lastRecv() {
   const p = recent(1)[0]; if (!p) return '';
   return `<div class="lastrecv"><span>마지막 수령 <b>${esc(p.name)}</b> <span class="num">${esc(p.last4)} · ${hhmm(p.at)}</span></span><button data-ungive="${esc(p.key)}">수령 취소</button></div>`;
 }
+function nameRows() {
+  const q = nq.trim(); if (!q) return '';
+  const qc = cho(q);
+  const rows = D.preorders.filter(p => p.name.includes(q) || cho(p.name).includes(qc)).slice(0, 12);
+  if (!rows.length) return '<div class="empty"><b>검색 결과 없음</b></div>';
+  return rows.map(p => `<button class="row pick-row" data-pickname="${esc(p.key)}"><div class="l"><div class="t">${esc(p.name)} <span class="num l4">${esc(p.last4)}</span></div><div class="s">${p.at ? hhmm(p.at) + ' 수령' : '상품 ' + cnt(p.items) + '개'}</div></div><span class="chev">›</span></button>`).join('');
+}
 function preDetail(p) {
   // 족자봉처럼 종류를 골라 챙겨야 하는 상품을 맨 위에 보여줘요
-  const lines = groupItems(p.items).sort((a, b) => !!(p.vars && p.vars[b.key]) - !!(p.vars && p.vars[a.key]));
+  const eff = {}; for (const id of Object.keys(p.items)) { const q = effQty(p, id); if (q) eff[id] = q; }
+  const lines = groupItems(eff).sort((a, b) => !!(p.vars && p.vars[b.key]) - !!(p.vars && p.vars[a.key]));
   const hasOnly = lines.some(g => g.p?.preorderOnly);
   return `<div class="pbody">
-    ${p.at ? `<p class="recvcount done num">${hhmm(p.at)}에 받아갔어요</p>` : `<p class="recvcount num">받을 상품 <b>${cnt(p.items)}개</b></p>`}${p.manual ? '<span class="badge gray">직접 추가</span>' : ''}
+    <div class="recvrow">${p.at ? `<p class="recvcount done num">${hhmm(p.at)}에 받아갔어요</p>` : `<p class="recvcount num">받을 상품 <b>${Object.keys(p.items).reduce((a, id) => a + effQty(p, id), 0)}개</b></p>`}
+      <button class="siren" data-act="openFail" aria-label="전달 못 한 상품 기록">${IC.siren}</button></div>${p.manual ? '<span class="badge gray">직접 추가</span>' : ''}
+    ${(() => { const f = failedOf(p); return Object.keys(f.items).length ? `<div class="failnote">미전달: ${itemsText(f.items, f.vars)}</div>` : ''; })()}
     <p class="who">${esc(p.name)}님</p><p class="sub num">010-••••-${esc(p.last4)}${p.no ? ' · ' + esc(p.no) : ''}</p>
     <div class="list big">${lines.map(g => `<div class="row ${p.vars && p.vars[g.key] ? 'tall' : ''}"><div class="l"><div class="t">${esc(g.name)}${g.sub ? ` <span class="s">${esc(g.sub)}</span>` : ''}${g.pool && g.parts.length > 1 ? ` <span class="s num">${partsText(g)}</span>` : ''}</div>
       ${p.vars && p.vars[g.key] ? vchips(p.vars[g.key]) : ''}</div><span class="num qty">${g.qty}${g.unit}</span></div>`).join('')}</div>
@@ -429,16 +462,18 @@ function stockView() {
       <div class="r"><b class="num">${s.left}${info.unit}</b>${tag}</div><button class="mini gray" data-adj="${esc(k)}">조정</button></div>`;
   }).join('');
   const live = D.sales.filter(s => !s.canceled);
-  const cash = live.filter(s => s.m === 'cash').reduce((a, s) => a + s.total, 0);
-  const tr = live.filter(s => s.m === 'transfer').reduce((a, s) => a + s.total, 0);
+  const cash = live.reduce((a, s) => a + saleCash(s), 0);
+  const tr = live.reduce((a, s) => a + saleTr(s), 0);
   const done = D.preorders.filter(p => p.at).length, all = D.preorders.length;
   const adjLog = D.adj.slice().reverse().map(x => `<div class="sr ${x.canceled ? 'canceled' : ''}"><div class="l"><div class="t">${esc(keyInfo(x.id).name)} <span class="num" style="color:${x.q > 0 ? 'var(--red)' : 'var(--blue)'}">${x.q > 0 ? '−' + x.q : '+' + -x.q}</span></div>
     <div class="s">${esc(x.reason)}${x.memo ? ' · ' + esc(x.memo) : ''} · ${hhmm(x.ts)}${x.canceled ? ' · 취소됨' : ''}</div></div>${x.canceled ? '' : `<button class="txtbtn" data-unadj="${x.n}">취소</button>`}</div>`).join('');
-  const saleLog = D.sales.slice().reverse().slice(0, 40).map(s => `<div class="sr ${s.canceled ? 'canceled' : ''}"><div class="l"><div class="t num">${won(s.total)} <span style="color:var(--ink3);font-weight:400;font-size:13px">${s.m === 'cash' ? '현금' : '계좌이체'} · ${hhmm(s.ts)}</span></div>
+  const saleLog = D.sales.slice().reverse().slice(0, 40).map(s => `<div class="sr ${s.canceled ? 'canceled' : ''}"><div class="l"><div class="t num">${won(s.total)} <span style="color:var(--ink3);font-weight:400;font-size:13px">${mLabel(s)} · ${hhmm(s.ts)}</span></div>
     <div class="s">${itemsText(s.items)}${s.canceled ? ' · 취소됨' : ''}</div></div>${s.canceled ? '' : `<button class="txtbtn" data-unsale="${s.n}">판매 취소</button>`}</div>`).join('');
   return `<div class="page"><div class="cols">
     <div><div class="box"><h2>재고</h2>${rows}</div>
       ${preorderOnlyBoxes()}
+      <div class="box"><h2>미전달 기록</h2>${fails().slice().reverse().map(f => `<div class="sr ${f.canceled ? 'canceled' : ''}"><div class="l"><div class="t">${esc(f.name)} <span class="num l4">${hhmm(f.ts)}</span></div>
+        <div class="s">${itemsText(f.items, f.vars)} · ${esc(f.reason)}${f.memo ? ' · ' + esc(f.memo) : ''}${f.canceled ? ' · 취소됨' : ''}</div></div>${f.canceled ? '' : `<button class="txtbtn" data-unfail="${f.n}">취소</button>`}</div>`).join('') || '<p class="cap">없음</p>'}</div>
       <div class="box"><h2>현장 판매 기록</h2>${saleLog || '<p class="cap">없음</p>'}</div></div>
     <div class="side">
       <div class="box"><p class="cap">현장 매출</p><p class="money num">${won(cash + tr)}</p>
@@ -453,6 +488,60 @@ function stockView() {
       <div class="box"><p class="cap">선입금 전달</p><p class="money num" style="margin-bottom:0">${done} / ${all}명</p><div class="prog"><i style="width:${all ? done / all * 100 : 0}%"></i></div></div>
       <div class="box"><h2 style="margin-bottom:0">재고 조정 내역</h2>${adjLog || '<p class="cap">없음</p>'}</div>
     </div></div></div>`;
+}
+
+/* ---------- 판매 현황 ---------- */
+function reportView() {
+  const live = D.sales.filter(s => !s.canceled);
+  const total = live.reduce((a, s) => a + s.total, 0), cash = live.reduce((a, s) => a + saleCash(s), 0), tr = total - cash;
+  const done = D.preorders.filter(p => p.at).length, all = D.preorders.length;
+  // 시간대별 (1시간 단위)
+  const evs = [...live.map(s => s.ts), ...D.preorders.filter(p => p.at).map(p => p.at)];
+  let chart = '<p class="cap">아직 기록이 없어요</p>';
+  if (evs.length) {
+    const h0 = new Date(Math.min(...evs)); h0.setMinutes(0, 0, 0);
+    const h1 = new Date(Math.max(Date.now(), ...evs)); h1.setMinutes(0, 0, 0);
+    const hours = []; for (let t = +h0; t <= +h1 && hours.length < 24; t += 3600000) hours.push(t);
+    const bucket = hours.map(t => ({ t, amt: 0, n: 0, pre: 0 }));
+    const idx = ts => Math.min(bucket.length - 1, Math.floor((ts - +h0) / 3600000));
+    live.forEach(s => { const b = bucket[idx(s.ts)]; b.amt += s.total; b.n++; });
+    D.preorders.forEach(p => { if (p.at) bucket[idx(p.at)].pre++; });
+    const max = Math.max(1, ...bucket.map(b => b.amt));
+    const W = Math.max(560, bucket.length * 90), H = 260, top = 34, base = H - 46, bw = Math.min(56, W / bucket.length * 0.6);
+    const step = W / bucket.length;
+    chart = `<div class="chart"><svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="시간대별 현장 매출">
+      <line x1="0" y1="${base}" x2="${W}" y2="${base}" class="axis"/>
+      ${bucket.map((b, i) => { const x = i * step + (step - bw) / 2, hgt = (base - top) * b.amt / max;
+        return `<rect x="${x}" y="${base - hgt}" width="${bw}" height="${Math.max(hgt, b.amt ? 2 : 0)}" rx="6" class="bar-fill"/>
+        ${b.amt ? `<text x="${x + bw / 2}" y="${base - hgt - 10}" class="v" text-anchor="middle">${(b.amt / 10000).toFixed(b.amt % 10000 ? 1 : 0)}만</text>` : ''}
+        <text x="${x + bw / 2}" y="${base + 22}" class="lb" text-anchor="middle">${new Date(b.t).getHours()}시</text>
+        <text x="${x + bw / 2}" y="${base + 40}" class="lb2" text-anchor="middle">${b.n}건 · 수령 ${b.pre}</text>`; }).join('')}
+    </svg></div>`;
+  }
+  // 상품별
+  const rows = sellable().concat(products().filter(p => p.preorderOnly)).map(p => {
+    let n = 0, amt = 0, pre = 0;
+    live.forEach(s => { const q = s.items[p.id] || 0; n += q; amt += q * (p.price || 0); });
+    D.preorders.forEach(o => { if (o.at) pre += effQty(o, p.id); });
+    return `<tr><td>${esc(p.name)}</td><td class="num">${p.preorderOnly ? '-' : n}</td><td class="num">${p.preorderOnly ? '-' : won(amt)}</td><td class="num">${pre}</td><td class="num"><b>${n + pre}</b></td></tr>`;
+  }).join('');
+  const recent = live.filter(s => s.ts > Date.now() - 30 * 60000);
+  return `<div class="page">
+    <div class="tiles4">
+      <div class="box"><p class="cap">현장 매출</p><p class="money num">${won(total)}</p></div>
+      <div class="box"><p class="cap">판매 건수 · 객단가</p><p class="money num">${live.length}건 · ${won(live.length ? Math.round(total / live.length / 100) * 100 : 0)}</p></div>
+      <div class="box"><p class="cap">최근 30분</p><p class="money num">${recent.length}건 · ${won(recent.reduce((a, s) => a + s.total, 0))}</p></div>
+      <div class="box"><p class="cap">선입금 전달</p><p class="money num">${done} / ${all}명</p></div>
+    </div>
+    <div class="box"><h2>시간대별 현장 매출</h2>${chart}</div>
+    <div class="cols" style="margin-top:12px">
+      <div class="box"><h2>상품별</h2><div class="tbl"><table><thead><tr><th>상품</th><th>현장 판매</th><th>현장 매출</th><th>선입금 전달</th><th>나간 수량</th></tr></thead><tbody>${rows}</tbody></table></div></div>
+      <div class="box"><h2>결제 방법</h2>
+        <div class="paybar"><i style="width:${total ? cash / total * 100 : 0}%"></i></div>
+        <div class="kv"><span><span class="dot cash"></span>현금</span><b class="num">${won(cash)}</b></div>
+        <div class="kv"><span><span class="dot tr"></span>계좌이체</span><b class="num">${won(tr)}</b></div>
+        <div class="kv"><span>복합결제 건수</span><b class="num">${live.filter(s => s.m === 'split').length}건</b></div></div>
+    </div></div>`;
 }
 
 /* ---------- 설정 ---------- */
@@ -506,7 +595,16 @@ function sheetView() {
   let h = '';
   if (sheet === 'method') h = `<h3>결제 방법</h3><p class="amt num">${won(total)}</p>
     <button class="opt" data-m="cash"><span class="ico">${IC.cash}</span><span><span class="t">현금</span></span></button>
-    <button class="opt" data-m="transfer"><span class="ico">${IC.bank}</span><span><span class="t">계좌이체</span></span></button>`;
+    <button class="opt" data-m="transfer"><span class="ico">${IC.bank}</span><span><span class="t">계좌이체</span></span></button>
+    <button class="opt" data-m="split"><span class="ico">${IC.cash}</span><span><span class="t">복합결제</span><br><span class="s">현금 + 계좌이체</span></span></button>`;
+  if (sheet === 'split') {
+    const rest = total - splitCash, ok = splitCash > 0 && rest > 0;
+    h = `<h3>복합결제</h3><p class="amt num">합계 ${won(total)}</p>
+    <div class="kv"><span>현금으로 받은 금액</span><b class="num" style="font-size:30px">${won(splitCash)}</b></div>
+    <div class="chips" style="margin-top:10px"><button data-split="1000">+1천원</button><button data-split="5000">+5천원</button><button data-split="10000">+1만원</button><button data-split="50000">+5만원</button><button data-split="0">지우기</button></div>
+    <div class="kv ${splitCash >= total ? 'bad' : 'hl'}"><span>계좌이체로 받을 금액</span><b class="num">${splitCash >= total ? '현금이 합계보다 많아요' : won(rest)}</b></div>
+    <div class="foot"><button class="back" data-act="back">이전</button><button class="cta" data-act="done" ${ok ? '' : 'disabled'}>이체까지 확인했어요</button></div>`;
+  }
   if (sheet === 'cash') {
     const ch = cashIn - total;
     h = `<h3>받은 금액</h3><p class="bigamt num ${cashIn ? '' : 'zero'}">${won(cashIn)}</p>
@@ -518,6 +616,23 @@ function sheetView() {
   if (sheet === 'transfer') {
     h = `<h3>계좌이체</h3><p class="bigamt num">${won(total)}</p>
     <div class="foot"><button class="back" data-act="back">이전</button><button class="cta" data-act="done">입금 확인했어요</button></div>`;
+  }
+  if (sheet === 'fail') {
+    const p = D.preorders.find(x => x.key === failDraft.key), n = cnt(failDraft.items), need = failDraft.reason === '기타' && !failDraft.memo.trim();
+    const fo = failedOf(p);
+    const rows = Object.keys(p.items).map(id => [id, effQty(p, id)]).filter(([, q]) => q > 0).map(([id, q]) => {
+      const pr = prod(id);
+      if (p.vars && p.vars[id]) return Object.entries(p.vars[id]).map(([L, lq]) => [L, lq - (((fo.vars[id] || {})[L]) || 0)]).filter(([, lq]) => lq > 0).map(([L, lq]) => { const v = ((failDraft.vars[id] || {})[L]) || 0;
+        return `<div class="row"><div class="l"><div class="t">${esc(pr.name)} <b>${L === '?' ? '종류 미정' : esc(L)}</b></div><div class="s num">받을 수량 ${lq}</div></div>
+        <div class="step"><button data-fq="${id}" data-l="${esc(L)}" data-d="-1">−</button><span class="num">${v}</span><button data-fq="${id}" data-l="${esc(L)}" data-d="1" data-max="${lq}">+</button></div></div>`; }).join('');
+      const v = failDraft.items[id] || 0;
+      return `<div class="row"><div class="l"><div class="t">${esc(pr.name)}</div><div class="s num">받을 수량 ${q}</div></div>
+        <div class="step"><button data-fq="${id}" data-d="-1">−</button><span class="num">${v}</span><button data-fq="${id}" data-d="1" data-max="${q}">+</button></div></div>`;
+    }).join('');
+    h = `<h3>전달 못 한 상품</h3><p class="amt">${esc(p.name)}님</p><div class="list">${rows}</div>
+    <p class="lbl">사유</p><div class="chips">${['품절', '파손·불량', '누락', '기타'].map(r => `<button class="${failDraft.reason === r ? 'on' : ''}" data-frs="${r}">${r}</button>`).join('')}</div>
+    <input id="failMemo" class="search" style="width:100%" placeholder="${failDraft.reason === '기타' ? '사유 (꼭 필요해요)' : '메모'}" value="${esc(failDraft.memo)}" autocomplete="off">
+    <div class="foot"><button class="back" data-act="close">닫기</button><button class="cta danger" id="failgo" data-act="failgo" ${n && failDraft.reason && !need ? '' : 'disabled'}>${n}개 미전달로 기록</button></div>`;
   }
   if (sheet === 'adj' && !adj.id) {
     h = `<h3>재고에서 제외</h3>
@@ -729,11 +844,12 @@ function testCSV() {
 function settlementCSV() {
   const rows = [['시각', '구분', '결제수단', '이름', '상품', '수량', '단가', '금액', '상태', '종류', '메모']];
   for (const s of D.sales) for (const [k, q] of Object.entries(s.items)) {
-    const p = prod(k); rows.push([mdhm(s.ts), '현장 판매', s.m === 'cash' ? '현금' : '계좌이체', '', p?.name || k, q, p?.price || 0, (p?.price || 0) * q, s.canceled ? '취소' : '완료', '', '']);
+    const p = prod(k); rows.push([mdhm(s.ts), '현장 판매', mLabel(s), '', p?.name || k, q, p?.price || 0, (p?.price || 0) * q, s.canceled ? '취소' : '완료', '', '']);
   }
   for (const pr of D.preorders) for (const [k, q] of Object.entries(pr.items)) {
     const p = prod(k); rows.push([pr.at ? mdhm(pr.at) : '', '선입금', '선입금', pr.name, p?.name || k, q, p?.price || 0, (p?.price || 0) * q, pr.at ? '전달' : '미수령', pr.vars && pr.vars[k] ? varPlain(pr.vars[k]) : '', pr.no || '']);
   }
+  for (const f of fails()) for (const [k, q] of Object.entries(f.items)) rows.push([mdhm(f.ts), '선입금 미전달', '', f.name, prod(k)?.name || k, q, '', '', f.canceled ? '취소' : '반영', f.vars && f.vars[k] ? varPlain(f.vars[k]) : '', f.reason + (f.memo ? ' / ' + f.memo : '')]);
   for (const a of D.adj) rows.push([mdhm(a.ts), '재고 조정', '', '', keyInfo(a.id).name, -a.q, '', '', a.canceled ? '취소' : '반영', '', a.reason + (a.memo ? ' / ' + a.memo : '')]);
   return toCSV(rows);
 }
@@ -776,7 +892,16 @@ app.addEventListener('click', e => {
   const tb = g('[data-tab]'), md = g('[data-mode]'), k = g('[data-k]'), sl = g('[data-sel]'), add = g('[data-add]'), dec = g('[data-dec]'),
     m = g('[data-m]'), c = g('[data-cash]'), lfb = g('[data-lf]'), go = g('[data-go]'), ad = g('[data-adj]'), aq = g('[data-aq]'), rs = g('[data-rs]'),
     dir = g('[data-dir]'), un = g('[data-unadj]'), us = g('[data-unsale]'), apq = g('[data-apq]'), apv = g('[data-apv]'), apvc = g('[data-apvclr]'),
-    ug = g('[data-ungive]'), ap = g('[data-adjpick]');
+    ug = g('[data-ungive]'), ap = g('[data-adjpick]'), pn = g('[data-pickname]'), sp = g('[data-split]'), fq = g('[data-fq]'), frs = g('[data-frs]'), uf = g('[data-unfail]');
+  if (pn) { const p = D.preorders.find(x => x.key === pn.dataset.pickname); if (p) { selKey = p.key; digits = p.last4; nameMode = false; nq = ''; } }
+  if (sp) { const v = +sp.dataset.split; splitCash = v ? splitCash + v : 0; }
+  if (fq) { const id = fq.dataset.fq, L = fq.dataset.l, d = +fq.dataset.d, max = +(fq.dataset.max || 99);
+    if (L) { failDraft.vars[id] = failDraft.vars[id] || {}; const cur = failDraft.vars[id][L] || 0, nv = Math.max(0, d > 0 ? Math.min(max, cur + 1) : cur - 1);
+      if (nv !== cur) { failDraft.vars[id][L] = nv; failDraft.items[id] = (failDraft.items[id] || 0) + (nv - cur); } if (!failDraft.vars[id][L]) delete failDraft.vars[id][L]; }
+    else failDraft.items[id] = Math.max(0, d > 0 ? Math.min(max, (failDraft.items[id] || 0) + 1) : (failDraft.items[id] || 0) - 1);
+    if (!failDraft.items[id]) delete failDraft.items[id]; }
+  if (frs) failDraft.reason = frs.dataset.frs;
+  if (uf) { const f = fails().find(x => x.n === +uf.dataset.unfail); f.canceled = true; save(); toast('미전달 기록을 취소했어요'); render(); return; }
   if (ug) { const p = D.preorders.find(x => x.key === ug.dataset.ungive); hist = hist.filter(h => h.key !== ug.dataset.ungive); redo = redo.filter(h => h.key !== ug.dataset.ungive); if (p) { p.at = null; if (justDone === p.key) justDone = null; save(); toast(`${p.name}님 수령을 취소했어요`); } render(); return; }
   if (ap) { adj.id = ap.dataset.adjpick; }
 
@@ -795,7 +920,7 @@ app.addEventListener('click', e => {
   if (dp) { const id = lastOf(dp.dataset.decpool); if (id) { cart[id]--; if (!cart[id]) delete cart[id]; const i = cartOrder.lastIndexOf(id); if (i >= 0) cartOrder.splice(i, 1); } }
   if (al) { const p = prod(lastOf(al.dataset.addlast)); if (p && availFor(p) >= 1) { cart[p.id]++; cartOrder.push(p.id); } else if (p) { toast('남은 수량이 없어요'); return; } }
   if (dec) { cart[dec.dataset.dec]--; if (!cart[dec.dataset.dec]) delete cart[dec.dataset.dec]; }
-  if (m) { sheet = m.dataset.m; cashIn = 0; }
+  if (m) { sheet = m.dataset.m; cashIn = 0; splitCash = 0; }
   if (c) { const v = c.dataset.cash; cashIn = v === 'exact' ? sumItems(cart) : v === '0' ? 0 : cashIn + (+v); }
   if (lfb) lf = lfb.dataset.lf;
   if (go) { const p = D.preorders.find(x => x.key === go.dataset.go); if (p) { tab = 'sell'; mode = 'pre'; digits = p.last4; selKey = p.key; justDone = null; } }
@@ -821,19 +946,29 @@ app.addEventListener('click', e => {
     case 'openOut': adj = { id: null, dir: 'out', q: 1, reason: '', memo: '' }; sheet = 'adj'; break;
     case 'ovReset': D.ov = { price: {}, stock: {} }; save(); toast('config.js 값으로 되돌렸어요'); break;
     case 'done': {
-      const t = sumItems(cart), cash = sheet === 'cash';
+      const t = sumItems(cart), cash = sheet === 'cash', split = sheet === 'split';
       const sn = nextId(); pushUndo({ type: 'sale', n: sn, label: won(t) + ' 판매' });
-      D.sales.push({ n: sn, ts: Date.now(), items: { ...cart }, total: t, m: cash ? 'cash' : 'transfer', cashIn: cash ? cashIn : null });
+      const sale = { n: sn, ts: Date.now(), items: { ...cart }, total: t, m: split ? 'split' : cash ? 'cash' : 'transfer', cashIn: cash ? cashIn : null };
+      if (split) { sale.cashPart = splitCash; sale.trPart = t - splitCash; }
+      D.sales.push(sale);
       const ch = cash ? cashIn - t : 0;
       cart = {}; sheet = null; save();
-      toast(`${won(t)} ${cash ? '현금' : '계좌이체'}로 판매했어요${ch > 0 ? ' · 거스름돈 ' + won(ch) : ''}`, true); chime();
+      toast(`${won(t)} ${split ? '복합결제' : cash ? '현금' : '계좌이체'}로 판매했어요${ch > 0 ? ' · 거스름돈 ' + won(ch) : ''}`, true); chime();
       break;
     }
     case 'give': { const p = selected(); pushUndo({ type: 'give', key: p.key, label: p.name + '님 수령' }); p.at = Date.now(); justDone = p.key; save(); toast(`${p.name}님 수령 완료`, true); chime(); break; }
     case 'cancelGive': { const p = selected(); p.at = null; save(); toast(`${p.name}님 전달을 취소했어요`); break; }
-    case 'next': justDone = null; digits = ''; selKey = null; break;
+    case 'next': justDone = null; digits = ''; selKey = null; nameMode = false; nq = ''; break;
+    case 'nameMode': nameMode = true; nq = ''; render(); setTimeout(() => $('#nq') && $('#nq').focus(), 0); return;
+    case 'numMode': nameMode = false; nq = ''; break;
+    case 'openFail': failDraft = { key: selected().key, items: {}, vars: {}, reason: '', memo: '' }; sheet = 'fail'; break;
+    case 'failgo': {
+      const p = D.preorders.find(x => x.key === failDraft.key);
+      fails().push({ n: nextId(), ts: Date.now(), key: p.key, name: p.name, items: failDraft.items, vars: failDraft.vars, reason: failDraft.reason, memo: failDraft.memo.trim() });
+      sheet = null; failDraft = null; save(); toast('미전달로 기록했어요'); break;
+    }
     case 'addmore': justDone = null; digits = ''; selKey = null; mode = 'sale'; break;
-    case 'reset': digits = ''; selKey = null; break;
+    case 'reset': digits = ''; selKey = null; nameMode = false; nq = ''; break;
     case 'undo': clearTimeout(toastTimer); toastState = null; undoLast(); break;
     case 'redo': clearTimeout(toastTimer); toastState = null; redoLast(); break;
     case 'adjgo': {
@@ -879,6 +1014,8 @@ document.addEventListener('click', e => {
 app.addEventListener('input', e => {
   const id = e.target.id;
   if (id === 'q') { qs = e.target.value; $('#prelist').innerHTML = listRows(); }
+  if (id === 'nq') { nq = e.target.value; $('#nres').innerHTML = nameRows(); }
+  if (id === 'failMemo' && failDraft) { failDraft.memo = e.target.value; $('#failgo').disabled = !(cnt(failDraft.items) && failDraft.reason && !(failDraft.reason === '기타' && !failDraft.memo.trim())); }
   if (id === 'memo' && adj) { adj.memo = e.target.value; $('#adjgo').disabled = !adj.reason || (adj.reason === '기타' && !adj.memo.trim()); }
   if ((id === 'apName' || id === 'apLast4') && addPre) {
     if (id === 'apLast4') { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4); addPre.last4 = e.target.value; } else addPre.name = e.target.value;
