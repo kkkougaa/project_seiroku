@@ -10,7 +10,7 @@ const dataKey = b => 'boothpos:v1:' + b;
 const REASONS_OUT = ['파손·불량', '전시용 샘플', '증정·서비스', '분실', '기타'];
 const REASONS_IN = ['추가 입고', '재고 정정', '기타'];
 const BACKUP_WARN_MIN = 60;
-const APP_VERSION = '11';
+const APP_VERSION = '12';
 
 /* ---------------- 저장소 ---------------- */
 const ls = {
@@ -107,19 +107,32 @@ let cartOrder = [];
 let sheet = null, cashIn = 0, adj = null, addPre = null, importDraft = null, restoreDraft = null;
 let qs = '', lf = 'all', toastState = null, toastTimer = null, hist = [];
 // 되돌리기는 '판매 완료'와 '선입금 수령'만 해요. 그 사이 다른 기록은 건드리지 않아요.
-function pushUndo(h) { hist.push(h); if (hist.length > 30) hist.shift(); }
+let redo = [];
+function pushUndo(h) { hist.push(h); if (hist.length > 30) hist.shift(); redo = []; }
 function undoLast() {
   const h = hist.pop(); if (!h) return;
   if (h.type === 'sale') {
     const i = D.sales.findIndex(x => x.n === h.n);
-    if (i >= 0) { const s = D.sales.splice(i, 1)[0]; cart = { ...s.items }; mode = 'sale'; }
+    if (i >= 0) { h.sale = D.sales.splice(i, 1)[0]; cart = { ...h.sale.items }; mode = 'sale'; }
     toast(h.label + '를 취소했어요. 상품은 장바구니로 돌아왔어요');
   } else if (h.type === 'give') {
-    const p = D.preorders.find(x => x.key === h.key); if (p) p.at = null;
+    const p = D.preorders.find(x => x.key === h.key); if (p) { h.at = p.at; p.at = null; }
     if (justDone === h.key) justDone = null;
     toast(h.label + '을 취소했어요');
   }
-  sheet = null; save();
+  redo.push(h); sheet = null; save();
+}
+function redoLast() {
+  const h = redo.pop(); if (!h) return;
+  if (h.type === 'sale' && h.sale) {
+    D.sales.push(h.sale); D.sales.sort((a, b) => a.n - b.n);
+    for (const [id, q] of Object.entries(h.sale.items)) { if (cart[id]) { cart[id] -= q; if (cart[id] <= 0) delete cart[id]; } }
+    toast(h.label + '를 다시 기록했어요');
+  } else if (h.type === 'give') {
+    const p = D.preorders.find(x => x.key === h.key); if (p) p.at = h.at || Date.now();
+    toast(h.label + '을 다시 기록했어요');
+  }
+  hist.push(h); sheet = null; save();
 }
 
 function toast(msg, undo) {
@@ -200,7 +213,7 @@ function topView() {
   const t = (k, l) => `<button role="tab" aria-selected="${tab === k}" data-tab="${k}">${l}</button>`;
   return `<div class="top"><span class="booth">${esc(B().name)}</span>
     <div class="tabs" role="tablist">${t('sell', '판매')}${t('list', '선입금 명단')}${t('stock', '재고·정산')}${t('settings', '설정')}</div>
-    ${hist.length ? `<button class="undo-btn" data-act="undo" title="${esc(hist[hist.length - 1].label)}">되돌리기<small>${esc(hist[hist.length - 1].label)}</small></button>` : ''}
+    ${hist.length || redo.length ? `<span class="undo-wrap">${hist.length ? `<button class="undo-btn" data-act="undo">되돌리기<small>${esc(hist[hist.length - 1].label)}</small></button>` : ''}${redo.length ? `<button class="undo-btn" data-act="redo">다시 실행<small>${esc(redo[redo.length - 1].label)}</small></button>` : ''}</span>` : ''}
     ${old && hasData ? `<button class="saved" data-tab="settings" style="color:var(--orange);font-weight:600">${D.backupAt ? '백업한 지 1시간이 넘었어요' : '아직 백업하지 않았어요'}</button>`
       : `<span class="saved"><i></i>이 기기에 저장됨${D.savedAt ? ' · ' + hhmm(D.savedAt) : ''}</span>`}</div>`;
 }
@@ -693,7 +706,7 @@ app.addEventListener('click', e => {
   const actEl = g('[data-act]'), a = actEl && actEl.dataset.act;
   const pick = g('[data-pick]');
   if (pick) {
-    booth = pick.dataset.pick; ls.set(DEVICE_KEY, booth); D = load(booth); hist = [];
+    booth = pick.dataset.pick; ls.set(DEVICE_KEY, booth); D = load(booth); hist = []; redo = [];
     tab = 'sell'; mode = 'pre'; cart = {}; digits = ''; selKey = null; justDone = null; sheet = null;
     render(); return;
   }
@@ -702,7 +715,7 @@ app.addEventListener('click', e => {
     m = g('[data-m]'), c = g('[data-cash]'), lfb = g('[data-lf]'), go = g('[data-go]'), ad = g('[data-adj]'), aq = g('[data-aq]'), rs = g('[data-rs]'),
     dir = g('[data-dir]'), un = g('[data-unadj]'), us = g('[data-unsale]'), apq = g('[data-apq]'), apv = g('[data-apv]'), apvc = g('[data-apvclr]'),
     ug = g('[data-ungive]'), ap = g('[data-adjpick]');
-  if (ug) { const p = D.preorders.find(x => x.key === ug.dataset.ungive); hist = hist.filter(h => h.key !== ug.dataset.ungive); if (p) { p.at = null; if (justDone === p.key) justDone = null; save(); toast(`${p.name}님 수령을 취소했어요`); } render(); return; }
+  if (ug) { const p = D.preorders.find(x => x.key === ug.dataset.ungive); hist = hist.filter(h => h.key !== ug.dataset.ungive); redo = redo.filter(h => h.key !== ug.dataset.ungive); if (p) { p.at = null; if (justDone === p.key) justDone = null; save(); toast(`${p.name}님 수령을 취소했어요`); } render(); return; }
   if (ap) { adj.id = ap.dataset.adjpick; }
 
   if (tb) { tab = tb.dataset.tab; sheet = null; }
@@ -756,6 +769,7 @@ app.addEventListener('click', e => {
     case 'addmore': justDone = null; digits = ''; selKey = null; mode = 'sale'; break;
     case 'reset': digits = ''; selKey = null; break;
     case 'undo': clearTimeout(toastTimer); toastState = null; undoLast(); break;
+    case 'redo': clearTimeout(toastTimer); toastState = null; redoLast(); break;
     case 'adjgo': {
       const q = adj.dir === 'out' ? adj.q : -adj.q, info = keyInfo(adj.id);
             D.adj.push({ n: nextId(), ts: Date.now(), id: adj.id, q, reason: adj.reason, memo: adj.memo.trim() });
@@ -781,13 +795,13 @@ app.addEventListener('click', e => {
     case 'restore': $('#fileBackup').value = ''; $('#fileBackup').click(); return;
     case 'restoreGo': {
       const r = restoreDraft; ls.set(dataKey(r.booth), JSON.stringify(Object.assign(emptyData(), r.data)));
-      booth = r.booth; ls.set(DEVICE_KEY, booth); D = load(booth); hist = []; restoreDraft = null; sheet = null;
+      booth = r.booth; ls.set(DEVICE_KEY, booth); D = load(booth); hist = []; redo = []; restoreDraft = null; sheet = null;
       cart = {}; digits = ''; selKey = null; justDone = null; toast('백업 내용으로 되살렸어요'); break;
     }
     case 'exportCsv': doSave(`부스포스_${booth}_정산_${stamp()}.csv`, settlementCSV(), 'text/csv'); return;
     case 'switchBooth': sheet = 'booth'; break;
     case 'askReset': sheet = 'reset'; break;
-    case 'resetGo': ls.del(dataKey(booth)); D = emptyData(); hist = []; sheet = null; cart = {}; digits = ''; selKey = null; justDone = null; toast('이 부스 데이터를 모두 지웠어요'); break;
+    case 'resetGo': ls.del(dataKey(booth)); D = emptyData(); hist = []; redo = []; sheet = null; cart = {}; digits = ''; selKey = null; justDone = null; toast('이 부스 데이터를 모두 지웠어요'); break;
   }
   render();
 });
@@ -814,7 +828,7 @@ app.addEventListener('change', e => {
 
 document.addEventListener('keydown', e => {
   if (!booth || e.target.tagName === 'INPUT') return;
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undoLast(); render(); return; }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redoLast() : undoLast(); render(); return; }
   if (e.key === 'Escape' && sheet) { sheet = null; render(); return; }
   if (tab !== 'sell' || mode !== 'pre' || justDone || sheet) return;
   if (/^[0-9]$/.test(e.key) && digits.length < 4) { digits += e.key; selKey = null; render(); }
