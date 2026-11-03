@@ -10,7 +10,7 @@ const dataKey = b => 'boothpos:v1:' + b;
 const REASONS_OUT = ['파손·불량', '전시용 샘플', '증정·서비스', '분실', '기타'];
 const REASONS_IN = ['추가 입고', '재고 정정', '기타'];
 const BACKUP_WARN_MIN = 60;
-const APP_VERSION = '7';
+const APP_VERSION = '8';
 
 /* ---------------- 저장소 ---------------- */
 const ls = {
@@ -81,21 +81,45 @@ const mdhm = ts => { const d = new Date(ts); return (d.getMonth() + 1) + '/' + d
 const stamp = () => { const d = new Date(), p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`; };
 const pname = id => prod(id)?.name || id;
 const varPlain = v => Object.entries(v || {}).sort(([a], [b]) => (a === '?') - (b === '?') || a.localeCompare(b)).map(([L, q]) => (L === '?' ? '종류 미정' : L) + (q > 1 ? '×' + q : '')).join(', ');
+// 같은 공용 재고(포토카드 1·5·10세트)는 한 줄로 합쳐요: 1세트 + 5세트 = 랜덤 포토카드 6세트
+function groupItems(it) {
+  const out = [], pools = {};
+  for (const [id, q] of Object.entries(it)) {
+    const p = prod(id);
+    if (p && p.pool) {
+      const k = 'pool:' + p.pool;
+      if (!pools[k]) { const info = keyInfo(k); pools[k] = { key: k, pool: true, name: info.name, unit: info.unit, qty: 0, total: 0, parts: [] }; out.push(pools[k]); }
+      pools[k].qty += q * units(p); pools[k].total += p.price * q; pools[k].parts.push([p, q]);
+    } else out.push({ key: id, pool: false, name: pname(id), sub: p?.sub || '', unit: '개', qty: q, total: (p?.price || 0) * q, p });
+  }
+  return out;
+}
+const partsText = g => g.parts.map(([p, q]) => `${p.units}${g.unit} ${q}개`).join(' + ');
 function itemsText(it, vars) {
-  return Object.entries(it).map(([k, q]) => `${esc(pname(k))} ${q}개${vars && vars[k] ? ' (' + esc(varPlain(vars[k])) + ')' : ''}`).join(' · ');
+  return groupItems(it).map(g => `${esc(g.name)} ${g.qty}${g.unit}${!g.pool && vars && vars[g.key] ? ' (' + esc(varPlain(vars[g.key])) + ')' : ''}`).join(' · ');
 }
 const pricedMissing = () => sellable().filter(p => !p.price);
 const stockMissing = () => stockKeys().filter(k => !keyInfo(k).stock);
 
 /* ---------------- 화면 상태 ---------------- */
 let tab = 'sell', mode = 'pre', cart = {}, digits = '', selKey = null, justDone = null;
+let cartOrder = [];
 let sheet = null, cashIn = 0, adj = null, addPre = null, importDraft = null, restoreDraft = null;
 let qs = '', lf = 'all', toastState = null, toastTimer = null, hist = [];
-function snap(label) { hist.push({ label, d: JSON.stringify(D), cart: JSON.stringify(cart) }); if (hist.length > 30) hist.shift(); }
+// 되돌리기는 '판매 완료'와 '선입금 수령'만 해요. 그 사이 다른 기록은 건드리지 않아요.
+function pushUndo(h) { hist.push(h); if (hist.length > 30) hist.shift(); }
 function undoLast() {
   const h = hist.pop(); if (!h) return;
-  D = JSON.parse(h.d); cart = JSON.parse(h.cart); justDone = null; sheet = null; save();
-  toast('되돌렸어요: ' + h.label);
+  if (h.type === 'sale') {
+    const i = D.sales.findIndex(x => x.n === h.n);
+    if (i >= 0) { const s = D.sales.splice(i, 1)[0]; cart = { ...s.items }; mode = 'sale'; }
+    toast(h.label + '를 취소했어요. 상품은 장바구니로 돌아왔어요');
+  } else if (h.type === 'give') {
+    const p = D.preorders.find(x => x.key === h.key); if (p) p.at = null;
+    if (justDone === h.key) justDone = null;
+    toast(h.label + '을 취소했어요');
+  }
+  sheet = null; save();
 }
 
 function toast(msg, undo) {
@@ -199,11 +223,14 @@ function sellView(hide) {
 
 function panelSale() {
   const lines = Object.entries(cart), total = sumItems(cart);
-  const body = lines.length ? lines.map(([k, q]) => { const p = prod(k); return `<div class="row"><div class="l"><div class="t">${esc(p.name)}</div><div class="s num">${p.sub ? esc(p.sub) + ' · ' : ''}${won(p.price * q)}</div></div>
-    <div class="step"><button data-dec="${k}" aria-label="하나 빼기">−</button><span class="num">${q}</span><button data-add="${k}" aria-label="하나 더하기">+</button></div></div>`; }).join('')
+  const body = lines.length ? groupItems(cart).map(g => g.pool
+    ? `<div class="row"><div class="l"><div class="t">${esc(g.name)} <b class="num">${g.qty}${g.unit}</b></div><div class="s num">${partsText(g)} · ${won(g.total)}</div></div>
+      <div class="step"><button data-decpool="${esc(g.key)}" aria-label="마지막으로 담은 묶음 빼기">−</button><span class="num">${g.qty}</span><button data-addlast="${esc(g.key)}" aria-label="마지막으로 담은 묶음 더하기">+</button></div></div>`
+    : `<div class="row"><div class="l"><div class="t">${esc(g.name)}</div><div class="s num">${g.sub ? esc(g.sub) + ' · ' : ''}${won(g.total)}</div></div>
+      <div class="step"><button data-dec="${g.key}" aria-label="하나 빼기">−</button><span class="num">${g.qty}</span><button data-add="${g.key}" aria-label="하나 더하기">+</button></div></div>`).join('')
     : `<div class="empty"><b>담긴 상품이 없어요</b>왼쪽 상품을 누르면 여기 담겨요</div>`;
   return `<div class="pbody">${body}</div><div class="pfoot">
-    ${lines.length ? `<div class="total"><span>총 ${cnt(cart)}개</span><b class="num">${won(total)}</b></div>` : ''}
+    ${lines.length ? `<div class="total"><span>${groupItems(cart).map(g => `${esc(g.name.replace('랜덤 ', ''))} ${g.qty}${g.unit}`).join(', ')}</span><b class="num">${won(total)}</b></div>` : ''}
     <button class="cta" data-act="pay" ${lines.length ? '' : 'disabled'}>${lines.length ? won(total) + ' 받기' : '결제하기'}</button>
     <button class="cta sub2" data-act="openOut">재고에서 제외하기</button>
     ${lines.length ? '<button class="txtbtn" data-act="clear">모두 비우기</button>' : ''}</div>`;
@@ -253,13 +280,13 @@ function lastRecv() {
 }
 function preDetail(p) {
   // 족자봉처럼 종류를 골라 챙겨야 하는 상품을 맨 위에 보여줘요
-  const lines = Object.entries(p.items).sort(([a], [b]) => !!(p.vars && p.vars[b]) - !!(p.vars && p.vars[a]));
-  const hasOnly = lines.some(([k]) => prod(k)?.preorderOnly);
+  const lines = groupItems(p.items).sort((a, b) => !!(p.vars && p.vars[b.key]) - !!(p.vars && p.vars[a.key]));
+  const hasOnly = lines.some(g => g.p?.preorderOnly);
   return `<div class="pbody">
     ${p.at ? `<p class="recvcount done num">${hhmm(p.at)}에 받아갔어요</p>` : `<p class="recvcount num">받을 상품 <b>${cnt(p.items)}개</b></p>`}${p.manual ? '<span class="badge gray">직접 추가</span>' : ''}
     <p class="who">${esc(p.name)}님</p><p class="sub num">010-••••-${esc(p.last4)}${p.no ? ' · ' + esc(p.no) : ''}</p>
-    <div class="list big">${lines.map(([k, q]) => { const pr = prod(k); return `<div class="row ${p.vars && p.vars[k] ? 'tall' : ''}"><div class="l"><div class="t">${esc(pname(k))}${pr?.sub ? ` <span class="s">${esc(pr.sub)}</span>` : ''}</div>
-      ${p.vars && p.vars[k] ? vchips(p.vars[k]) : ''}</div><span class="num qty">${q}개</span></div>`; }).join('')}</div>
+    <div class="list big">${lines.map(g => `<div class="row ${p.vars && p.vars[g.key] ? 'tall' : ''}"><div class="l"><div class="t">${esc(g.name)}${g.sub ? ` <span class="s">${esc(g.sub)}</span>` : ''}${g.pool && g.parts.length > 1 ? ` <span class="s num">${partsText(g)}</span>` : ''}</div>
+      ${p.vars && p.vars[g.key] ? vchips(p.vars[g.key]) : ''}</div><span class="num qty">${g.qty}${g.unit}</span></div>`).join('')}</div>
     ${p.at ? '' : `<p class="sub" style="margin-top:12px">왼쪽 파란 테두리 상품${hasOnly ? '과 위의 선입금 전용 상품' : ''}을 챙겨주세요</p>`}
   </div><div class="pfoot">
     ${p.at ? `<button class="cta" disabled>이미 전달했어요</button><button class="txtbtn" data-act="cancelGive">전달 취소하기</button>`
@@ -655,7 +682,7 @@ app.addEventListener('click', e => {
     m = g('[data-m]'), c = g('[data-cash]'), lfb = g('[data-lf]'), go = g('[data-go]'), ad = g('[data-adj]'), aq = g('[data-aq]'), rs = g('[data-rs]'),
     dir = g('[data-dir]'), un = g('[data-unadj]'), us = g('[data-unsale]'), apq = g('[data-apq]'), apv = g('[data-apv]'), apvc = g('[data-apvclr]'),
     ug = g('[data-ungive]'), ap = g('[data-adjpick]');
-  if (ug) { const p = D.preorders.find(x => x.key === ug.dataset.ungive); if (p) { snap(p.name + '님 수령 취소'); p.at = null; if (justDone === p.key) justDone = null; save(); toast(`${p.name}님 수령을 취소했어요`, true); } render(); return; }
+  if (ug) { const p = D.preorders.find(x => x.key === ug.dataset.ungive); hist = hist.filter(h => h.key !== ug.dataset.ungive); if (p) { p.at = null; if (justDone === p.key) justDone = null; save(); toast(`${p.name}님 수령을 취소했어요`); } render(); return; }
   if (ap) { adj.id = ap.dataset.adjpick; }
 
   if (tb) { tab = tb.dataset.tab; sheet = null; }
@@ -665,10 +692,14 @@ app.addEventListener('click', e => {
   if (add && !g('.sheet')) {
     const p = prod(add.dataset.add);
     if (!p.price) { toast('가격이 비어 있어요. config.js에 가격을 넣어 주세요'); return; }
-    if (availFor(p) >= 1) { snap(p.name + ' 담기'); cart[p.id] = (cart[p.id] || 0) + 1; mode = 'sale'; justDone = null; }
+    if (availFor(p) >= 1) { cart[p.id] = (cart[p.id] || 0) + 1; cartOrder.push(p.id); mode = 'sale'; justDone = null; }
     else { toast(usage(skey(p)).left > 0 ? '남은 수량은 선입금 몫이라 현장에서 팔 수 없어요' : '재고가 없어요'); return; }
   }
-  if (dec) { snap(pname(dec.dataset.dec) + ' 빼기'); cart[dec.dataset.dec]--; if (!cart[dec.dataset.dec]) delete cart[dec.dataset.dec]; }
+  const dp = g('[data-decpool]'), al = g('[data-addlast]');
+  const lastOf = k => { for (let i = cartOrder.length - 1; i >= 0; i--) if (cart[cartOrder[i]] && skey(prod(cartOrder[i])) === k) return cartOrder[i]; return Object.keys(cart).find(id => skey(prod(id)) === k); };
+  if (dp) { const id = lastOf(dp.dataset.decpool); if (id) { cart[id]--; if (!cart[id]) delete cart[id]; const i = cartOrder.lastIndexOf(id); if (i >= 0) cartOrder.splice(i, 1); } }
+  if (al) { const p = prod(lastOf(al.dataset.addlast)); if (p && availFor(p) >= 1) { cart[p.id]++; cartOrder.push(p.id); } else if (p) { toast('남은 수량이 없어요'); return; } }
+  if (dec) { cart[dec.dataset.dec]--; if (!cart[dec.dataset.dec]) delete cart[dec.dataset.dec]; }
   if (m) { sheet = m.dataset.m; cashIn = 0; }
   if (c) { const v = c.dataset.cash; cashIn = v === 'exact' ? sumItems(cart) : v === '0' ? 0 : cashIn + (+v); }
   if (lfb) lf = lfb.dataset.lf;
@@ -680,46 +711,45 @@ app.addEventListener('click', e => {
   if (apq) { const id = apq.dataset.apq; addPre.items[id] = Math.max(0, (addPre.items[id] || 0) + (+apq.dataset.d)); if (!addPre.items[id]) delete addPre.items[id]; }
   if (apv) { const id = apv.dataset.apv, L = apv.dataset.l; addPre.vars[id] = addPre.vars[id] || {}; addPre.vars[id][L] = (addPre.vars[id][L] || 0) + 1; addPre.items[id] = (addPre.items[id] || 0) + 1; }
   if (apvc) { const id = apvc.dataset.apvclr; delete addPre.vars[id]; delete addPre.items[id]; }
-  if (un) { const x = D.adj.find(z => z.n === +un.dataset.unadj); snap('재고 조정 취소'); x.canceled = true; save(); toast(`${keyInfo(x.id).name} 재고 조정을 취소했어요`, true); render(); return; }
-  if (us) { const s = D.sales.find(z => z.n === +us.dataset.unsale); snap('판매 취소'); s.canceled = true; save(); toast(`${won(s.total)} 판매를 취소했어요`, true); render(); return; }
+  if (un) { const x = D.adj.find(z => z.n === +un.dataset.unadj); x.canceled = true; save(); toast(`${keyInfo(x.id).name} 재고 조정을 취소했어요`); render(); return; }
+  if (us) { const s = D.sales.find(z => z.n === +us.dataset.unsale); s.canceled = true; save(); toast(`${won(s.total)} 판매를 취소했어요`); render(); return; }
 
   switch (a) {
     case 'pay': sheet = 'method'; break;
     case 'close': sheet = null; break;
     case 'back': sheet = 'method'; break;
-    case 'clear': snap('장바구니 비우기'); cart = {}; break;
+    case 'clear': cart = {}; break;
     case 'openOut': adj = { id: null, dir: 'out', q: 1, reason: '', memo: '' }; sheet = 'adj'; break;
-    case 'ovReset': snap('가격·재고 되돌리기'); D.ov = { price: {}, stock: {} }; save(); toast('config.js 값으로 되돌렸어요', true); break;
+    case 'ovReset': D.ov = { price: {}, stock: {} }; save(); toast('config.js 값으로 되돌렸어요'); break;
     case 'done': {
       const t = sumItems(cart), cash = sheet === 'cash';
-      snap(won(t) + ' 판매');
-      D.sales.push({ n: nextId(), ts: Date.now(), items: { ...cart }, total: t, m: cash ? 'cash' : 'transfer', cashIn: cash ? cashIn : null });
+      const sn = nextId(); pushUndo({ type: 'sale', n: sn, label: won(t) + ' 판매' });
+      D.sales.push({ n: sn, ts: Date.now(), items: { ...cart }, total: t, m: cash ? 'cash' : 'transfer', cashIn: cash ? cashIn : null });
       const ch = cash ? cashIn - t : 0;
       cart = {}; sheet = null; save();
       toast(`${won(t)} ${cash ? '현금' : '계좌이체'}로 판매했어요${ch > 0 ? ' · 거스름돈 ' + won(ch) : ''}`, true);
       break;
     }
-    case 'give': { const p = selected(); snap(p.name + '님 수령'); p.at = Date.now(); justDone = p.key; save(); toast(`${p.name}님 수령 완료`, true); break; }
-    case 'cancelGive': { const p = selected(); snap(p.name + '님 수령 취소'); p.at = null; save(); toast(`${p.name}님 전달을 취소했어요`, true); break; }
+    case 'give': { const p = selected(); pushUndo({ type: 'give', key: p.key, label: p.name + '님 수령' }); p.at = Date.now(); justDone = p.key; save(); toast(`${p.name}님 수령 완료`, true); break; }
+    case 'cancelGive': { const p = selected(); p.at = null; save(); toast(`${p.name}님 전달을 취소했어요`); break; }
     case 'next': justDone = null; digits = ''; selKey = null; break;
     case 'addmore': justDone = null; digits = ''; selKey = null; mode = 'sale'; break;
     case 'reset': digits = ''; selKey = null; break;
     case 'undo': clearTimeout(toastTimer); toastState = null; undoLast(); break;
     case 'adjgo': {
       const q = adj.dir === 'out' ? adj.q : -adj.q, info = keyInfo(adj.id);
-      snap(`${info.name} 재고 ${adj.dir === 'out' ? '빼기' : '더하기'}`);
-      D.adj.push({ n: nextId(), ts: Date.now(), id: adj.id, q, reason: adj.reason, memo: adj.memo.trim() });
-      sheet = null; save(); toast(`${info.name} ${adj.q}${info.unit}를 재고${adj.dir === 'out' ? '에서 뺐어요' : '에 더했어요'}`, true); adj = null; break;
+            D.adj.push({ n: nextId(), ts: Date.now(), id: adj.id, q, reason: adj.reason, memo: adj.memo.trim() });
+      sheet = null; save(); toast(`${info.name} ${adj.q}${info.unit}를 재고${adj.dir === 'out' ? '에서 뺐어요' : '에 더했어요'}`); adj = null; break;
     }
     case 'openAddPre': addPre = { name: '', last4: '', items: {}, vars: {} }; sheet = 'addpre'; break;
     case 'apgo': {
       if (!addPreOk()) break;
       const p = { key: 'm:' + Date.now(), no: '', name: addPre.name.trim(), last4: addPre.last4, items: { ...addPre.items }, at: null, manual: true };
       if (Object.keys(addPre.vars).length) p.vars = JSON.parse(JSON.stringify(addPre.vars));
-      snap(p.name + '님 직접 추가'); D.preorders.push(p); sheet = null; save(); toast(`${p.name}님을 명단에 추가했어요`); break;
+      D.preorders.push(p); sheet = null; save(); toast(`${p.name}님을 명단에 추가했어요`); break;
     }
     case 'importCsv': $('#fileCsv').value = ''; $('#fileCsv').click(); return;
-    case 'importGo': snap('명단 불러오기'); applyImport(importDraft); toast(`선입금 ${importDraft.list.length}명을 불러왔어요`); importDraft = null; sheet = null; break;
+    case 'importGo': applyImport(importDraft); toast(`선입금 ${importDraft.list.length}명을 불러왔어요`); importDraft = null; sheet = null; break;
     case 'loadTest': { const rows = parseCSV(testCSV().replace(/^\uFEFF/, '')); importDraft = analyzeCSV(rows, '테스트 데이터 (가짜 40명)'); sheet = 'import'; break; }
     case 'sampleCsv': doSave('선입금_양식_예시.csv', sampleCSV(), 'text/csv'); return;
     case 'backup': {
@@ -758,8 +788,8 @@ app.addEventListener('input', e => {
 
 app.addEventListener('change', e => {
   const t = e.target, v = Math.max(0, Math.round(+t.value || 0));
-  if (t.dataset.ovp) { snap(pname(t.dataset.ovp) + ' 가격 수정'); ov().price[t.dataset.ovp] = v; save(); toast('가격을 바꿨어요', true); render(); }
-  if (t.dataset.ovs) { snap(keyInfo(t.dataset.ovs).name + ' 재고 수정'); ov().stock[t.dataset.ovs] = v; save(); toast('처음 재고를 바꿨어요', true); render(); }
+  if (t.dataset.ovp) { ov().price[t.dataset.ovp] = v; save(); toast('가격을 바꿨어요'); render(); }
+  if (t.dataset.ovs) { ov().stock[t.dataset.ovs] = v; save(); toast('처음 재고를 바꿨어요'); render(); }
 });
 
 document.addEventListener('keydown', e => {
