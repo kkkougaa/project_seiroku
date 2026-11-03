@@ -9,7 +9,7 @@ const FILES = ['./', 'index.html', 'monitor.html', 'style.css', 'app.js', 'confi
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(async c => {
     await c.addAll(FILES.map(u => new Request(u, { cache: 'reload' })));
-    await Promise.all(IMAGES.map(u => c.add(new Request(u, { cache: 'reload' })).catch(() => {})));
+    await Promise.all([...IMAGES, 'sounds/pay.mp3'].map(u => c.add(new Request(u, { cache: 'reload' })).catch(() => {})));
   }).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', e => {
@@ -18,7 +18,7 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
-  const isAsset = /\.(png|jpe?g|webp|woff2)$/i.test(new URL(req.url).pathname);
+  const isAsset = /\.(png|jpe?g|webp|woff2|mp3)$/i.test(new URL(req.url).pathname);
   e.respondWith(caches.open(VERSION).then(async c => {
     // 사진과 글꼴은 저장해 둔 것 먼저 (빠르게), 코드는 인터넷 먼저 (항상 최신)
     if (isAsset) {

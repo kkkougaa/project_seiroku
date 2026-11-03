@@ -154,15 +154,20 @@ function alertBanner(msg) {
 let actx = null, customBuf = null, customLoaded = false;
 const SOUND_KEY = 'boothpos:sound';
 // 형이 기기에서 고른 소리 파일 (이 기기에만 저장)
+// 순서: 기기에서 고른 파일 → 앱에 들어 있는 sounds/pay.mp3 → 기본 띵동(합성)
 async function loadCustomSound() {
   customLoaded = true; customBuf = null;
-  const url = ls.get(SOUND_KEY); if (!url) return;
-  try {
-    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
-    const bin = atob(url.split(',')[1]), arr = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-    customBuf = await new Promise((ok, no) => actx.decodeAudioData(arr.buffer, ok, no));
-  } catch { customBuf = null; }
+  actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+  const decode = buf => new Promise((ok, no) => actx.decodeAudioData(buf, ok, no));
+  const url = ls.get(SOUND_KEY);
+  if (url) {
+    try {
+      const bin = atob(url.split(',')[1]), arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      customBuf = await decode(arr.buffer); return;
+    } catch { customBuf = null; }
+  }
+  try { const r = await fetch('sounds/pay.mp3'); if (r.ok) customBuf = await decode(await r.arrayBuffer()); } catch { customBuf = null; }
 }
 function chime() {
   if (D && D.sound === false) return;
@@ -472,7 +477,7 @@ function settingsView() {
         <label class="fld"><span>금액</span><input class="num" type="number" inputmode="numeric" min="0" step="1000" data-cashstart value="${D.cashStart || 0}"></label></div>
       <div class="sr"><div class="l"><div class="t">결제 소리</div></div>
         <button class="mini ${D.sound === false ? 'gray' : ''}" data-act="toggleSound">${D.sound === false ? '꺼짐' : '켜짐'}</button><button class="mini gray" data-act="testSound">들어보기</button></div>
-      <div class="sr"><div class="l"><div class="t">소리 파일</div><div class="s">${ls.get(SOUND_KEY) ? esc(ls.get(SOUND_KEY + ':name') || '내 소리 파일') : '기본 띵동'}</div></div>
+      <div class="sr"><div class="l"><div class="t">소리 파일</div><div class="s">${ls.get(SOUND_KEY) ? esc(ls.get(SOUND_KEY + ':name') || '내 소리 파일') : '기본 소리'}</div></div>
         <button class="mini gray" data-act="pickSound">파일 고르기</button>${ls.get(SOUND_KEY) ? '<button class="mini gray" data-act="clearSound">기본으로</button>' : ''}</div></div>
     <div class="box"><h2>선입금 명단</h2>
       <button class="link" data-act="importCsv"><span>CSV 파일 불러오기<span class="s">${ii ? `${esc(ii.file)} · ${mdhm(ii.ts)} · ${ii.count}명` : ''}</span></span><span class="chev">›</span></button>
