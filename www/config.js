@@ -28,9 +28,9 @@ self.BOOTH_CONFIG = {
       },
       products: [
         { id: 'postcardbook', name: '엽서북', sub: '청록 : WORK!', price: TODO, stock: TODO, image: 'images/postcardbook.jpg' },
-        { id: 'pc1', name: '랜덤 포토카드 1세트', price: TODO, pool: 'photocard', units: 1, badge: '1', image: 'images/photocard-1.jpg' },
-        { id: 'pc5', name: '랜덤 포토카드 5세트', price: TODO, pool: 'photocard', units: 5, badge: '5', image: 'images/photocard-5.jpg' },
-        { id: 'pc10', name: '랜덤 포토카드 10세트', price: TODO, pool: 'photocard', units: 10, badge: '10', image: 'images/photocard-10.jpg' },
+        { id: 'pc1', name: '랜덤 포토카드 1세트', price: TODO, pool: 'photocard', units: 1, badge: '1', image: 'images/photocard.jpg' },
+        { id: 'pc5', name: '랜덤 포토카드 5세트', price: TODO, pool: 'photocard', units: 5, badge: '5', image: 'images/photocard.jpg' },
+        { id: 'pc10', name: '랜덤 포토카드 10세트', price: TODO, pool: 'photocard', units: 10, badge: '10', image: 'images/photocard.jpg' },
         { id: 'jokja', name: '족자봉', price: TODO, preorderOnly: true, variants: 'ABCDEFGHIJKLMNOPQRSTUVWXY'.split('') },
       ],
     },
