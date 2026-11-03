@@ -10,7 +10,7 @@ const dataKey = b => 'boothpos:v1:' + b;
 const REASONS_OUT = ['파손·불량', '전시용 샘플', '증정·서비스', '분실', '기타'];
 const REASONS_IN = ['추가 입고', '재고 정정', '기타'];
 const BACKUP_WARN_MIN = 60;
-const APP_VERSION = '16';
+const APP_VERSION = '17';
 
 /* ---------------- 저장소 ---------------- */
 const ls = {
@@ -309,7 +309,7 @@ function sellView(hide) {
   const tiles = sellable().map(p => {
     const inCart = cart[p.id] || 0, av = availFor(p), pick = pickItems[p.id];
     const k = skey(p), stockAll = keyInfo(k).stock, ratio = stockAll ? (usage(k).avail - cartUnits(k)) / stockAll : 0;
-    const cls = !p.price || av <= 0 ? 'out' : av <= 10 ? 'lv3' : ratio <= 0.1 ? 'lv2' : ratio <= 0.2 ? 'lv1' : '';
+    const cls = !p.price || av <= 0 ? 'out' : av <= 10 || ratio <= 0.1 ? 'lv3' : ratio <= 0.2 ? 'lv1' : '';
     const wt = waitOf(p.id);
     return `<button class="tile ${cls} ${pick ? 'pick' : ''}" data-add="${p.id}">${thumb(p)}
       ${pick ? `<span class="pk">선입금 ${pick}</span>` : inCart ? `<span class="inc num">${inCart}</span>` : ''}
