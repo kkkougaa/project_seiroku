@@ -10,7 +10,7 @@ const dataKey = b => 'boothpos:v1:' + b;
 const REASONS_OUT = ['파손·불량', '전시용 샘플', '증정·서비스', '분실', '기타'];
 const REASONS_IN = ['추가 입고', '재고 정정', '기타'];
 const BACKUP_WARN_MIN = 60;
-const APP_VERSION = '17';
+const APP_VERSION = '18';
 
 /* ---------------- 저장소 ---------------- */
 const ls = {
@@ -298,8 +298,8 @@ function welcomeView() {
 /* ---------- 판매 ---------- */
 function selected() { return D.preorders.find(p => p.key === selKey) || null; }
 
-function thumb(p) {
-  return `<span class="thumb">${p.image && !badImg.has(p.image) ? `<img src="${esc(p.image)}" alt="" onerror="__imgfail(this)">` : ''}<span class="ph">${esc(p.name.slice(0, 1))}</span>
+function thumb(p, soldOut) {
+  return `<span class="thumb">${soldOut ? '<span class="soldout">SOLD OUT</span>' : ''}${p.image && !badImg.has(p.image) ? `<img src="${esc(p.image)}" alt="" onerror="__imgfail(this)">` : ''}<span class="ph">${esc(p.name.slice(0, 1))}</span>
     ${p.badge ? `<span class="setno num">${esc(p.badge)}</span>` : ''}</span>`;
 }
 
@@ -309,13 +309,15 @@ function sellView(hide) {
   const tiles = sellable().map(p => {
     const inCart = cart[p.id] || 0, av = availFor(p), pick = pickItems[p.id];
     const k = skey(p), stockAll = keyInfo(k).stock, ratio = stockAll ? (usage(k).avail - cartUnits(k)) / stockAll : 0;
-    const cls = !p.price || av <= 0 ? 'out' : av <= 10 || ratio <= 0.1 ? 'lv3' : ratio <= 0.2 ? 'lv1' : '';
+    // 공용 재고(포토카드)는 가장 작은 묶음 카드에만 남은 재고를 보여줘요
+    const showSite = !p.pool || units(p) === Math.min(...sellable().filter(x => x.pool === p.pool).map(units));
+    const cls = !p.price || av <= 0 ? 'out' : !showSite ? '' : av <= 10 || ratio <= 0.1 ? 'lv3' : ratio <= 0.2 ? 'lv1' : '';
     const wt = waitOf(p.id);
-    return `<button class="tile ${cls} ${pick ? 'pick' : ''}" data-add="${p.id}">${thumb(p)}
+    return `<button class="tile ${cls} ${pick ? 'pick' : ''}" data-add="${p.id}">${thumb(p, p.price && av <= 0)}
       ${pick ? `<span class="pk">선입금 ${pick}</span>` : inCart ? `<span class="inc num">${inCart}</span>` : ''}
       <span class="tb"><span class="nm">${esc(p.name)}</span>${p.sub ? `<span class="sb">${esc(p.sub)}</span>` : ''}
       <span class="pr num">${p.price ? won(p.price) : '가격 미정 · 설정에서 넣어 주세요'}</span>
-      <span class="counts"><span class="cnt site"><b class="num">${Math.max(0, av)}</b><small>${av <= 0 ? '현장 품절' : '현장 재고'}</small></span>
+      <span class="counts ${showSite ? '' : 'one'}">${showSite ? `<span class="cnt site"><b class="num">${Math.max(0, av)}</b><small>${av <= 0 ? '현장 품절' : '현장 재고'}</small></span>` : ''}
       <span class="cnt pre ${wt ? 'on' : ''}"><b class="num">${wt}</b><small>선입금 대기</small></span></span></span></button>`;
   }).join('');
   const c = cnt(cart);
