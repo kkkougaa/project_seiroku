@@ -10,7 +10,7 @@ const dataKey = b => 'boothpos:v1:' + b;
 const REASONS_OUT = ['파손·불량', '전시용 샘플', '증정·서비스', '분실', '기타'];
 const REASONS_IN = ['추가 입고', '재고 정정', '기타'];
 const BACKUP_WARN_MIN = 60;
-const APP_VERSION = '12';
+const APP_VERSION = '13';
 
 /* ---------------- 저장소 ---------------- */
 const ls = {
@@ -38,8 +38,8 @@ const nextId = () => ++D.seq;
 /* ---------------- 상품·재고 ---------------- */
 const $ = s => document.querySelector(s);
 const B = () => CFG.booths[booth];
-const ov = () => (D.ov = D.ov || { price: {}, stock: {} });
-const products = () => { const o = ov(); return B().products.map(p => ({ ...p, price: o.price[p.id] ?? p.price, stock: o.stock[p.id] ?? p.stock })); };
+const ov = () => { D.ov = D.ov || { price: {}, stock: {} }; D.ov.r18 = D.ov.r18 || {}; return D.ov; };
+const products = () => { const o = ov(); return B().products.map(p => ({ ...p, price: o.price[p.id] ?? p.price, stock: o.stock[p.id] ?? p.stock, r18: o.r18[p.id] ?? !!p.r18 })); };
 const sellable = () => products().filter(p => !p.preorderOnly);
 const prod = id => products().find(p => p.id === id);
 const units = p => (p && p.pool ? p.units || 1 : 1);
@@ -141,6 +141,37 @@ function toast(msg, undo) {
   renderToast();
   toastTimer = setTimeout(() => { toastState = null; renderToast(); }, undo ? 5000 : 2600);
 }
+// 화면 위쪽에 잠깐 떴다 사라지는 큰 경고 (성인 인증 확인 등)
+let alertTimer = null;
+function alertBanner(msg) {
+  let a = $('#alert');
+  if (!a) { a = document.createElement('div'); a.id = 'alert'; a.className = 'alert'; a.setAttribute('role', 'alert'); document.body.appendChild(a); }
+  a.textContent = msg; a.classList.remove('show'); void a.offsetWidth; a.classList.add('show');
+  clearTimeout(alertTimer); alertTimer = setTimeout(() => a.classList.remove('show'), 2600);
+}
+
+// 결제 완료 '띵동' 소리. 음원 파일 없이 기기에서 직접 만들어요
+let actx = null;
+function chime() {
+  if (D && D.sound === false) return;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === 'suspended') actx.resume();
+    const t0 = actx.currentTime + 0.01;
+    const note = (f, at, dur, vol) => {
+      for (const [mul, v] of [[1, 1], [2, 0.18], [3, 0.06]]) {
+        const o = actx.createOscillator(), g = actx.createGain();
+        o.type = 'sine'; o.frequency.value = f * mul;
+        g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(vol * v, at + 0.008);
+        g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+        o.connect(g).connect(actx.destination); o.start(at); o.stop(at + dur + 0.05);
+      }
+    };
+    note(1318.5, t0, 0.55, 0.32);        // 띵 (E6)
+    note(1760, t0 + 0.12, 0.9, 0.28);    // 동 (A6)
+  } catch {}
+}
+
 function renderToast() {
   let t = $('#toast');
   if (!toastState) { t && t.remove(); return; }
@@ -392,6 +423,13 @@ function stockView() {
     <div class="side">
       <div class="box"><p class="cap">현장 매출</p><p class="money num">${won(cash + tr)}</p>
         <div class="kv"><span>현금</span><b class="num">${won(cash)}</b></div><div class="kv"><span>계좌이체</span><b class="num">${won(tr)}</b></div><div class="kv"><span>판매 건수</span><b class="num">${live.length}건</b></div></div>
+      <div class="box"><h2>현금 시재</h2>
+        <div class="kv"><span>시작 현금</span><b class="num">${won(D.cashStart || 0)}</b></div>
+        <div class="kv"><span>현금 매출</span><b class="num">+ ${won(cash)}</b></div>
+        <div class="kv hl"><span>금고에 있어야 할 현금</span><b class="num">${won((D.cashStart || 0) + cash)}</b></div>
+        <div class="sr" style="border:0;padding-bottom:0"><div class="l"><div class="t">실제로 센 금액</div>${D.cashCount != null ? `<div class="s num">${mdhm(D.cashCountAt)} 기준</div>` : ''}</div>
+          <label class="fld"><span>금액</span><input class="num" type="number" inputmode="numeric" min="0" step="1000" data-cashcount value="${D.cashCount ?? ''}"></label></div>
+        ${D.cashCount != null ? (() => { const diff = D.cashCount - ((D.cashStart || 0) + cash); return `<div class="kv ${diff === 0 ? 'hl' : 'bad'}"><span>차이</span><b class="num">${diff === 0 ? '딱 맞아요' : (diff > 0 ? '+' : '−') + won(Math.abs(diff))}</b></div>`; })() : ''}</div>
       <div class="box"><p class="cap">선입금 전달</p><p class="money num" style="margin-bottom:0">${done} / ${all}명</p><div class="prog"><i style="width:${all ? done / all * 100 : 0}%"></i></div></div>
       <div class="box"><h2 style="margin-bottom:0">재고 조정 내역</h2>${adjLog || '<p class="cap">없음</p>'}</div>
     </div></div></div>`;
@@ -400,20 +438,25 @@ function stockView() {
 /* ---------- 설정 ---------- */
 function settingsView() {
   const ii = D.importInfo, mp = pricedMissing(), ms = stockMissing();
-  const warn = mp.length || ms.length || /넣어 주세요/.test(B().account.number) ? `<div class="box notice"><h2>채워야 할 값이 있어요</h2>
+  const warn = mp.length || ms.length ? `<div class="box notice"><h2>채워야 할 값이 있어요</h2>
     ${mp.length ? `<p class="cap">가격: ${mp.map(p => esc(p.name)).join(', ')}</p>` : ''}
     ${ms.length ? `<p class="cap">재고: ${ms.map(k => esc(keyInfo(k).name)).join(', ')}</p>` : ''}
-    ${/넣어 주세요/.test(B().account.number) ? '<p class="cap">계좌번호</p>' : ''}
     </div>` : '';
   return `<div class="page"><div class="cols"><div>
     ${warn}
     <div class="box"><h2>가격과 처음 재고</h2>
       ${products().map(p => `<div class="sr"><div class="l"><div class="t">${esc(p.name)}</div><div class="s">${p.preorderOnly ? '선입금 전용' : p.pool ? keyInfo(skey(p)).name + ' 공용 재고 · ' + units(p) + '세트씩' : ''}</div></div>
+        ${p.preorderOnly ? '<span class="fld sm"></span>' : `<label class="fld sm chk"><span>R18</span><input type="checkbox" data-ovr="${p.id}" ${p.r18 ? 'checked' : ''}></label>`}
         <label class="fld"><span>가격</span><input class="num" type="number" inputmode="numeric" min="0" step="500" data-ovp="${p.id}" value="${p.price || 0}"></label>
         ${!p.pool && !p.preorderOnly ? `<label class="fld"><span>처음 재고</span><input class="num" type="number" inputmode="numeric" min="0" data-ovs="${p.id}" value="${p.stock || 0}"></label>` : '<span class="fld"></span>'}</div>`).join('')}
       ${Object.keys(B().pools || {}).map(id => { const k = 'pool:' + id, i = keyInfo(k); return `<div class="sr"><div class="l"><div class="t">${esc(i.name)} 공용 재고</div><div class="s">${esc(i.sub)} · ${i.unit} 단위</div></div><span class="fld"></span>
         <label class="fld"><span>처음 재고</span><input class="num" type="number" inputmode="numeric" min="0" data-ovs="${esc(k)}" value="${i.stock}"></label></div>`; }).join('')}
       ${Object.keys(ov().price).length || Object.keys(ov().stock).length ? '<button class="txtbtn" data-act="ovReset" style="padding-left:0">config.js 값으로 되돌리기</button>' : ''}</div>
+    <div class="box"><h2>현금 시재</h2>
+      <div class="sr"><div class="l"><div class="t">시작 현금</div></div>
+        <label class="fld"><span>금액</span><input class="num" type="number" inputmode="numeric" min="0" step="1000" data-cashstart value="${D.cashStart || 0}"></label></div>
+      <div class="sr"><div class="l"><div class="t">결제 소리</div></div>
+        <button class="mini ${D.sound === false ? 'gray' : ''}" data-act="toggleSound">${D.sound === false ? '꺼짐' : '켜짐'}</button><button class="mini gray" data-act="testSound">들어보기</button></div></div>
     <div class="box"><h2>선입금 명단</h2>
       <button class="link" data-act="importCsv"><span>CSV 파일 불러오기<span class="s">${ii ? `${esc(ii.file)} · ${mdhm(ii.ts)} · ${ii.count}명` : ''}</span></span><span class="chev">›</span></button>
       <button class="link" data-act="loadTest"><span>테스트용 선입금 넣기<span class="s">가짜 40명</span></span><span class="chev">›</span></button>
@@ -428,7 +471,7 @@ function settingsView() {
       <div class="kv"><span>상품</span><b class="num">${products().length}개</b></div>
       <div class="kv"><span>저장 위치</span><b>이 기기 안</b></div>
       <div class="kv"><span>앱 버전</span><b class="num">${APP_VERSION}</b></div>
-      <a class="link" href="monitor.html?booth=${booth}" target="_blank" rel="noopener"><span>족자봉 모니터 열기<span class="s">외장 모니터에 띄울 화면</span></span><span class="chev">›</span></a>
+      <a class="link" href="monitor.html?booth=${booth}" target="_blank" rel="noopener"><span>족자봉 모니터 열기</span><span class="chev">›</span></a>
       <button class="link" data-act="switchBooth"><span>다른 부스로 바꾸기</span><span class="chev">›</span></button></div>
     <div class="box"><button class="link danger" data-act="askReset"><span>이 부스 데이터 모두 지우기</span><span class="chev">›</span></button></div>
   </div></div></div>`;
@@ -451,10 +494,7 @@ function sheetView() {
     <div class="foot"><button class="back" data-act="back">이전</button><button class="cta" data-act="done" ${cashIn >= total ? '' : 'disabled'}>판매 완료</button></div>`;
   }
   if (sheet === 'transfer') {
-    const a = B().account;
-    h = `<h3>계좌이체</h3>
-    <div class="acct"><div class="bank">${esc(a.bank)}</div><div class="no num">${esc(a.number)}</div><div class="own">예금주 ${esc(a.owner)}</div></div>
-    <div class="kv hl"><span>받을 금액</span><b class="num">${won(total)}</b></div>
+    h = `<h3>계좌이체</h3><p class="bigamt num">${won(total)}</p>
     <div class="foot"><button class="back" data-act="back">이전</button><button class="cta" data-act="done">입금 확인했어요</button></div>`;
   }
   if (sheet === 'adj' && !adj.id) {
@@ -748,10 +788,12 @@ app.addEventListener('click', e => {
   if (us) { const s = D.sales.find(z => z.n === +us.dataset.unsale); s.canceled = true; save(); toast(`${won(s.total)} 판매를 취소했어요`); render(); return; }
 
   switch (a) {
-    case 'pay': sheet = 'method'; break;
+    case 'pay': if (Object.keys(cart).some(id => prod(id)?.r18)) alertBanner('성인 인증 팔찌 확인하세요!'); sheet = 'method'; break;
     case 'close': sheet = null; break;
     case 'back': sheet = 'method'; break;
     case 'clear': cart = {}; break;
+    case 'toggleSound': D.sound = D.sound === false; save(); if (D.sound) chime(); break;
+    case 'testSound': chime(); return;
     case 'openOut': adj = { id: null, dir: 'out', q: 1, reason: '', memo: '' }; sheet = 'adj'; break;
     case 'ovReset': D.ov = { price: {}, stock: {} }; save(); toast('config.js 값으로 되돌렸어요'); break;
     case 'done': {
@@ -760,10 +802,10 @@ app.addEventListener('click', e => {
       D.sales.push({ n: sn, ts: Date.now(), items: { ...cart }, total: t, m: cash ? 'cash' : 'transfer', cashIn: cash ? cashIn : null });
       const ch = cash ? cashIn - t : 0;
       cart = {}; sheet = null; save();
-      toast(`${won(t)} ${cash ? '현금' : '계좌이체'}로 판매했어요${ch > 0 ? ' · 거스름돈 ' + won(ch) : ''}`, true);
+      toast(`${won(t)} ${cash ? '현금' : '계좌이체'}로 판매했어요${ch > 0 ? ' · 거스름돈 ' + won(ch) : ''}`, true); chime();
       break;
     }
-    case 'give': { const p = selected(); pushUndo({ type: 'give', key: p.key, label: p.name + '님 수령' }); p.at = Date.now(); justDone = p.key; save(); toast(`${p.name}님 수령 완료`, true); break; }
+    case 'give': { const p = selected(); pushUndo({ type: 'give', key: p.key, label: p.name + '님 수령' }); p.at = Date.now(); justDone = p.key; save(); toast(`${p.name}님 수령 완료`, true); chime(); break; }
     case 'cancelGive': { const p = selected(); p.at = null; save(); toast(`${p.name}님 전달을 취소했어요`); break; }
     case 'next': justDone = null; digits = ''; selKey = null; break;
     case 'addmore': justDone = null; digits = ''; selKey = null; mode = 'sale'; break;
@@ -823,6 +865,9 @@ app.addEventListener('input', e => {
 app.addEventListener('change', e => {
   const t = e.target, v = Math.max(0, Math.round(+t.value || 0));
   if (t.dataset.ovp) { ov().price[t.dataset.ovp] = v; save(); toast('가격을 바꿨어요'); render(); }
+  if (t.dataset.ovr) { ov().r18[t.dataset.ovr] = t.checked; save(); toast(t.checked ? 'R18 상품으로 표시했어요' : 'R18 표시를 껐어요'); render(); return; }
+  if (t.hasAttribute('data-cashstart')) { D.cashStart = v; save(); toast('시작 현금을 저장했어요'); render(); return; }
+  if (t.hasAttribute('data-cashcount')) { D.cashCount = t.value === '' ? null : v; D.cashCountAt = Date.now(); save(); render(); return; }
   if (t.dataset.ovs) { ov().stock[t.dataset.ovs] = v; save(); toast('처음 재고를 바꿨어요'); render(); }
 });
 

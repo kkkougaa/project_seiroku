@@ -251,6 +251,12 @@ a.link{color:inherit;text-decoration:none}
 .mini.red{background:var(--red-soft);color:var(--red)}
 .fld{display:flex;flex-direction:column;gap:4px;font-size:18px;color:var(--ink2);font-weight:600;width:150px;flex:none}
 .fld input{height:50px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:0 10px;font:inherit;font-size:24px;font-weight:600;width:100%}
+.alert{position:fixed;left:50%;top:calc(90px + var(--sat));transform:translate(-50%,-20px);z-index:20;background:#ff6b00;color:#fff;font-size:30px;font-weight:800;letter-spacing:-.02em;
+  padding:20px 34px;border-radius:20px;box-shadow:0 12px 40px rgba(0,0,0,.3);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;white-space:nowrap;max-width:calc(100% - 32px)}
+.alert.show{opacity:1;transform:translate(-50%,0)}
+.fld.sm{width:64px}
+.fld.chk{align-items:center}
+.fld.chk input{width:28px;height:28px;margin-top:8px;accent-color:var(--orange)}
 .toast{position:fixed;left:50%;bottom:calc(24px + var(--sab));transform:translateX(-50%);background:var(--toast);color:var(--toast-ink);border-radius:16px;padding:13px 18px;display:flex;align-items:center;gap:16px;font-size:22px;font-weight:500;z-index:8;max-width:calc(100% - 32px);animation:fade .2s;box-shadow:0 6px 20px rgba(0,0,0,.18)}
 .toast button{color:#7fb3ff;font-weight:600;white-space:nowrap}
 

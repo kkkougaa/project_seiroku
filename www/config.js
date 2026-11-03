@@ -13,6 +13,7 @@
 //    units     pool 재고를 몇 개씩 쓰는지 (10세트 = 10)
 //    preorderOnly  선입금 전용 (판매 화면에 안 보여요)
 //    variants  종류 목록 (족자봉 A~Y)
+//    r18       true면 받기를 누를 때 '성인 인증 팔찌 확인' 경고가 떠요
 //
 //  파일을 고친 뒤에는 sw.js의 VERSION 숫자를 하나 올려 주세요.
 // =====================================================================
@@ -40,7 +41,7 @@ self.BOOTH_CONFIG = {
       name: 'PPPP2',
       account: { bank: '은행 이름', number: '계좌번호를 넣어 주세요', owner: '예금주' },
       products: [
-        { id: 'pppp2', name: 'PPPP2', price: 15000, stock: 300, image: 'images/pppp2.jpg' },
+        { id: 'pppp2', name: 'PPPP2', r18: true, price: 15000, stock: 300, image: 'images/pppp2.jpg' },
         { id: 'dakimakura', name: '쿠로쿠모 다키마쿠라', price: 100000, stock: 50, image: 'images/dakimakura.jpg' },
       ],
     },
