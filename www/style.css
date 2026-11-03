@@ -180,6 +180,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--blue);outline-o
 .link:last-child{border-bottom:0}
 .link .s{display:block;font-size:20px;color:var(--ink3)}
 .link.danger{color:var(--red)}
+a.link{color:inherit;text-decoration:none}
 .mini{height:44px;padding:0 12px;border-radius:10px;background:var(--blue-soft);color:var(--blue);font-weight:600;font-size:20px;flex:none;white-space:nowrap}
 .mini.gray{background:var(--fill);color:var(--ink2)}
 .lhead{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}

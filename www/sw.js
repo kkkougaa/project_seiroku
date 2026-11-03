@@ -1,9 +1,9 @@
 // 오프라인 캐시. 파일을 고치면 VERSION 숫자를 올려 주세요.
 // 인터넷이 되면 항상 새 파일을 먼저 받고, 안 되면 저장해 둔 파일을 보여줘요.
-const VERSION = 'booth-pos-v10';
+const VERSION = 'booth-pos-v11';
 importScripts('config.js');
 const IMAGES = Object.values(self.BOOTH_CONFIG.booths).flatMap(b => b.products).map(p => p.image).filter(Boolean);
-const FILES = ['./', 'index.html', 'style.css', 'app.js', 'config.js', 'manifest.webmanifest',
+const FILES = ['./', 'index.html', 'monitor.html', 'style.css', 'app.js', 'config.js', 'manifest.webmanifest',
   'fonts/PretendardVariable.woff2', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {

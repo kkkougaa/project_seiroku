@@ -10,7 +10,7 @@ const dataKey = b => 'boothpos:v1:' + b;
 const REASONS_OUT = ['파손·불량', '전시용 샘플', '증정·서비스', '분실', '기타'];
 const REASONS_IN = ['추가 입고', '재고 정정', '기타'];
 const BACKUP_WARN_MIN = 60;
-const APP_VERSION = '10';
+const APP_VERSION = '11';
 
 /* ---------------- 저장소 ---------------- */
 const ls = {
@@ -169,6 +169,27 @@ function render() {
     : topView() + sellView(tab !== 'sell') + (tab === 'list' ? listView() : tab === 'stock' ? stockView() : tab === 'settings' ? settingsView() : '') + sheetView();
   morph(app, tpl, true);
   renderToast();
+  publishMonitor();
+}
+
+/* ---------- 족자봉 모니터 (같은 기기의 다른 창, 외장 모니터용) ---------- */
+const MON_KEY = 'boothpos:monitor:';
+let monChan = null; try { monChan = new BroadcastChannel('boothpos-monitor'); } catch {}
+let monLast = '';
+function publishMonitor() {
+  if (!booth) return;
+  const p = justDone ? D.preorders.find(x => x.key === justDone) : (tab === 'sell' && mode === 'pre' && digits.length === 4 ? selected() : null);
+  if (!p) return; // 화면이 비어도 모니터는 마지막 손님을 그대로 보여줘요
+  const vp = products().filter(x => x.variants);
+  const msg = {
+    booth, key: p.key, name: p.name, done: !!p.at,
+    groups: vp.map(x => ({ name: x.name, vars: (p.vars && p.vars[x.id]) || (p.items[x.id] ? { '?': p.items[x.id] } : {}) })).filter(g => Object.keys(g.vars).length),
+  };
+  const str = JSON.stringify(msg);
+  if (str === monLast) return;
+  monLast = str;
+  ls.set(MON_KEY + booth, JSON.stringify({ ...msg, ts: Date.now() }));
+  try { monChan && monChan.postMessage({ ...msg, ts: Date.now() }); } catch {}
 }
 const badImg = new Set();
 window.__imgfail = el => { badImg.add(el.getAttribute('src')); el.remove(); };
@@ -230,7 +251,7 @@ function panelSale() {
       <div class="step"><button data-dec="${g.key}" aria-label="하나 빼기">−</button><span class="num">${g.qty}</span><button data-add="${g.key}" aria-label="하나 더하기">+</button></div></div>`).join('')
     : `<div class="empty"><b>담긴 상품 없음</b></div>`;
   return `<div class="pbody">${body}</div><div class="pfoot">
-    ${lines.length ? `<div class="total"><span>${groupItems(cart).map(g => `${esc(g.name.replace('랜덤 ', ''))} ${g.qty}${g.unit}`).join(', ')}</span><b class="num">${won(total)}</b></div>` : ''}
+    ${lines.length ? `<div class="total"><span>합계</span><b class="num">${won(total)}</b></div>` : ''}
     <button class="cta" data-act="pay" ${lines.length ? '' : 'disabled'}>${lines.length ? won(total) + ' 받기' : '결제하기'}</button>
     <button class="cta sub2" data-act="openOut">재고에서 제외하기</button>
     ${lines.length ? '<button class="txtbtn" data-act="clear">모두 비우기</button>' : ''}</div>`;
@@ -394,6 +415,7 @@ function settingsView() {
       <div class="kv"><span>상품</span><b class="num">${products().length}개</b></div>
       <div class="kv"><span>저장 위치</span><b>이 기기 안</b></div>
       <div class="kv"><span>앱 버전</span><b class="num">${APP_VERSION}</b></div>
+      <a class="link" href="monitor.html?booth=${booth}" target="_blank" rel="noopener"><span>족자봉 모니터 열기<span class="s">외장 모니터에 띄울 화면</span></span><span class="chev">›</span></a>
       <button class="link" data-act="switchBooth"><span>다른 부스로 바꾸기</span><span class="chev">›</span></button></div>
     <div class="box"><button class="link danger" data-act="askReset"><span>이 부스 데이터 모두 지우기</span><span class="chev">›</span></button></div>
   </div></div></div>`;
