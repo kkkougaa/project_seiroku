@@ -1,0 +1,20 @@
+{
+  "name": "project-seiroku",
+  "version": "1.0.0",
+  "private": true,
+  "description": "오프라인 부스 포스 (웹앱 + 안드로이드 APK)",
+  "scripts": {
+    "serve": "npx --yes http-server www -p 8080 -c-1",
+    "android:sync": "npx cap sync android",
+    "android:build": "npx cap sync android && cd android && ./gradlew assembleDebug"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.3",
+    "@capacitor/core": "8.5.3",
+    "@capacitor/filesystem": "8.1.5",
+    "@capacitor/share": "8.0.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.3"
+  }
+}

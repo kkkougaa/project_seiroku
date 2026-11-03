@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">부스 포스</string>
+    <string name="title_activity_main">부스 포스</string>
+    <string name="package_name">com.boothpos.app</string>
+    <string name="custom_url_scheme">com.boothpos.app</string>
+</resources>

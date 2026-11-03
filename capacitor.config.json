@@ -1,0 +1,7 @@
+{
+  "appId": "com.boothpos.app",
+  "appName": "부스 포스",
+  "webDir": "www",
+  "android": { "allowMixedContent": false },
+  "server": { "androidScheme": "https" }
+}
