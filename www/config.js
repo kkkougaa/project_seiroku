@@ -25,6 +25,8 @@ self.BOOTH_CONFIG = {
     A: {
       name: '초건전회지위원회',
       account: { bank: '은행 이름', number: '계좌번호를 넣어 주세요', owner: '예금주' },
+      // 선입금 사은품: need 상품을 모두 산 분께 give 상품 1개 (1인당 1개). 설정에서 바꿀 수 있어요
+      gift: { on: true, need: ['postcardbook', 'jokja'], give: 'pc1' },
       pools: {
         photocard: { name: '랜덤 포토카드', unit: '세트', stock: 500 }, // 1세트 기준 전체 수량
       },
