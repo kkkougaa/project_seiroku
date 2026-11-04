@@ -10,7 +10,7 @@ const dataKey = b => 'boothpos:v1:' + b;
 const REASONS_OUT = ['파손·불량', '전시용 샘플', '증정·서비스', '분실', '기타'];
 const REASONS_IN = ['추가 입고', '재고 정정', '기타'];
 const BACKUP_WARN_MIN = 60;
-const APP_VERSION = '25';
+const APP_VERSION = '26';
 
 /* ---------------- 저장소 ---------------- */
 const ls = {
@@ -333,8 +333,8 @@ function sellView(hide) {
       ${pick ? `<span class="pk">선입금 ${pick}</span>` : inCart ? `<span class="inc num">${inCart}</span>` : ''}
       <span class="tb"><span class="nm">${esc(p.name)}</span>${p.sub ? `<span class="sb">${esc(p.sub)}</span>` : ''}
       <span class="pr num">${p.price ? won(p.price) : '가격 미정 · 설정에서 넣어 주세요'}</span>
-      <span class="counts ${showSite ? '' : 'one'}">${showSite ? `<span class="cnt site"><b class="num">${Math.max(0, av)}<i class="u">${p.pool ? keyInfo(skey(p)).unit : '개'}</i></b><small>${av <= 0 ? '현장 품절' : '현장 재고'}</small></span>` : ''}
-      <span class="cnt pre ${wt ? 'on' : ''}"><b class="num">${wt}<i class="u">개</i></b><small>선입금 잔여</small></span></span></span></button>`;
+      ${showSite || !p.noPreorder ? `<span class="counts ${showSite && !p.noPreorder ? '' : 'one'}">` : ''}${showSite ? `<span class="cnt site"><b class="num">${Math.max(0, av)}<i class="u">${p.pool ? keyInfo(skey(p)).unit : '개'}</i></b><small>${av <= 0 ? '현장 품절' : '현장 재고'}</small></span>` : ''}
+      ${p.noPreorder ? '' : `<span class="cnt pre ${wt ? 'on' : ''}"><b class="num">${wt}<i class="u">개</i></b><small>선입금 잔여</small></span>`}${showSite || !p.noPreorder ? '</span>' : ''}</span></button>`;
   }).join('');
   const c = cnt(cart);
   return `<div class="sell" ${hide ? 'hidden' : ''}><div class="goods"><div class="goods-h"><h2>상품</h2></div><div class="grid">${tiles}</div></div>
@@ -577,7 +577,7 @@ function settingsView() {
         <label class="fld wide"><span>이름</span><input id="boothName" value="${esc(B().name)}" autocomplete="off"></label></div></div>
     <div class="box"><div class="lhead"><h2>상품</h2><button class="mini" data-act="peNew">+ 상품 추가</button></div>
       ${products().map((p, i) => `<div class="sr"><span class="pthumb">${(() => { const src = imgSrc(p); return src ? `<img src="${esc(src)}" alt="">` : esc(p.name.slice(0, 1)); })()}</span>
-        <div class="l"><div class="t">${esc(p.name)}${p.r18 ? ' <span class="badge red">R18</span>' : ''}</div>
+        <div class="l"><div class="t">${esc(p.name)}${p.r18 ? ' <span class="badge red">R18</span>' : ''}${p.noPreorder ? ' <span class="badge gray">선입금 없음</span>' : ''}</div>
         <div class="s num">${p.preorderOnly ? '선입금 전용' : won(p.price)}${p.pool ? ' · ' + esc(keyInfo(skey(p)).name) + ' 공용 · ' + units(p) + '씩' : p.preorderOnly ? '' : ' · 처음 재고 ' + (p.stock || 0)}${p.variants ? ' · 종류 ' + p.variants.length + '개' : ''}</div></div>
         <span class="ord"><button class="mini gray" data-pmove="${i}" data-d="-1" aria-label="위로" ${i ? '' : 'disabled'}>↑</button><button class="mini gray" data-pmove="${i}" data-d="1" aria-label="아래로" ${i < products().length - 1 ? '' : 'disabled'}>↓</button></span>
         <button class="mini gray" data-pedit="${esc(p.id)}">편집</button></div>`).join('')}
@@ -659,6 +659,7 @@ function sheetView() {
       <div class="toggles">
         <button class="tg ${e.r18 ? 'on' : ''}" data-ptg="r18">R18</button>
         <button class="tg ${e.preorderOnly ? 'on' : ''}" data-ptg="preorderOnly">선입금 전용</button>
+        ${e.preorderOnly ? '' : `<button class="tg ${e.noPre ? 'on' : ''}" data-ptg="noPre">선입금 없음</button>`}
         <button class="tg ${e.varOn ? 'on' : ''}" data-ptg="varOn">종류 (알파벳)</button>
       </div>
       ${e.varOn ? `<label class="frow"><span>종류 목록</span><input id="pe_letters" class="search" value="${esc(e.letters)}" placeholder="예: A-Y 또는 A,B,C" autocomplete="off"></label>` : ''}
@@ -944,7 +945,7 @@ function lettersText(v) {
   return range ? v[0] + '-' + v[v.length - 1] : v.join(',');
 }
 function openEditor(p) {
-  pe = p ? { isNew: false, id: p.id, name: p.name, sub: p.sub || '', price: p.price || 0, stock: p.stock || 0, badge: p.badge || '', r18: !!p.r18, preorderOnly: !!p.preorderOnly,
+  pe = p ? { isNew: false, id: p.id, name: p.name, sub: p.sub || '', price: p.price || 0, stock: p.stock || 0, badge: p.badge || '', r18: !!p.r18, preorderOnly: !!p.preorderOnly, noPre: !!p.noPreorder,
     varOn: !!p.variants, letters: p.variants ? lettersText(p.variants) : 'A-Y', pool: p.pool || '', units: p.units || 1, img: imgSrc(p) || '', imgNew: null, imgDel: false, newPool: null }
     : { isNew: true, id: 'p' + Date.now().toString(36), name: '', sub: '', price: 0, stock: 0, badge: '', r18: false, preorderOnly: false, varOn: false, letters: 'A-Y', pool: '', units: 1, img: '', imgNew: null, imgDel: false, newPool: null };
   sheet = 'prod';
@@ -961,6 +962,7 @@ function saveEditor() {
   if (e.badge.trim()) p.badge = e.badge.trim();
   if (e.r18) p.r18 = true;
   if (e.preorderOnly) p.preorderOnly = true;
+  else if (e.noPre) p.noPreorder = true;
   if (e.varOn) { const v = parseLetters(e.letters); if (v.length) p.variants = v; }
   if (!e.preorderOnly && e.pool) { p.pool = e.pool; p.units = Math.max(1, Math.round(+e.units || 1)); }
   else if (!e.preorderOnly) p.stock = Math.max(0, Math.round(+e.stock || 0));
