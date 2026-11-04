@@ -493,8 +493,6 @@ function viewConnect() {
     <p>허용된 구글 계정으로 로그인해 주세요.</p>
     ${err}
     <div class="card gbox"><div id="gbtn"></div><p class="hint" style="margin:0">로그인 정보는 이 브라우저에만 남아요. 시트에 접근할 수 있는 계정은 관리자가 정해요.</p></div>
-    <div class="card"><h2>먼저 둘러보기</h2><p class="sub">가짜 데이터 · 시트에 저장 안 됨</p><button class="btn soft" data-act="demo">둘러보기 시작</button>
-      <details class="more"><summary>비밀키로 연결하기</summary><div style="margin-top:12px">${connectForm()}</div></details></div>
   </div>`;
   return `<div class="hello">
     <h1>시트와 연결해요</h1>
