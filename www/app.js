@@ -10,7 +10,7 @@ const dataKey = b => 'boothpos:v1:' + b;
 const REASONS_OUT = ['파손·불량', '전시용 샘플', '증정·서비스', '분실', '기타'];
 const REASONS_IN = ['추가 입고', '재고 정정', '기타'];
 const BACKUP_WARN_MIN = 60;
-const APP_VERSION = '24';
+const APP_VERSION = '25';
 
 /* ---------------- 저장소 ---------------- */
 const ls = {
@@ -113,7 +113,7 @@ const hhmm = ts => { if (!ts) return ''; const d = new Date(ts); return String(d
 const mdhm = ts => { const d = new Date(ts); return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + hhmm(ts); };
 const stamp = () => { const d = new Date(), p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`; };
 const pname = id => prod(id)?.name || id;
-const varPlain = v => Object.entries(v || {}).sort(([a], [b]) => (a === '?') - (b === '?') || a.localeCompare(b)).map(([L, q]) => (L === '?' ? '종류 미정' : L) + (q > 1 ? '×' + q : '')).join(', ');
+const varPlain = v => Object.entries(v || {}).sort((x, y) => kindOrder(x, y)).map(([L, q]) => (L === '?' ? '종류 미정' : L) + (q > 1 ? '×' + q : '')).join(', ');
 // 같은 공용 재고(포토카드 1·5·10세트)는 한 줄로 합쳐요: 1세트 + 5세트 = 랜덤 포토카드 6세트
 function groupItems(it) {
   const out = [], pools = {};
@@ -360,7 +360,7 @@ function panelSale() {
 }
 
 function vchips(v) {
-  return `<div class="vchips">${Object.entries(v).sort(([a], [b]) => (a === '?') - (b === '?') || a.localeCompare(b)).map(([L, q]) =>
+  return `<div class="vchips">${Object.entries(v).sort(kindOrder).map(([L, q]) =>
     L === '?' ? `<span class="vchip warn">종류 미정${q > 1 ? ` <small>×${q}</small>` : ''}</span>` : `<span class="vchip">${esc(L)}${q > 1 ? `<small>×${q}</small>` : ''}</span>`).join('')}</div>`;
 }
 
@@ -462,7 +462,8 @@ function preorderOnlyBoxes() {
       const v = (o.vars && o.vars[p.id]) || { '?': q };
       for (const [L, n] of Object.entries(v)) { per[L] = per[L] || { done: 0, wait: 0 }; per[L][o.at ? 'done' : 'wait'] += n; }
     }
-    const letters = [...(p.variants || []), ...(per['?'] ? ['?'] : [])];
+    const extra = Object.keys(per).filter(L => L !== '?' && !(p.variants || []).includes(L)).sort((a, b) => kindOrder([a], [b]));
+    const letters = [...(p.variants || []), ...extra, ...(per['?'] ? ['?'] : [])];
     const grid = p.variants ? `<div class="vgrid">${letters.map(L => { const x = per[L] || { done: 0, wait: 0 };
       return `<div class="vcell ${x.wait ? 'on' : ''} ${L === '?' ? 'warn' : ''}"><b>${L === '?' ? '미정' : L}</b><span class="num">${x.wait ? '대기 ' + x.wait : x.done ? '완료' : '-'}</span>${x.done && x.wait ? `<small class="num">전달 ${x.done}</small>` : ''}</div>`; }).join('')}</div>` : '';
     return `<div class="box"><h2>${esc(p.name)} <span class="cap" style="font-weight:400">선입금 전용</span></h2><p class="cap num">전달 ${done} · 남은 ${wait}</p>${grid}</div>`;
@@ -779,17 +780,20 @@ const truthy = v => /^(o|y|yes|true|1|확인|완료|입금|ㅇ|v|✓|✔|●|○
 const qtyOf = v => { v = String(v || '').trim(); const d = v.match(/\d+/); return d ? parseInt(d[0], 10) : (v && truthy(v) ? 1 : 0); };
 
 // "A, C, C" / "A×2 C" / "a2, c1" 같은 값을 {A:1, C:2} 로 읽어요
+// "B, R, 27" / "B×2, G" / "29" 같은 값을 {B:1, R:1, '27':1} 로 읽어요
+// 알파벳은 그대로, 숫자는 목록에 같은 이름이 있으면 그대로, 없으면 1→A … 순서로 바꾸고, 그보다 크면 숫자 그대로 종류로 써요
 function parseVariants(v, letters) {
-  const out = {}, set = new Set(letters.map(x => x.toUpperCase()));
-  const re = /([A-Za-z])\s*(?:[x×*]\s*)?(\d+)?/g; let m;
-  const s = String(v || '').replace(/[xX×*](?=\s*\d)/g, '×');
-  while ((m = re.exec(s))) {
-    const L = m[1].toUpperCase();
-    if (!set.has(L)) continue;
-    out[L] = (out[L] || 0) + (m[2] ? parseInt(m[2], 10) : 1);
+  const out = {}, list = letters.map(x => String(x).toUpperCase()), set = new Set(list);
+  const re = /([A-Za-z]|\d+)(?:\s*[x×*]\s*(\d+))?/g; let m;
+  while ((m = re.exec(String(v || '')))) {
+    let k = m[1].toUpperCase();
+    if (/^\d+$/.test(k) && !set.has(k)) { const n = parseInt(k, 10); if (n >= 1 && n <= list.length && list.every(x => /^[A-Z]$/.test(x))) k = list[n - 1]; else k = String(n); }
+    out[k] = (out[k] || 0) + (m[2] ? parseInt(m[2], 10) : 1);
   }
   return out;
 }
+// 종류 정렬: 알파벳 먼저, 그다음 숫자 순서, 종류 미정은 맨 뒤
+const kindOrder = ([a], [b]) => (a === '?') - (b === '?') || (/^\d+$/.test(a) - /^\d+$/.test(b)) || (/^\d+$/.test(a) ? a - b : a.localeCompare(b));
 
 function analyzeCSV(rows, file) {
   const head = rows[0].map(h => h.trim()), body = rows.slice(1);
