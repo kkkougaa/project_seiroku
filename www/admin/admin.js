@@ -492,24 +492,12 @@ function viewConnect() {
     <h1>행사 관리</h1>
     <p>허용된 구글 계정으로 로그인해 주세요.</p>
     ${err}
-    <div class="card gbox"><div id="gbtn"></div><p class="hint" style="margin:0">로그인 정보는 이 브라우저에만 남아요. 시트에 접근할 수 있는 계정은 관리자가 정해요.</p></div>
+    <div class="card gbox"><div id="gbtn"></div></div>
   </div>`;
   return `<div class="hello">
-    <h1>시트와 연결해요</h1>
-    <p>관리자에게 받은 연결 링크를 열면 자동으로 연결돼요. 비밀키를 직접 넣어도 돼요.</p>
+    <h1>행사 관리</h1>
     ${err}
     <div class="card">${connectForm()}</div>
-    <div class="card">
-      <h2>처음이라면</h2>
-      <ol class="steps">
-        <li>새 구글 시트를 만들고 <b>확장 프로그램 → Apps Script</b>를 열어요.</li>
-        <li>저장소의 <code>apps-script/Code.gs</code> 내용을 붙여넣고 저장해요.</li>
-        <li>시트를 새로고침하면 생기는 <b>관리 사이트 → 처음 설정</b>을 눌러요. 비밀키가 나와요.</li>
-        <li><b>배포 → 새 배포 → 웹 앱</b>, 실행 계정 <b>나</b>, 액세스 <b>모든 사용자</b>로 배포해요.</li>
-        <li>나온 웹 앱 주소(<code>https://script.google.com/macros/s/…/exec</code>)를 위에 넣어요.</li>
-      </ol>
-    </div>
-    <div class="card"><h2>먼저 둘러보기</h2><p class="sub">가짜 데이터 · 시트에 저장 안 됨</p><button class="btn soft" data-act="demo">둘러보기 시작</button></div>
   </div>`;
 }
 function connectForm() {

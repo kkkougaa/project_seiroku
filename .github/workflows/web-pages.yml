@@ -18,6 +18,8 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - name: 관리 사이트 파일 버전 붙이기 (브라우저 캐시 때문에 옛 파일이 안 보이게)
+        run: sed -i -E "s/\?v=[0-9A-Za-z]+\"/?v=${GITHUB_SHA::8}\"/g" www/admin/index.html
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
