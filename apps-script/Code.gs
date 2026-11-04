@@ -32,6 +32,8 @@ const TABS = {
     '주문자연락처', '결제날짜', '수령자명', '수령자연락처', '우편번호', '주소', '배송메모', '환불은행', '환불계좌',
     '환불예금주', '총 주문금액', '이메일', '족자봉', '트위터계정', '인스타계정', '택배사', '운송장번호', '진행상태', '메모', '주문번호'],
   '입금기록': ['거래 일시', '적요', '거래 유형', '거래 기관', '계좌번호', '거래 금액', '거래 후 잔액', '메모'],
+  '수동 주문': ['주문번호', '작성시간', '닉네임', '이름', '입금자명', '연락처', '엽서북', '족자봉', '총 주문금액', '수령 방법', '메모'],
+  '출금 처리': ['출금 키', '구분', '주문번호', '메모', '수정 시각', '수정한 사람'],
   '주문 처리': ['주문번호', '족자봉 확정', '입금 처리', '입금 키', '메모', '수정 시각', '수정한 사람'],
   '추가 수량': ['구분', '넘버', '개수', '대상', '메모'],
   '수입': ['항목', '금액', '메모'],
@@ -91,7 +93,7 @@ function setup() {
 // 탭이 없으면 만들어요. 사이트에서 처음 부를 때도 알아서 해요.
 function ensureTabs_() {
   const cache = CacheService.getScriptCache();
-  if (cache.get('tabs-ok2')) return;
+  if (cache.get('tabs-ok4')) return;
   const ss = SpreadsheetApp.getActive();
   // 비용 탭 열 이름 바꾸기: 항목 → 내용, 출금자 → 사용 출처
   const cost = ss.getSheetByName('비용');
@@ -115,7 +117,7 @@ function ensureTabs_() {
     PropertiesService.getScriptProperties().setProperty('AUTHORS_IMPORTED', '1');
     try { importAuthors_(); } catch (e) { /* 작년 시트를 못 열면 빈 탭으로 둬요 */ }
   }
-  cache.put('tabs-ok2', '1', 600);
+  cache.put('tabs-ok4', '1', 600);
 }
 
 // 섭외 진행 + 확정 작가 리스트를 한 탭(작가)으로 합쳐요. X 아이디로 짝을 맞춰요.
@@ -160,9 +162,9 @@ function sample_(which) {
   throw new Error('모르는 샘플이에요: ' + which);
 }
 
-// orders: 선입금 리스트 + 주문 처리 를 비워요 / deposits: 입금기록을 비워요 (첫 줄 제목은 남겨요)
+// orders: 선입금 리스트 + 수동 주문 + 주문 처리 를 비워요 / deposits: 입금기록을 비워요 (첫 줄 제목은 남겨요)
 function reset_(which) {
-  const names = which === 'orders' ? ['선입금 리스트', '주문 처리'] : which === 'deposits' ? ['입금기록'] : null;
+  const names = which === 'orders' ? ['선입금 리스트', '수동 주문', '주문 처리'] : which === 'deposits' ? ['입금기록', '출금 처리'] : null;
   if (!names) throw new Error('모르는 초기화예요: ' + which);
   names.forEach(n => { const sh = sheet_(n); if (sh.getLastRow() > 1) sh.deleteRows(2, sh.getLastRow() - 1); });
 }
@@ -354,7 +356,7 @@ function doPost(e) {
     }
     ensureTabs_();
     if (req.action === 'read') return json_({ ok: true, tabs: readFast_(!!req.fresh), at: new Date().toISOString(), who: who, admin: !!me.owner });
-    if (req.sheet === '주문 처리' && req.values) req.values['수정한 사람'] = who;
+    if ((req.sheet === '주문 처리' || req.sheet === '출금 처리') && req.values) req.values['수정한 사람'] = who;
 
     const lock = LockService.getScriptLock();
     lock.waitLock(20000);

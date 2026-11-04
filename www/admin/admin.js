@@ -112,7 +112,7 @@ async function api(action, payload = {}) {
       st.demoTabs[name] = fresh[name]; return { ok: true, count: fresh[name].rows.length };
     }
     if (action === 'reset') {
-      (payload.which === 'orders' ? ['선입금 리스트', '주문 처리'] : ['입금기록']).forEach(n => { st.demoTabs[n].rows = []; });
+      (payload.which === 'orders' ? ['선입금 리스트', '수동 주문', '주문 처리'] : ['입금기록', '출금 처리']).forEach(n => { if (st.demoTabs[n]) st.demoTabs[n].rows = []; });
       return { ok: true };
     }
     if (action === 'avatars') return { ok: true, rows: {} };
@@ -291,6 +291,11 @@ function build() {
     return { row: r.row, key, at: r.get('거래 일시'), who: r.get('적요'), type, amt: Math.abs(amt), bal: r.get('거래 후 잔액'), balN: toNum(r.get('거래 후 잔액')), memo: r.get('메모'), bank: r.get('거래 기관'), order: null };
   });
   const depByKey = {}; deposits.forEach(d => { depByKey[d.key] = d; });
+  // 출금 처리: 출금마다 환불 / 비용 / 기타 로 분류하고, 환불이면 어느 주문인지 적어요
+  const wdProc = {};
+  for (const r of T('출금 처리').rows) if (r.get('출금 키')) wdProc[r.get('출금 키')] = { row: r.row, kind: r.get('구분'), order: r.get('주문번호'), memo: r.get('메모') };
+  const withdrawals = deposits.filter(d => d.type !== '입금');
+  withdrawals.forEach(d => { d.wp = wdProc[d.key] || null; });
 
   // 주문
   const orders = T('선입금 리스트').rows.filter(r => r.get('주문번호') || r.get('번호')).map(r => {
@@ -307,12 +312,24 @@ function build() {
     else if (sumObj(parsed) !== qty || bad.length) jState = 'check';
     if (!qty && !text && !fixed) jState = 'none';
     const books = toNum(r.get('엽서북')), ship = toNum(r.get('배송비')), total = toNum(r.get('총 주문금액#1'));
-    const expect = books * priceBook + qty * priceJ + ship;
+    const expect = books * priceBook + sumObj(jk) * priceJ + ship; // 실제 적힌 넘버 개수로 계산
     return {
       row: r.row, r, id, num: r.get('번호'), nick: r.get('닉네임'), name: r.get('주문자명'), payer: r.get('환불예금주'), recv: r.get('수령자명'),
       phone: r.get('수령자연락처') || r.get('주문자연락처'), books, qty, text, parsed, fixed, jk, jCount: sumObj(jk), jState, bad,
       total, expect, ship, method: r.get('배송방법'), formStatus: r.get('진행상태'), proc: p, pay: null, dep: null, deps: [], depSum: 0, cand: null,
     };
+  });
+  // 위치폼 밖에서 받은 주문 (수동 주문 탭). 족자봉 개수는 적은 넘버로 세요.
+  T('수동 주문').rows.filter(r => r.get('주문번호')).forEach(r => {
+    const id = r.get('주문번호'), p = proc[id] || {};
+    const text = r.get('족자봉'), parsed = parseJokja(text), fixed = p.j ? parseJokja(p.j) : null, jk = fixed || parsed;
+    const bad = Object.keys(jk).map(Number).filter(n => n < 1 || (maxNo && n > maxNo));
+    const books = toNum(r.get('엽서북')), qty = sumObj(parsed), total = toNum(r.get('총 주문금액'));
+    orders.push({
+      row: r.row, r, id, num: '직접', manualOrder: true, nick: r.get('닉네임'), name: r.get('이름'), payer: r.get('입금자명') || r.get('이름'), recv: r.get('이름'),
+      phone: r.get('연락처'), books, qty, text, parsed, fixed, jk, jCount: sumObj(jk), jState: fixed ? 'fixed' : bad.length ? 'check' : qty ? 'ok' : 'none', bad,
+      total, expect: books * priceBook + sumObj(jk) * priceJ, ship: 0, method: r.get('수령 방법'), formStatus: '', proc: p, pay: null, dep: null, deps: [], depSum: 0, cand: null, at: r.get('작성시간'),
+    });
   });
 
   // 입금 대조
@@ -325,7 +342,8 @@ function build() {
     if (keys.length) {
       o.deps = keys.map(k => depByKey[k]); o.deps.forEach(d => { d.order = o; used.add(d.key); });
       o.dep = o.deps[0]; o.depSum = o.deps.reduce((a, d) => a + d.amt, 0);
-      o.pay = o.depSum === o.total ? 'linked' : 'diff'; continue;
+      if (o.formStatus === '결제완료' && pay !== '미입금') { o.pay = 'form'; continue; } // 폼 결제 + 추가 입금(추가 구매)
+      o.pay = o.depSum === o.total || o.depSum === o.expect ? 'linked' : 'diff'; continue;
     }
     if (pay === '확인') { o.pay = 'manual'; continue; }
     if (pay === '미입금') { o.pay = 'unpaid'; continue; }
@@ -349,6 +367,17 @@ function build() {
     if (!o.pay) o.pay = o.cand.length ? 'diff' : 'none';
   }
   const unusedDeps = deposits.filter(d => d.type === '입금' && !used.has(d.key));
+
+  // 금액 검증: 실제 엽서북·족자봉 개수로 계산한 금액(expect) ↔ 받은 금액(입금됐으면, 환불 빼고) 또는 신청 금액
+  for (const o of orders) {
+    o.refunds = withdrawals.filter(d => d.wp && d.wp.kind === '환불' && d.wp.order === o.id);
+    o.refundSum = o.refunds.reduce((a, d) => a + d.amt, 0);
+    const paid = ['form', 'linked', 'auto', 'manual'].includes(o.pay) || (o.pay === 'diff' && o.deps.length);
+    o.paidAmt = (o.pay === 'form' ? o.total + o.depSum : o.deps.length ? o.depSum : o.pay === 'manual' ? o.total : 0) - o.refundSum;
+    o.cmpAmt = paid ? o.paidAmt : o.total;
+    o.cmpLabel = paid ? '받은 금액' : '신청 금액';
+    o.amtWarn = o.pay !== 'cancel' && o.cmpAmt !== o.expect;
+  }
 
   const PAID = ['form', 'linked', 'manual', 'auto'];
   const live = orders.filter(o => o.pay !== 'cancel');
@@ -375,8 +404,9 @@ function build() {
     return { row: r.row, r, name: r.get('내용') || r.get('항목'), unit, n, amt: unit * n, who: r.get('사용 출처') || r.get('출금자') || '공금', done: r.get('처리') === '완료', memo: r.get('메모') };
   });
   const preForm = paid.filter(o => o.pay === 'form').reduce((a, o) => a + o.total, 0);
-  const preBank = paid.filter(o => o.pay !== 'form').reduce((a, o) => a + o.total, 0);
-  const incomeSum = preForm + preBank + income.reduce((a, x) => a + x.amt, 0);
+  const preBank = paid.reduce((a, o) => a + (o.pay === 'form' ? o.depSum : o.deps.length ? o.depSum : o.total), 0);
+  const refundSum = live.reduce((a, o) => a + o.refundSum, 0);
+  const incomeSum = preForm + preBank - refundSum + income.reduce((a, x) => a + x.amt, 0);
   const costShared = costs.filter(c => c.amt > 0).reduce((a, c) => a + c.amt, 0);
   // 개인 선정산: 개인이 낸 비용(+)과 개인이 공금에서 가져간 돈(-) 중 아직 처리 안 된 것
   const personal = {};
@@ -405,7 +435,7 @@ function build() {
   }
 
   return {
-    cfg, priceBook, priceJ, spareJ, bookPerAuthor, ratios, authors, confirmed, authorByNo, maxNo, orders, live, paid, deposits, unusedDeps,
+    cfg, priceBook, priceJ, spareJ, bookPerAuthor, ratios, authors, confirmed, authorByNo, maxNo, orders, live, paid, deposits, unusedDeps, withdrawals, refundSum,
     extra, make, bookOrder, bookAuthor, bookExtra, income, costs, preForm, preBank, incomeSum, costShared, personal, personalSum, reserve, reserveAuto,
     balanceIn, pool, people, wsum, dIn, dOut, bankCheck,
   };
@@ -429,10 +459,12 @@ function checks() {
   if (diff.length) add('warn', `입금 확인이 필요한 주문 ${diff.length}건`, '이름은 비슷한데 금액이 다르거나, 이름이 일부만 같아요.', 'match');
   if (none.length) add('bad', `입금이 안 보이는 주문 ${none.length}건`, '통장 내역에 같은 이름의 입금이 없어요.', 'match');
   if (m.unusedDeps.length) add('warn', `주문과 연결 안 된 입금 ${m.unusedDeps.length}건`, '입금자명이 신청서 이름과 다를 수 있어요.', 'match');
+  const wdNew = m.withdrawals.filter(d => !d.wp || !d.wp.kind);
+  if (wdNew.length) add('warn', `분류 안 된 출금 ${wdNew.length}건`, '환불인지, 비용인지 입금 대조에서 표시해 주세요.', 'match');
   const jc = m.live.filter(o => o.jState === 'check');
   if (jc.length) add('warn', `족자봉 넘버를 확인할 주문 ${jc.length}건`, '적은 넘버 개수가 주문 개수와 다르거나 없는 넘버가 있어요.', 'orders:jokja');
-  const money = m.live.filter(o => o.total !== o.expect);
-  if (money.length) add('warn', `신청서 금액이 계산과 다른 주문 ${money.length}건`, `엽서북 ${won(m.priceBook)}, 족자봉 ${won(m.priceJ)} 기준으로 계산했어요.`, 'orders:money');
+  const money = m.live.filter(o => o.amtWarn);
+  if (money.length) add('warn', `금액이 맞지 않는 주문 ${money.length}건`, `실제 개수로 계산한 금액(엽서북 ${won(m.priceBook)}, 족자봉 ${won(m.priceJ)})과 받은·신청 금액이 달라요.`, 'orders:money');
   const qSum = m.live.reduce((a, o) => a + o.qty, 0), jSum = m.live.reduce((a, o) => a + o.jCount, 0);
   if (m.orders.length) add(qSum === jSum ? 'ok' : 'warn', `족자봉 주문 수 ${cnt(qSum)}개 / 넘버로 센 수 ${cnt(jSum)}개`, qSum === jSum ? '신청서 개수와 넘버 개수가 같아요.' : '차이 나는 주문을 주문 탭에서 확인해 주세요.', qSum === jSum ? null : 'orders:jokja');
   if (m.bankCheck) {
@@ -561,7 +593,7 @@ function viewAuthors() {
 // ---------- 주문 ----------
 const ORDER_FILTERS = [
   ['all', '전체', o => o.pay !== 'cancel'], ['check', '입금 확인 필요', o => ['diff', 'none', 'unpaid'].includes(o.pay)],
-  ['jokja', '족자봉 확인', o => o.jState === 'check'], ['money', '금액 다름', o => o.pay !== 'cancel' && o.total !== o.expect],
+  ['jokja', '족자봉 확인', o => o.jState === 'check'], ['money', '금액 다름', o => o.amtWarn],
   ['paid', '입금 완료', o => ['form', 'auto', 'linked', 'manual'].includes(o.pay)], ['cancel', '취소', o => o.pay === 'cancel'],
 ];
 function viewOrders() {
@@ -571,11 +603,11 @@ function viewOrders() {
   let list = m.orders.filter(fn);
   if (q) list = list.filter(o => normName([o.nick, o.name, o.payer, o.recv, o.id, o.phone].join(' ')).includes(q) || String(o.phone).replace(/\D/g, '').endsWith(q));
   const rows = list.map(o => `<tr data-open="order:${esc(o.id)}">
-      <td class="num muted">${esc(o.num)}</td><td><b>${esc(o.nick || o.name)}</b><div class="muted" style="font-size:13px">${esc(o.name)}${o.payer && o.payer !== o.name ? ' · 입금 ' + esc(o.payer) : ''}</div></td>
+      <td class="num muted">${o.manualOrder ? '<span class="badge">직접</span>' : esc(o.num)}</td><td><b>${esc(o.nick || o.name)}</b><div class="muted" style="font-size:13px">${esc(o.name)}${o.payer && o.payer !== o.name ? ' · 입금 ' + esc(o.payer) : ''}</div></td>
       <td class="r num">${o.books || '-'}</td><td>${jokjaChips(o.jk)} ${jBadge(o)}</td>
-      <td class="r num">${won(o.total)}${o.total !== o.expect ? `<div style="font-size:12px;color:var(--orange)">계산 ${won(o.expect)}</div>` : ''}</td><td>${payBadge(o)}</td>
+      <td class="r num">${won(o.cmpAmt)}${o.amtWarn ? `<div style="font-size:12px;color:var(--orange)">계산 ${won(o.expect)}</div>` : ''}</td><td>${payBadge(o)}</td>
     </tr>`).join('');
-  return head('주문', '', `<button class="btn" data-act="exportPos">포스로 내보내기</button><button class="btn pri" data-act="paste" data-tab="선입금 리스트">선입금 데이터 넣기</button>`) +
+  return head('주문', '', `<button class="btn" data-act="exportPos">포스로 내보내기</button><button class="btn" data-act="newOrder">주문 직접 추가</button><button class="btn pri" data-act="paste" data-tab="선입금 리스트">선입금 데이터 넣기</button>`) +
     `<div class="chips">${ORDER_FILTERS.map(([k, t, f]) => `<button class="chip" aria-pressed="${st.orderFilter === k}" data-seg="orderFilter:${k}">${t} <b>${m.orders.filter(f).length}</b></button>`).join('')}</div>
     <div class="tools"><input class="search" id="orderQ" placeholder="이름, 닉네임, 입금자명, 전화번호 뒷자리, 주문번호" value="${esc(st.orderQ)}"></div>
     <div class="tbl-wrap">${list.length ? `<table class="tbl"><thead><tr><th>번호</th><th>주문자</th><th class="r">엽서북</th><th>족자봉</th><th class="r">금액</th><th>입금</th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty">${m.orders.length ? '조건에 맞는 주문이 없어요' : '아직 선입금 데이터가 없어요. 오른쪽 위 버튼으로 넣어 주세요.'}</div>`}</div>`;
@@ -604,6 +636,7 @@ function viewMatch() {
     <div class="card"><div class="card-h"><div><h2>주문과 연결 안 된 입금</h2></div></div>
       ${m.unusedDeps.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>입금 일시</th><th>입금자명</th><th class="r">금액</th><th>메모</th></tr></thead><tbody>${m.unusedDeps.map(d => `<tr data-open="dep:${esc(d.key)}"><td class="num muted">${esc(d.at)}</td><td><b>${esc(d.who)}</b></td><td class="r num">${won(d.amt)}</td><td class="muted">${esc(d.memo)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">남은 입금이 없어요</div>'}
     </div>
+    ${wdCard(m)}
     <div class="card"><div class="card-h"><div><h2>자동으로 연결된 입금</h2></div></div>
       ${auto.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>주문자</th><th>입금자명</th><th class="r">금액</th><th>방법</th></tr></thead><tbody>${auto.map(o => `<tr data-open="order:${esc(o.id)}"><td><b>${esc(o.payer || o.name)}</b> <span class="muted">${esc(o.nick)}</span></td><td>${o.deps.map(d => esc(d.who)).join(' + ')}</td><td class="r num">${won(o.depSum)}</td><td class="muted">${o.pay === 'linked' ? '손으로 연결' : esc(o.how)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">아직 없어요</div>'}
     </div>`;
@@ -632,7 +665,7 @@ function viewMake() {
 // ---------- 정산 ----------
 function viewMoney() {
   const m = M();
-  const incomeList = `<div class="kv"><span>선입금 · 폼 결제</span><b class="num">${won(m.preForm)}</b></div><div class="kv"><span>선입금 · 통장 입금 확인</span><b class="num">${won(m.preBank)}</b></div>` +
+  const incomeList = `<div class="kv"><span>선입금 · 폼 결제</span><b class="num">${won(m.preForm)}</b></div><div class="kv"><span>선입금 · 통장 입금 확인</span><b class="num">${won(m.preBank)}</b></div>${m.refundSum ? `<div class="kv minus"><span>환불</span><b class="num">${won(-m.refundSum)}</b></div>` : ''}` +
     m.income.map(x => `<div class="kv"><span>${esc(x.name)}</span><b class="num">${won(x.amt)}</b></div>`).join('') + `<div class="kv total"><span>수입 합계</span><b class="num">${won(m.incomeSum)}</b></div>`;
   const dist = m.balanceIn === null
     ? `<div class="note warn"><b>현재 잔고 + 현금</b>을 설정에 넣으면 분배 금액을 계산해요.</div><button class="btn soft" data-go="settings">설정에서 넣기</button>`
@@ -676,8 +709,8 @@ function viewSettings() {
       ${st.demo ? '' : `<div class="card"><h2>테스트 데이터</h2>
         <div class="kv"><span>작년 선입금 주문 (164건)</span><b><button class="btn sm soft" data-act="sample" data-which="orders">불러오기</button></b></div>
         <div class="kv"><span>작년 통장 입금내역 (89건)</span><b><button class="btn sm soft" data-act="sample" data-which="deposits">불러오기</button></b></div>
-        <div class="kv"><span>선입금 내역 초기화<br><small class="muted">선입금 리스트 + 주문 처리(입금 연결, 족자봉 고침)</small></span><b><button class="btn sm danger" data-act="reset" data-which="orders">초기화</button></b></div>
-        <div class="kv"><span>입금내역 초기화<br><small class="muted">입금기록 탭</small></span><b><button class="btn sm danger" data-act="reset" data-which="deposits">초기화</button></b></div></div>`}
+        <div class="kv"><span>선입금 내역 초기화<br><small class="muted">선입금 리스트 + 직접 추가한 주문 + 주문 처리(입금 연결, 족자봉 고침)</small></span><b><button class="btn sm danger" data-act="reset" data-which="orders">초기화</button></b></div>
+        <div class="kv"><span>입금내역 초기화<br><small class="muted">입금기록 + 출금 처리(환불·비용 표시)</small></span><b><button class="btn sm danger" data-act="reset" data-which="deposits">초기화</button></b></div></div>`}
       ${st.demo || useGoogle() ? '' : `<div class="card"><h2>동료에게 주기</h2><p class="sub">시트 메뉴 <b>관리 사이트 → 동료 추가</b>를 누르면 그 사람 전용 링크가 나와요. 링크를 한 번 열면 자동으로 연결되고, 누가 고쳤는지도 남아요. 한 명만 끊을 수도 있어요.</p>
         <div class="acts"><button class="btn soft" data-act="copyLink">내 연결 링크 복사</button></div><p class="hint" style="margin:8px 0 0">내 다른 기기(아이패드, 폰)에서 열 때 쓰세요. 이 링크는 내 키라서 남에게 주면 안 돼요.</p></div>`}
       <div class="card"><h2>원본 데이터 넣기</h2>
@@ -824,6 +857,15 @@ function orderModal(id) {
       </div><div>
         <h4 style="margin:4px 0 6px">입금</h4>
         <div class="kv"><span>지금 상태</span><b>${payBadge(o)}</b></div>
+        <h4 style="margin:14px 0 4px">금액 확인</h4>
+        <div class="kv sub"><span>엽서북 ${o.books}권 × ${won(m.priceBook)}</span><b class="num">${won(o.books * m.priceBook)}</b></div>
+        <div class="kv sub"><span>족자봉 ${o.jCount}개 × ${won(m.priceJ)}</span><b class="num">${won(o.jCount * m.priceJ)}</b></div>
+        ${o.ship ? `<div class="kv sub"><span>배송비</span><b class="num">${won(o.ship)}</b></div>` : ''}
+        <div class="kv"><span>실제 개수로 계산</span><b class="num">${won(o.expect)}</b></div>
+        <div class="kv"><span>신청 금액</span><b class="num">${won(o.total)}</b></div>
+        ${o.refunds.map(d => `<div class="kv sub minus"><span>환불 · ${esc(d.who)} · ${esc(d.at)}</span><b class="num">${won(-d.amt)}</b></div>`).join('')}
+        ${o.deps.length || o.pay === 'form' ? `<div class="kv"><span>받은 금액${o.refundSum ? ' (환불 뺌)' : ''}${o.pay === 'form' && o.depSum ? ' (폼 결제 + 추가 입금)' : ''}</span><b class="num">${won(o.paidAmt)}</b></div>` : ''}
+        ${o.amtWarn ? `<div class="note warn">${o.cmpLabel}이 계산보다 <b>${won(Math.abs(o.cmpAmt - o.expect))} ${o.cmpAmt > o.expect ? '많아요' : '적어요'}</b>. 족자봉 넘버나 입금 연결을 확인해 주세요.</div>` : '<div class="kv sub"><span style="color:var(--green)">✓ 금액이 맞아요</span><b></b></div>'}
         ${o.how ? `<div class="kv sub"><span>${esc(o.how)}으로 자동 연결됨</span><b></b></div>` : ''}
         <div class="field" style="margin-top:8px"><label for="oPay">입금 처리</label><select class="inp" id="oPay">
           ${[['', '자동 (폼 상태·통장 대조)'], ['확인', '입금 확인 (통장 밖에서 받음)'], ['미입금', '미입금으로 표시'], ['취소', '주문 취소·환불']].map(([v, t]) => `<option value="${v}" ${o.proc.pay === v ? 'selected' : ''}>${t}</option>`).join('')}
@@ -834,7 +876,7 @@ function orderModal(id) {
           <div class="kv"><span>고른 입금 합계</span><b class="num" id="oDepSum"></b></div></div>
         <div class="field" style="margin-top:12px"><label for="oMemo">메모</label><textarea class="inp" id="oMemo">${esc(o.proc.memo || '')}</textarea></div>
       </div></div>`,
-    foot: `<span class="sp"></span><button class="btn" data-act="close">닫기</button><button class="btn pri" data-act="save">저장</button>`,
+    foot: `${o.manualOrder ? `<button class="btn" data-act="editOrder" data-id="${esc(o.id)}">주문 정보 고치기</button>` : ''}<span class="sp"></span><button class="btn" data-act="close">닫기</button><button class="btn pri" data-act="save">저장</button>`,
     onSave: async () => {
       const j = $('#oJ').value.trim(), pay = $('#oPay').value, memo = $('#oMemo').value;
       let keys = [...document.querySelectorAll('#oDepList input:checked')].map(x => x.value);
@@ -858,20 +900,124 @@ function depModal(key) {
   const m = M(), d = m.deposits.find(x => x.key === key);
   if (!d) return;
   const left = o => o.total - o.depSum;
-  const near = m.live.filter(o => !['form', 'auto', 'linked', 'manual'].includes(o.pay)).sort((a, b) => (Math.abs(left(a) - d.amt) - Math.abs(left(b) - d.amt)));
+  const w = normName(d.who);
+  const like = o => [o.payer, o.name, o.recv, o.nick].map(normName).filter(x => x.length >= 2).some(n => w.includes(n) || n.includes(w));
+  const unpaid = o => !['form', 'auto', 'linked', 'manual'].includes(o.pay);
+  const near = m.live.slice().sort((a, b) => (like(b) - like(a)) || (unpaid(b) - unpaid(a)) || (Math.abs(left(a) - d.amt) - Math.abs(left(b) - d.amt)));
   openModal({
     title: `${esc(d.who)} · ${won(d.amt)}`, sub: esc(d.at + (d.bank ? ' · ' + d.bank : '')),
-    body: `<div class="field"><label for="dO">연결할 주문</label><select class="inp" id="dO"><option value="">골라 주세요</option>${near.map(o => `<option value="${esc(o.id)}">${esc(o.payer || o.name)} (${esc(o.nick)}) · ${won(o.total)}${o.depSum ? ' (남은 ' + won(left(o)) + ')' : ''}${left(o) === d.amt ? ' · 금액 같음' : ''}</option>`).join('')}</select>
-      <span class="hint">아직 입금 확인 안 된 주문만 보여요. 금액이 가까운 순서예요.</span></div>`,
-    foot: `<span class="sp"></span><button class="btn" data-act="close">취소</button><button class="btn pri" data-act="save">연결</button>`,
-    onSave: async () => { const id = $('#dO').value; if (!id) return toast('주문을 골라 주세요', true); if (await linkDep(id, key)) closeModal(); },
+    body: `<div class="field"><label for="dO">연결할 주문</label><select class="inp" id="dO"><option value="">골라 주세요</option>${near.map(o => `<option value="${esc(o.id)}">${like(o) ? '★ ' : ''}${esc(o.payer || o.name)} (${esc(o.nick)}) · ${won(o.total)} · ${(PAY[o.pay] || [''])[0]}${o.depSum && unpaid(o) ? ' · 남은 ' + won(left(o)) : ''}</option>`).join('')}</select>
+      <span class="hint">★ 이름 비슷한 주문이 위에 있어요. 이미 입금된 주문에도 연결할 수 있어요.</span></div>
+      <div class="field" style="margin-top:12px"><label for="dAdd">추가로 산 족자봉 (추가 구매일 때만)</label><input class="inp" id="dAdd" placeholder="${jAlpha ? '예: F' : '예: 6'}" autocomplete="off"><span class="hint" id="dAddH"></span></div>`,
+    foot: `<button class="btn soft" data-act="newOrderFromDep" data-dep="${esc(d.key)}">이 입금으로 새 주문</button><span class="sp"></span><button class="btn" data-act="close">취소</button><button class="btn pri" data-act="save">연결</button>`,
+    onSave: async () => {
+      const id = $('#dO').value; if (!id) return toast('주문을 골라 주세요', true);
+      const add = parseJokja($('#dAdd').value);
+      if (await linkDep(id, key, sumObj(add) ? add : null)) closeModal();
+    },
   });
+  $('#dAdd').addEventListener('input', () => { const a = parseJokja($('#dAdd').value); $('#dAddH').textContent = sumObj(a) ? `족자봉 ${jokjaText(a)} (${sumObj(a)}개 · ${won(sumObj(a) * m.priceJ)})를 그 주문에 더해요` : ''; });
 }
-function linkDep(id, key) {
+// ---------- 출금 (환불 / 비용 / 기타) ----------
+const WD_KIND = { '환불': 'red', '비용': 'blue', '기타': '' };
+function wdCard(m) {
+  const list = m.withdrawals.slice().sort((a, b) => (!!(a.wp && a.wp.kind) - !!(b.wp && b.wp.kind)) || (a.at < b.at ? 1 : -1));
+  const ord = id => m.orders.find(o => o.id === id);
+  return `<div class="card"><div class="card-h"><div><h2>출금 내역</h2></div></div>
+    ${list.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>출금 일시</th><th>받는 분 / 적요</th><th class="r">금액</th><th>구분</th><th>주문</th></tr></thead><tbody>${list.map(d => {
+      const k = d.wp && d.wp.kind, o = k === '환불' && ord(d.wp.order);
+      return `<tr data-open="wd:${esc(d.key)}"><td class="num muted">${esc(d.at)}</td><td><b>${esc(d.who)}</b>${d.wp && d.wp.memo ? `<div class="muted" style="font-size:13px">${esc(d.wp.memo)}</div>` : ''}</td><td class="r num">${won(d.amt)}</td>
+        <td>${k ? `<span class="badge ${WD_KIND[k] || ''}">${esc(k)}</span>` : '<span class="badge orange">분류 필요</span>'}</td><td>${o ? `${esc(o.nick || o.name)}${o.pay === 'cancel' ? ' <span class="badge">취소</span>' : ''}` : '<span class="muted">-</span>'}</td></tr>`;
+    }).join('')}</tbody></table></div>` : '<div class="empty">출금이 없어요</div>'}</div>`;
+}
+function wdModal(key) {
+  const m = M(), d = m.withdrawals.find(x => x.key === key);
+  if (!d) return;
+  const wp = d.wp || {}, kind = wp.kind || '환불';
+  const w = normName(d.who);
+  const like = o => [o.payer, o.name, o.recv, o.nick].map(normName).filter(x => x.length >= 2).some(n => w.includes(n) || n.includes(w));
+  const list = m.orders.slice().sort((a, b) => (like(b) - like(a)) || (Math.abs(a.paidAmt - d.amt) - Math.abs(b.paidAmt - d.amt)));
+  const cur = m.orders.find(o => o.id === wp.order);
+  openModal({
+    title: `출금 · ${esc(d.who)} · ${won(d.amt)}`, sub: esc(d.at),
+    body: `<div class="field"><label>구분</label><input type="hidden" id="wK" value="${esc(kind)}"><div class="seg segf">${Object.keys(WD_KIND).map(k => `<button type="button" aria-selected="${k === kind}" data-segf="wK" data-val="${k}">${k}</button>`).join('')}</div></div>
+      <div class="field" style="margin-top:12px" id="wOBox"><label for="wO">환불한 주문</label><select class="inp" id="wO"><option value="">골라 주세요</option>${list.map(o => `<option value="${esc(o.id)}" ${o.id === wp.order ? 'selected' : ''}>${like(o) ? '★ ' : ''}${esc(o.payer || o.name)} (${esc(o.nick)}) · 받은 ${won(o.paidAmt)}${o.pay === 'cancel' ? ' · 취소됨' : ''}</option>`).join('')}</select>
+        <label class="depi" style="border:0;padding:10px 0 0"><input type="checkbox" id="wCancel" ${cur && cur.pay === 'cancel' ? 'checked' : ''}><span class="t"><b>주문 전체 취소</b><small>체크하면 주문 목록·제작 수량·포스 명단에서 빠져요. 일부만 환불했으면 체크하지 말고 족자봉 넘버를 고쳐 주세요.</small></span></label></div>
+      <div class="field" style="margin-top:12px"><label for="wM">메모</label><input class="inp" id="wM" value="${esc(wp.memo || '')}" autocomplete="off"></div>`,
+    foot: `${d.wp && d.wp.kind ? '<button class="btn danger" data-act="delRow">분류 지우기</button>' : ''}<span class="sp"></span><button class="btn" data-act="close">취소</button><button class="btn pri" data-act="save">저장</button>`,
+    onSave: async (act) => {
+      const now = new Date().toLocaleString('ko-KR');
+      if (act === 'del') { if (await write('upsert', { sheet: '출금 처리', keyCol: '출금 키', keyVal: key, values: { '구분': '', '주문번호': '', '메모': '', '수정 시각': now } }, '분류를 지웠어요')) closeModal(); return; }
+      const k = $('#wK').value, oid = k === '환불' ? $('#wO').value : '';
+      if (k === '환불' && !oid) return toast('환불한 주문을 골라 주세요', true);
+      const ok = await write('upsert', { sheet: '출금 처리', keyCol: '출금 키', keyVal: key, values: { '구분': k, '주문번호': oid, '메모': $('#wM').value.trim(), '수정 시각': now } }, '저장했어요');
+      if (ok && oid) {
+        const o = M().orders.find(x => x.id === oid), cancel = $('#wCancel').checked;
+        if (cancel && o.proc.pay !== '취소') await write('upsert', { sheet: '주문 처리', keyCol: '주문번호', keyVal: oid, values: { '입금 처리': '취소', '수정 시각': now } });
+        if (!cancel && o.proc.pay === '취소') await write('upsert', { sheet: '주문 처리', keyCol: '주문번호', keyVal: oid, values: { '입금 처리': '', '수정 시각': now } });
+      }
+      if (ok) closeModal();
+    },
+  });
+  const sync = () => { $('#wOBox').hidden = $('#wK').value !== '환불'; };
+  $('#wK').addEventListener('change', sync); sync();
+}
+
+// 주문 직접 추가 / 고치기 (수동 주문 탭). dep 를 주면 저장하면서 그 입금을 바로 연결해요.
+function newOrderModal({ edit = null, dep = null } = {}) {
+  const m = M(), r = edit ? edit.r : null, g = c => (r ? r.get(c) : '');
+  const pre = { nick: g('닉네임'), name: g('이름') || (dep ? dep.who : ''), payer: g('입금자명') || (dep ? dep.who : ''), phone: g('연락처'),
+    books: r ? g('엽서북') : '1', j: g('족자봉'), total: r ? g('총 주문금액') : (dep ? String(dep.amt) : ''), method: g('수령 방법') || '현장', memo: g('메모') };
+  const f = (id, label, v, extra = '') => `<div class="field"><label for="${id}">${label}</label><input class="inp" id="${id}" value="${esc(v)}" autocomplete="off" ${extra}></div>`;
+  openModal({
+    title: edit ? '주문 정보 고치기' : '주문 직접 추가', sub: dep ? `${esc(dep.who)} · ${won(dep.amt)} 입금과 바로 연결돼요` : '',
+    body: `<div class="fields">
+      ${f('nO_nick', '닉네임', pre.nick)}${f('nO_name', '이름', pre.name)}
+      ${f('nO_payer', '입금자명', pre.payer, 'placeholder="이름과 같으면 비워도 돼요"')}${f('nO_phone', '연락처', pre.phone, 'inputmode="tel" placeholder="010-0000-0000"')}
+      ${f('nO_books', '엽서북 (권)', pre.books, 'inputmode="numeric"')}${f('nO_j', '족자봉 넘버', pre.j, `placeholder="${jAlpha ? '예: A, C×2' : '예: 2, 7×2'}"`)}
+      <div class="field"><label for="nO_total">금액</label><input class="inp" id="nO_total" value="${esc(pre.total)}" inputmode="numeric"><span class="hint" id="nO_calc"></span></div>
+      <div class="field"><label>수령 방법</label><input type="hidden" id="nO_method" value="${esc(pre.method)}"><div class="seg segf">${['현장', '택배'].map(x => `<button type="button" aria-selected="${x === pre.method}" data-segf="nO_method" data-val="${x}">${x}</button>`).join('')}</div></div>
+      <div class="field full"><label for="nO_memo">메모</label><textarea class="inp" id="nO_memo">${esc(pre.memo)}</textarea></div>
+    </div>`,
+    foot: `${edit ? '<button class="btn danger" data-act="delRow">주문 삭제</button>' : ''}<span class="sp"></span><button class="btn" data-act="close">취소</button><button class="btn pri" data-act="save">저장</button>`,
+    onSave: async (act) => {
+      if (act === 'del') {
+        if (!confirm('이 주문을 지울까요?')) return;
+        if (await write('remove', { sheet: '수동 주문', row: edit.row, match: { '주문번호': edit.id } }, '지웠어요')) closeModal();
+        return;
+      }
+      const v = id => $('#' + id).value.trim();
+      if (!v('nO_nick') && !v('nO_name')) return toast('닉네임이나 이름을 넣어 주세요', true);
+      const jk = parseJokja(v('nO_j'));
+      const values = { '닉네임': v('nO_nick'), '이름': v('nO_name'), '입금자명': v('nO_payer'), '연락처': v('nO_phone'), '엽서북': String(toNum(v('nO_books'))),
+        '족자봉': jokjaText(jk), '총 주문금액': String(toNum(v('nO_total')) || calc()), '수령 방법': v('nO_method'), '메모': v('nO_memo') };
+      let ok;
+      if (edit) ok = await write('update', { sheet: '수동 주문', row: edit.row, values, match: { '주문번호': edit.id } }, '저장했어요');
+      else {
+        const id = 'M' + Date.now().toString(36).toUpperCase();
+        ok = await write('append', { sheet: '수동 주문', values: { '주문번호': id, '작성시간': new Date().toLocaleString('ko-KR'), ...values } }, '주문을 추가했어요');
+        if (ok && dep) await linkDep(id, dep.key);
+      }
+      if (ok) closeModal();
+    },
+  });
+  const calc = () => toNum($('#nO_books').value) * m.priceBook + sumObj(parseJokja($('#nO_j').value)) * m.priceJ;
+  const upd = () => {
+    const c = calc(), jk = parseJokja($('#nO_j').value);
+    $('#nO_calc').textContent = `계산 ${won(c)} (엽서북 ${toNum($('#nO_books').value)} · 족자봉 ${sumObj(jk)}${sumObj(jk) ? ': ' + jokjaText(jk) : ''})`;
+    $('#nO_calc').style.color = toNum($('#nO_total').value) && toNum($('#nO_total').value) !== c ? 'var(--orange)' : '';
+  };
+  ['nO_books', 'nO_j', 'nO_total'].forEach(id => $('#' + id).addEventListener('input', upd)); upd();
+}
+// add: 추가 구매한 족자봉 {넘버: 개수} 이면 그 주문의 확정 넘버에 더해요
+function linkDep(id, key, add = null) {
   const o = M().orders.find(x => x.id === id);
   const keys = o && o.pay !== 'auto' ? o.deps.map(d => d.key) : o && o.dep ? [o.dep.key] : [];
   if (!keys.includes(key)) keys.push(key);
-  return write('upsert', { sheet: '주문 처리', keyCol: '주문번호', keyVal: id, values: { '입금 키': keys.join('\n'), '입금 처리': '', '수정 시각': new Date().toLocaleString('ko-KR') } }, '연결했어요');
+  const values = { '입금 키': keys.join('\n'), '수정 시각': new Date().toLocaleString('ko-KR') };
+  if (!o || o.proc.pay !== '확인') values['입금 처리'] = '';
+  if (add && o) { const j = { ...o.jk }; Object.entries(add).forEach(([n, q]) => { j[n] = (j[n] || 0) + q; }); values['족자봉 확정'] = jokjaText(j); }
+  return write('upsert', { sheet: '주문 처리', keyCol: '주문번호', keyVal: id, values }, add ? '추가 구매로 연결했어요' : '연결했어요');
 }
 
 // ---------------------------------------------------------------------
@@ -1042,7 +1188,7 @@ function go(v) {
 
 document.addEventListener('click', async e => {
   const sf = e.target.closest('[data-segf]');
-  if (sf) { document.getElementById(sf.dataset.segf).value = sf.dataset.val; sf.parentElement.querySelectorAll('button').forEach(b => b.setAttribute('aria-selected', b === sf)); return; }
+  if (sf) { const h = document.getElementById(sf.dataset.segf); h.value = sf.dataset.val; sf.parentElement.querySelectorAll('button').forEach(b => b.setAttribute('aria-selected', b === sf)); h.dispatchEvent(new Event('change')); return; }
   const pk = e.target.closest('[data-pick-for]');
   if (pk) {
     const inp = document.getElementById(pk.dataset.pickFor); inp.value = pk.dataset.pick;
@@ -1062,6 +1208,7 @@ document.addEventListener('click', async e => {
     if (kind === 'author') return rowForm('작가', +rest[0]);
     if (kind === 'order') return orderModal(rest.join(':'));
     if (kind === 'dep') return depModal(rest.join(':'));
+    if (kind === 'wd') return wdModal(rest.join(':'));
     if (kind === 'row') return rowForm(rest[0], +rest[1]);
     return;
   }
@@ -1085,6 +1232,9 @@ document.addEventListener('click', async e => {
     return;
   }
   if (act === 'signOut') return signOut();
+  if (act === 'newOrder') return newOrderModal();
+  if (act === 'newOrderFromDep') return newOrderModal({ dep: M().deposits.find(d => d.key === el.dataset.dep) });
+  if (act === 'editOrder') return newOrderModal({ edit: M().orders.find(o => o.id === el.dataset.id) });
   if (act === 'relogin') { delete store.key; delete store.who; delete store.tok; saveStore(); dropCache(); st.tabs = null; st.err = ''; return render(); }
   if (act === 'dist') { if (!st.admin) return; viewMoney(); return openModal({ title: '분배 · 받을 돈', sub: '관리자만 볼 수 있어요', body: st.distHtml, foot: '<span class="sp"></span><button class="btn pri" data-act="close">닫기</button>' }); }
   if (act === 'emailAdd') {
@@ -1095,7 +1245,7 @@ document.addEventListener('click', async e => {
   }
   if (act === 'sample' || act === 'reset') {
     const w = el.dataset.which, what = w === 'orders' ? '선입금 리스트' : '입금기록';
-    const msg = act === 'sample' ? `작년 ${what} 샘플로 ${what} 탭을 덮어쓸까요?` : `${w === 'orders' ? '선입금 리스트와 주문 처리' : '입금기록'} 탭 내용을 모두 지울까요? 되돌릴 수 없어요.`;
+    const msg = act === 'sample' ? `작년 ${what} 샘플로 ${what} 탭을 덮어쓸까요?` : `${w === 'orders' ? '선입금 리스트, 직접 추가한 주문, 주문 처리' : '입금기록, 출금 처리'} 탭 내용을 모두 지울까요? 되돌릴 수 없어요.`;
     if (!confirm(msg)) return;
     setSync('busy');
     try { const j = await api(act, { which: w }); toast(act === 'sample' ? `${j.count != null ? j.count + '건을 ' : ''}불러왔어요` : '초기화했어요'); }
