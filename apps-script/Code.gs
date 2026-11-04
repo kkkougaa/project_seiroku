@@ -347,11 +347,12 @@ function doPost(e) {
       }
     }
     ensureTabs_();
-    if (req.action === 'read') return json_({ ok: true, tabs: readAll_(), at: new Date().toISOString(), who: who, admin: !!me.owner });
+    if (req.action === 'read') return json_({ ok: true, tabs: readFast_(!!req.fresh), at: new Date().toISOString(), who: who, admin: !!me.owner });
     if (req.sheet === '주문 처리' && req.values) req.values['수정한 사람'] = who;
 
     const lock = LockService.getScriptLock();
     lock.waitLock(20000);
+    clearReadCache_();
     try {
       switch (req.action) {
         case 'update': return json_({ ok: true, row: update_(req.sheet, req.row, req.values, req.match) });
@@ -371,7 +372,7 @@ function doPost(e) {
         }
         default: return json_({ ok: false, error: '모르는 요청이에요: ' + req.action });
       }
-    } finally { lock.releaseLock(); }
+    } finally { clearReadCache_(); lock.releaseLock(); }
   } catch (err) {
     return json_({ ok: false, error: String(err && err.message || err) });
   }
@@ -388,9 +389,43 @@ function sheet_(name) {
   return sh;
 }
 
+// 읽기 속도: 탭 9개를 Sheets API 한 번으로 읽고, 결과를 압축해서 5분 캐시해요.
+//  사이트에서 저장하거나 시트에서 직접 고치면(onEdit) 캐시를 바로 지워요.
+function readFast_(fresh) {
+  const cache = CacheService.getScriptCache();
+  if (!fresh) {
+    const hit = cache.get('read');
+    if (hit) { try { return JSON.parse(Utilities.ungzip(Utilities.newBlob(Utilities.base64Decode(hit), 'application/x-gzip')).getDataAsString()); } catch (e) {} }
+  }
+  const tabs = readAll_();
+  try {
+    const z = Utilities.base64Encode(Utilities.gzip(Utilities.newBlob(JSON.stringify(tabs), 'application/json')).getBytes());
+    if (z.length < 95000) cache.put('read', z, 300);
+  } catch (e) {}
+  return tabs;
+}
+function clearReadCache_() { CacheService.getScriptCache().remove('read'); }
+function onEdit() { clearReadCache_(); } // 시트에서 직접 고치면 캐시를 지워요
+
 function readAll_() {
+  const names = Object.keys(TABS);
+  if (typeof Sheets !== 'undefined') {
+    try {
+      const ss = SpreadsheetApp.getActive();
+      const have = new Set(ss.getSheets().map(sh => sh.getName()));
+      const want = names.filter(n => have.has(n));
+      const res = Sheets.Spreadsheets.Values.batchGet(ss.getId(), { ranges: want.map(n => "'" + n.replace(/'/g, "''") + "'"), valueRenderOption: 'FORMATTED_VALUE' });
+      const out = {};
+      names.forEach(n => { out[n] = { header: TABS[n], rows: [] }; });
+      (res.valueRanges || []).forEach((vr, i) => {
+        const v = vr.values || [];
+        if (v.length) out[want[i]] = { header: v[0].map(String), rows: v.slice(1).map(r => r.map(String)) };
+      });
+      return out;
+    } catch (e) { /* 아래 느린 방법으로 */ }
+  }
   const out = {};
-  Object.keys(TABS).forEach(name => {
+  names.forEach(name => {
     const sh = SpreadsheetApp.getActive().getSheetByName(name);
     if (!sh || sh.getLastRow() === 0) { out[name] = { header: TABS[name], rows: [] }; return; }
     const v = sh.getDataRange().getDisplayValues();

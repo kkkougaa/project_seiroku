@@ -189,12 +189,12 @@ function saveCache() { if (st.demo || !st.tabs) return; try { sessionStorage.set
 function readCache() { try { return JSON.parse(sessionStorage.getItem(CACHE)); } catch { return null; } }
 function dropCache() { try { sessionStorage.removeItem(CACHE); } catch {} }
 
-async function load() {
+async function load(fresh = false) {
   await queue.catch(() => {});
   st.loading = true; st.err = ''; setSync('busy');
   if (!st.tabs) render();
   try {
-    const j = await api('read');
+    const j = await api('read', fresh ? { fresh: true } : {});
     st.tabs = j.tabs; st.at = new Date(); model = null; saveCache();
     if (j.who && j.who !== store.who) { store.who = j.who; saveStore(); }
     st.admin = st.demo ? true : !!j.admin;
@@ -1054,7 +1054,7 @@ document.addEventListener('click', async e => {
   if (act === 'close') return closeModal();
   if (act === 'save') return modalSave && modalSave('save');
   if (act === 'delRow') return modalSave && modalSave('del');
-  if (act === 'reload') { model = null; if (st.demo) st.tabs = null; return load(); }
+  if (act === 'reload') { model = null; if (st.demo) st.tabs = null; return load(true); }
   if (act === 'newRow') return rowForm(el.dataset.tab, 0);
   if (act === 'paste') return pasteModal(el.dataset.tab);
   if (act === 'pickFile') return $('#fileIn').click();
