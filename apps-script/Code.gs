@@ -11,6 +11,9 @@
 // 작년 시트 ID (작가 섭외 / 확정 작가 리스트를 가져올 곳). 다른 시트에서 가져오려면 여기만 바꿔요.
 const SOURCE_SHEET_ID = '13ovtJ2eaVsNqu52vkqcdg2lriarol2KCzQFIxzpGbTY';
 
+// 관리 사이트 주소. 동료용 연결 링크를 만들 때 써요.
+const SITE_URL = 'https://kkkougaa.github.io/project_seiroku/admin/';
+
 // 탭 이름과 열 구조. 사이트가 이 열 이름으로 값을 찾아요. (열 순서는 바꿔도 되지만 이름은 그대로 둬요)
 const TABS = {
   '작가': ['No', '닉네임', 'X 아이디', '수락 여부', '섭외 메모', '디스코드', '제출 여부', '현장 수령',
@@ -19,7 +22,7 @@ const TABS = {
     '주문자연락처', '결제날짜', '수령자명', '수령자연락처', '우편번호', '주소', '배송메모', '환불은행', '환불계좌',
     '환불예금주', '총 주문금액', '이메일', '족자봉', '트위터계정', '인스타계정', '택배사', '운송장번호', '진행상태', '메모', '주문번호'],
   '입금기록': ['거래 일시', '적요', '거래 유형', '거래 기관', '계좌번호', '거래 금액', '거래 후 잔액', '메모'],
-  '주문 처리': ['주문번호', '족자봉 확정', '입금 처리', '입금 키', '메모', '수정 시각'],
+  '주문 처리': ['주문번호', '족자봉 확정', '입금 처리', '입금 키', '메모', '수정 시각', '수정한 사람'],
   '추가 수량': ['구분', '넘버', '개수', '대상', '메모'],
   '수입': ['항목', '금액', '메모'],
   '비용': ['항목', '단가', '개수', '출금자', '처리', '메모'],
@@ -47,8 +50,12 @@ const DEFAULT_SETTINGS = [
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('관리 사이트')
     .addItem('1. 처음 설정 (탭 만들기 + 작가 가져오기)', 'setup')
-    .addItem('비밀키 보기', 'showKey')
+    .addItem('내 연결 링크 / 비밀키 보기', 'showKey')
     .addItem('비밀키 새로 만들기', 'resetKey')
+    .addSeparator()
+    .addItem('동료 추가 (개인 연결 링크 만들기)', 'addMember')
+    .addItem('동료 목록 / 연결 끊기', 'manageMembers')
+    .addItem('웹 앱 주소 바꾸기', 'setWebAppUrl')
     .addSeparator()
     .addItem('작년 선입금/입금 데이터 가져오기 (연습용)', 'importLastYearOrders')
     .addToUi();
@@ -118,10 +125,84 @@ function getKey_() {
   if (!k) { k = Utilities.getUuid().replace(/-/g, ''); p.setProperty('KEY', k); }
   return k;
 }
-function showKey() { SpreadsheetApp.getUi().alert('비밀키:\n' + getKey_()); }
+function showKey() {
+  const url = webAppUrl_(true);
+  SpreadsheetApp.getUi().alert('비밀키:\n' + getKey_() + (url ? '\n\n내 다른 기기용 연결 링크 (남에게 주지 마세요):\n' + link_(url, getKey_(), '관리자') : ''));
+}
+
+// ------------------------------------------------------------------
+// 동료 관리: 사람마다 키를 따로 줘요. 한 명만 끊을 수 있어요.
+// ------------------------------------------------------------------
+function members_() { try { return JSON.parse(PropertiesService.getScriptProperties().getProperty('MEMBERS') || '{}'); } catch (e) { return {}; } }
+function saveMembers_(m) { PropertiesService.getScriptProperties().setProperty('MEMBERS', JSON.stringify(m)); }
+
+// 키 → 이름. 맞는 키가 없으면 null
+function whoIs_(key) {
+  if (!key) return null;
+  if (key === PropertiesService.getScriptProperties().getProperty('KEY')) return '관리자';
+  const m = members_();
+  return Object.keys(m).find(name => m[name] === key) || null;
+}
+
+function webAppUrl_(quiet) {
+  const p = PropertiesService.getScriptProperties();
+  let url = p.getProperty('WEBAPP_URL');
+  if (!url && !quiet) url = setWebAppUrl();
+  return url;
+}
+function setWebAppUrl() {
+  const ui = SpreadsheetApp.getUi();
+  const r = ui.prompt('웹 앱 주소', '배포 → 배포 관리에 있는 웹 앱 URL을 넣어 주세요.\n(https://script.google.com/macros/s/…/exec)', ui.ButtonSet.OK_CANCEL);
+  if (r.getSelectedButton() !== ui.Button.OK) return null;
+  const url = r.getResponseText().trim();
+  if (!/^https:\/\/script\.google\.com\/.+\/exec$/.test(url)) { ui.alert('주소가 이상해요. /exec 로 끝나는 웹 앱 URL을 넣어 주세요.'); return null; }
+  PropertiesService.getScriptProperties().setProperty('WEBAPP_URL', url);
+  return url;
+}
+
+// 사이트 주소 #c=… 뒤에 연결 정보를 넣어요. # 뒤는 서버로 전송되지 않아요.
+function link_(url, key, name) {
+  return SITE_URL + '#c=' + Utilities.base64EncodeWebSafe(JSON.stringify({ u: url, k: key, n: name }), Utilities.Charset.UTF_8).replace(/=+$/, '');
+}
+
+function addMember() {
+  const ui = SpreadsheetApp.getUi();
+  const url = webAppUrl_(false);
+  if (!url) return;
+  const r = ui.prompt('동료 추가', '동료 이름을 넣어 주세요. (주문 처리 탭에 누가 고쳤는지 이 이름으로 남아요)', ui.ButtonSet.OK_CANCEL);
+  if (r.getSelectedButton() !== ui.Button.OK) return;
+  const name = r.getResponseText().trim();
+  if (!name) return;
+  const m = members_();
+  if (m[name] && ui.alert(name + ' 님은 이미 있어요', '새 링크를 만들면 예전 링크는 끊겨요. 계속할까요?', ui.ButtonSet.YES_NO) !== ui.Button.YES) return;
+  m[name] = Utilities.getUuid().replace(/-/g, '');
+  saveMembers_(m);
+  const html = HtmlService.createHtmlOutput(
+    '<div style="font-family:sans-serif;font-size:14px;line-height:1.5">' +
+    '<p><b>' + esc_(name) + '</b> 님 전용 링크예요. 이 링크를 한 번 열면 그 기기에 자동으로 연결돼요.</p>' +
+    '<textarea id="l" style="width:100%;height:110px;font-size:12px" readonly>' + esc_(link_(url, m[name], name)) + '</textarea>' +
+    '<p><button onclick="var t=document.getElementById(\'l\');t.select();document.execCommand(\'copy\');this.textContent=\'복사했어요\'">링크 복사</button></p>' +
+    '<p style="color:#6b7684">링크 = 열쇠예요. 단톡방 말고 그 사람에게만 따로 보내 주세요. 새어나가면 동료 목록에서 끊으면 돼요.</p></div>'
+  ).setWidth(520).setHeight(300);
+  ui.showModalDialog(html, '동료 연결 링크');
+}
+
+function manageMembers() {
+  const ui = SpreadsheetApp.getUi();
+  const names = Object.keys(members_());
+  if (!names.length) { ui.alert('아직 추가한 동료가 없어요.'); return; }
+  const r = ui.prompt('동료 목록', '지금 연결할 수 있는 사람: ' + names.join(', ') + '\n\n연결을 끊을 사람 이름을 넣으면 그 사람 링크가 바로 막혀요. (그냥 볼 거면 취소)', ui.ButtonSet.OK_CANCEL);
+  if (r.getSelectedButton() !== ui.Button.OK) return;
+  const name = r.getResponseText().trim(), m = members_();
+  if (!m[name]) { ui.alert('"' + name + '" 님이 목록에 없어요.'); return; }
+  delete m[name]; saveMembers_(m);
+  ui.alert(name + ' 님 연결을 끊었어요.');
+}
+
+function esc_(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function resetKey() {
   PropertiesService.getScriptProperties().deleteProperty('KEY');
-  SpreadsheetApp.getUi().alert('새 비밀키:\n' + getKey_() + '\n\n사이트 설정에서도 바꿔 주세요. 예전 키는 이제 안 돼요.');
+  SpreadsheetApp.getUi().alert('새 비밀키:\n' + getKey_() + '\n\n사이트 설정에서도 바꿔 주세요. 예전 키는 이제 안 돼요. (동료 링크는 그대로예요)');
 }
 
 // ------------------------------------------------------------------
@@ -136,11 +217,13 @@ function doGet() {
 function doPost(e) {
   try {
     const req = JSON.parse(e.postData.contents);
-    if (!req.key || req.key !== PropertiesService.getScriptProperties().getProperty('KEY')) {
+    const who = whoIs_(req.key);
+    if (!who) {
       Utilities.sleep(800);
       return json_({ ok: false, error: '비밀키가 맞지 않아요.' });
     }
-    if (req.action === 'read') return json_({ ok: true, tabs: readAll_(), at: new Date().toISOString() });
+    if (req.action === 'read') return json_({ ok: true, tabs: readAll_(), at: new Date().toISOString(), who: who });
+    if (req.sheet === '주문 처리' && req.values) req.values['수정한 사람'] = who;
 
     const lock = LockService.getScriptLock();
     lock.waitLock(20000);

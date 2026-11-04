@@ -19,6 +19,29 @@ const LS_KEY = 'seiroku-admin';
 const store = (() => { try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch { return {}; } })();
 const saveStore = () => { try { localStorage.setItem(LS_KEY, JSON.stringify(store)); } catch {} };
 
+// 연결 링크: 사이트주소#c=<base64url(JSON {u, k, n})>
+//  # 뒤는 서버로 가지 않아요. 열자마자 이 브라우저에 저장하고 주소창에서 지워요.
+function encodeLink(o) {
+  const bytes = new TextEncoder().encode(JSON.stringify(o));
+  let bin = ''; bytes.forEach(b => { bin += String.fromCharCode(b); });
+  return location.origin + location.pathname + '#c=' + btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function decodeLink(s) {
+  s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '=';
+  const bin = atob(s), bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+let linkMsg = '';
+if (location.hash.startsWith('#c=')) {
+  try {
+    const o = decodeLink(location.hash.slice(3));
+    if (!/^https:\/\/script\.google\.com\//.test(o.u) || !o.k) throw new Error();
+    store.url = o.u; store.key = o.k; store.who = o.n || ''; store.demo = false; saveStore();
+    linkMsg = (o.n ? o.n + ' 님, ' : '') + '연결했어요';
+  } catch { linkMsg = '!연결 링크가 이상해요. 링크를 다시 받아 주세요.'; }
+  history.replaceState(null, '', location.pathname + '#home');
+}
+
 // ---------------------------------------------------------------------
 // 화면 상태
 // ---------------------------------------------------------------------
@@ -104,6 +127,7 @@ async function load() {
   try {
     const j = await api('read');
     st.tabs = j.tabs; st.at = new Date(); model = null;
+    if (j.who && j.who !== store.who) { store.who = j.who; saveStore(); }
     setSync('ok');
   } catch (e) { st.err = e.message; setSync('err'); }
   st.loading = false;
@@ -361,7 +385,7 @@ function render() {
 
 function topBar(nav) {
   return `<header class="top"><div class="top-in">
-    <div class="brand">행사 관리${st.demo ? ' <span class="badge orange">둘러보기</span>' : ''}</div>
+    <div class="brand">행사 관리${st.demo ? ' <span class="badge orange">둘러보기</span>' : store.who ? ` <span class="badge">${esc(store.who)}</span>` : ''}</div>
     ${nav ? `<nav class="tabs" role="tablist">${VIEWS.map(([k, t]) => `<button role="tab" aria-selected="${st.view === k}" data-go="${k}">${t}</button>`).join('')}</nav>
     <div class="sync" id="sync"><i></i><span id="syncT"></span><button data-act="reload">새로고침</button></div>` : ''}
   </div></header>`;
@@ -559,6 +583,8 @@ function viewSettings() {
     <div>
       <div class="card"><h2>연결</h2><p class="sub">${st.demo ? '지금은 둘러보기 모드예요.' : '이 브라우저에만 저장돼요. 다른 사람 기기에서 쓰면 꼭 연결 해제해 주세요.'}</p>
         ${st.demo ? '<button class="btn pri" data-act="exitDemo">둘러보기 끝내고 연결하기</button>' : connectForm()}</div>
+      ${st.demo ? '' : `<div class="card"><h2>동료에게 주기</h2><p class="sub">시트 메뉴 <b>관리 사이트 → 동료 추가</b>를 누르면 그 사람 전용 링크가 나와요. 링크를 한 번 열면 자동으로 연결되고, 누가 고쳤는지도 남아요. 한 명만 끊을 수도 있어요.</p>
+        <div class="acts"><button class="btn soft" data-act="copyLink">내 연결 링크 복사</button></div><p class="hint" style="margin:8px 0 0">내 다른 기기(아이패드, 폰)에서 열 때 쓰세요. 이 링크는 내 키라서 남에게 주면 안 돼요.</p></div>`}
       <div class="card"><h2>원본 데이터 넣기</h2><p class="sub">위치폼 엑셀, 통장 내역을 복사해서 붙여넣거나 CSV 파일을 골라요. 그 탭은 통째로 바뀌고, 사이트에서 처리한 내용(입금 연결, 족자봉 고침)은 주문번호로 그대로 남아요.</p>
         <div class="acts"><button class="btn soft" data-act="paste" data-tab="선입금 리스트">선입금 리스트</button><button class="btn soft" data-act="paste" data-tab="입금기록">입금기록</button></div></div>
       <div class="card"><h2>테마</h2><div class="seg">${[['', '자동'], ['light', '밝게'], ['dark', '어둡게']].map(([k, t]) => `<button aria-selected="${(store.theme || '') === k}" data-theme-set="${k}">${t}</button>`).join('')}</div></div>
@@ -856,9 +882,15 @@ document.addEventListener('click', async e => {
     if (st.tabs) { toast('연결했어요'); go('home'); }
     return;
   }
+  if (act === 'copyLink') {
+    const link = encodeLink({ u: store.url, k: store.key, n: store.who || '' });
+    try { await navigator.clipboard.writeText(link); toast('복사했어요. 내 다른 기기에서 열어 주세요'); }
+    catch { prompt('이 링크를 복사해 주세요', link); }
+    return;
+  }
   if (act === 'disconnect') {
     if (!confirm('이 브라우저에서 연결 정보를 지울까요? 시트 데이터는 그대로예요.')) return;
-    delete store.url; delete store.key; saveStore(); st.tabs = null; render(); return;
+    delete store.url; delete store.key; delete store.who; saveStore(); st.tabs = null; render(); return;
   }
 });
 
@@ -884,4 +916,5 @@ $('#fileIn').addEventListener('change', async e => {
 
 applyTheme();
 render();
+if (linkMsg) toast(linkMsg.replace(/^!/, ''), linkMsg.startsWith('!'));
 if (st.demo || (store.url && store.key)) load();
