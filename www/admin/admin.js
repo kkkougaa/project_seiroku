@@ -43,6 +43,52 @@ if (location.hash.startsWith('#c=')) {
 }
 
 // ---------------------------------------------------------------------
+// 기본 설정 (settings.js) + 구글 로그인
+// ---------------------------------------------------------------------
+const CFG = self.ADMIN_SETTINGS || {};
+const apiUrl = () => store.url || CFG.apiUrl || '';
+const tokOk = () => !!(store.tok && store.tok.exp * 1000 > Date.now() + 30000);
+const useGoogle = () => !!CFG.googleClientId && !store.key;
+const connected = () => st.demo || (apiUrl() && (store.key || (CFG.googleClientId && tokOk())));
+function jwtPayload(t) {
+  let s = t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '=';
+  return JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(s), c => c.charCodeAt(0))));
+}
+let gisReady = null;
+function loadGis() {
+  if (gisReady) return gisReady;
+  gisReady = new Promise((ok, no) => {
+    const sc = document.createElement('script'); sc.src = 'https://accounts.google.com/gsi/client'; sc.async = true;
+    sc.onload = () => {
+      google.accounts.id.initialize({
+        client_id: CFG.googleClientId, auto_select: true, cancel_on_tap_outside: false, use_fedcm_for_prompt: true,
+        callback: resp => {
+          const p = jwtPayload(resp.credential);
+          store.tok = { t: resp.credential, exp: p.exp, email: p.email, name: p.name || p.email, pic: p.picture || '' };
+          saveStore(); st.loginErr = '';
+          load();
+        },
+      });
+      ok();
+    };
+    sc.onerror = () => no(new Error('구글 로그인을 불러오지 못했어요'));
+    document.head.appendChild(sc);
+  });
+  return gisReady;
+}
+function drawGoogleButton() {
+  const el = document.getElementById('gbtn'); if (!el) return;
+  loadGis().then(() => {
+    google.accounts.id.renderButton(el, { theme: 'outline', size: 'large', shape: 'pill', text: 'signin_with', locale: 'ko', width: 280 });
+    if (store.tok) google.accounts.id.prompt(); // 전에 로그인했던 사람은 자동으로
+  }).catch(e => { el.textContent = e.message; });
+}
+function signOut() {
+  if (store.tok && self.google) try { google.accounts.id.disableAutoSelect(); } catch {}
+  delete store.tok; saveStore(); st.tabs = null; render();
+}
+
+// ---------------------------------------------------------------------
 // 화면 상태
 // ---------------------------------------------------------------------
 const VIEWS = [['home', '홈'], ['authors', '작가'], ['orders', '주문'], ['match', '입금 대조'], ['make', '제작 수량'], ['money', '정산'], ['memo', '예외기록'], ['settings', '설정']];
@@ -59,14 +105,30 @@ if (!VIEWS.some(v => v[0] === st.view)) st.view = 'home';
 async function api(action, payload = {}) {
   if (st.demo) {
     if (action === 'read') { if (!st.demoTabs) st.demoTabs = self.DEMO_TABS(); return { ok: true, tabs: JSON.parse(JSON.stringify(st.demoTabs)) }; }
+    if (action === 'sample') {
+      const fresh = self.DEMO_TABS(), name = payload.which === 'orders' ? '선입금 리스트' : '입금기록';
+      st.demoTabs[name] = fresh[name]; return { ok: true, count: fresh[name].rows.length };
+    }
+    if (action === 'reset') {
+      (payload.which === 'orders' ? ['선입금 리스트', '주문 처리'] : ['입금기록']).forEach(n => { st.demoTabs[n].rows = []; });
+      return { ok: true };
+    }
+    if (action === 'avatars') return { ok: true, rows: {} };
     applyOp(st.demoTabs, { action, ...payload });
     return { ok: true };
   }
-  if (!store.url || !store.key) throw new Error('설정에서 연결해 주세요.');
-  const r = await fetch(store.url, { method: 'POST', body: JSON.stringify({ key: store.key, action, ...payload }), headers: { 'Content-Type': 'text/plain;charset=utf-8' }, redirect: 'follow' });
+  if (!connected()) throw new Error('로그인해 주세요.');
+  const auth = store.key ? { key: store.key } : { idToken: store.tok.t };
+  const r = await fetch(apiUrl(), { method: 'POST', body: JSON.stringify({ ...auth, action, ...payload }), headers: { 'Content-Type': 'text/plain;charset=utf-8' }, redirect: 'follow' });
   if (!r.ok) throw new Error('연결 실패 (' + r.status + ')');
   let j; try { j = await r.json(); } catch { throw new Error('응답을 못 읽었어요. 웹 앱 배포 주소가 맞는지 확인해 주세요.'); }
-  if (!j.ok) throw new Error(j.error || '알 수 없는 오류');
+  if (!j.ok) {
+    if (j.code === 'LOGIN' || j.code === 'DENIED') {
+      if (store.tok && !store.key) { delete store.tok; saveStore(); }
+      st.loginErr = j.error; st.tabs = null; setTimeout(render);
+    }
+    throw new Error(j.error || '알 수 없는 오류');
+  }
   return j;
 }
 
@@ -128,6 +190,7 @@ async function load() {
     const j = await api('read');
     st.tabs = j.tabs; st.at = new Date(); model = null;
     if (j.who && j.who !== store.who) { store.who = j.who; saveStore(); }
+    if (!st.demo) setTimeout(fetchAvatars, 300);
     setSync('ok');
   } catch (e) { st.err = e.message; setSync('err'); }
   st.loading = false;
@@ -192,7 +255,7 @@ function build() {
   // 작가
   const authors = T('작가').rows.filter(r => r.get('닉네임') || r.get('X 아이디')).map(r => ({
     row: r.row, r, no: toNum(r.get('No')) || null, nick: r.get('닉네임'), x: r.get('X 아이디'), status: r.get('수락 여부'),
-    discord: r.get('디스코드'), submit: r.get('제출 여부'), pickup: r.get('현장 수령'), revKo: r.get('후기 (한)'), revJa: r.get('후기 (일)'),
+    discord: r.get('디스코드'), submit: r.get('제출 여부'), pickup: r.get('현장 수령'), revKo: r.get('후기 (한)'), revJa: r.get('후기 (일)'), pic: r.get('프로필 사진'),
   }));
   const confirmed = authors.filter(a => a.status === '수락');
   const authorByNo = {}; confirmed.forEach(a => { if (a.no) authorByNo[a.no] = a; });
@@ -372,8 +435,7 @@ const checkList = list => list.length ? `<div class="checks">${list.map(c => `<d
 // ---------------------------------------------------------------------
 function render() {
   const app = $('#app');
-  const connected = st.demo || (store.url && store.key);
-  if (!connected) { app.innerHTML = topBar(false) + `<main>${viewConnect()}</main>`; return; }
+  if (!connected()) { app.innerHTML = topBar(false) + `<main>${viewConnect()}</main>`; drawGoogleButton(); return; }
   let body;
   if (!st.tabs) body = st.err ? `<div class="hello"><div class="note warn"><b>불러오지 못했어요</b><br>${esc(st.err)}</div><div class="acts"><button class="btn pri" data-act="reload">다시 시도</button><button class="btn" data-go="settings">연결 설정</button></div></div>` : '<div class="loading"><div class="spin"></div>시트를 불러오는 중이에요</div>';
   else body = ({ home: viewHome, authors: viewAuthors, orders: viewOrders, match: viewMatch, make: viewMake, money: viewMoney, memo: viewMemo, settings: viewSettings }[st.view] || viewHome)();
@@ -385,7 +447,7 @@ function render() {
 
 function topBar(nav) {
   return `<header class="top"><div class="top-in">
-    <div class="brand">행사 관리${st.demo ? ' <span class="badge orange">둘러보기</span>' : store.who ? ` <span class="badge">${esc(store.who)}</span>` : ''}</div>
+    <div class="brand">행사 관리${st.demo ? ' <span class="badge orange">둘러보기</span>' : store.tok && !store.key ? ` <span class="badge">${esc(store.tok.name)}</span>` : store.who ? ` <span class="badge">${esc(store.who)}</span>` : ''}</div>
     ${nav ? `<nav class="tabs" role="tablist">${VIEWS.map(([k, t]) => `<button role="tab" aria-selected="${st.view === k}" data-go="${k}">${t}</button>`).join('')}</nav>
     <div class="sync" id="sync"><i></i><span id="syncT"></span><button data-act="reload">새로고침</button></div>` : ''}
   </div></header>`;
@@ -395,14 +457,28 @@ function setSync(s) {
   el.className = 'sync ' + (s === 'busy' ? 'busy' : s === 'err' ? 'err' : '');
   $('#syncT').textContent = s === 'busy' ? '저장 중' : s === 'err' ? '연결 오류' : st.at ? st.at.toTimeString().slice(0, 5) + ' 불러옴' : '';
 }
+function avatar(name, pic, cls = '') {
+  const ini = esc(String(name || '?').replace(/[(（].*$/, '').trim().slice(0, 1).toUpperCase());
+  return `<span class="av ${cls}">${ini}${pic ? `<img src="${esc(pic)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-av>` : ''}</span>`;
+}
 const head = (title, sub, acts = '') => `<div class="head"><div><h1>${title}</h1>${sub ? `<p>${sub}</p>` : ''}</div><div class="acts">${acts}</div></div>`;
 const stat = (k, v, d, cls = '', go = '', pct = null) => `<${go ? 'button' : 'div'} class="stat ${cls}" ${go ? `data-go="${go}"` : ''}><div class="k">${k}</div><div class="v num">${v}</div>${d ? `<div class="d">${d}</div>` : ''}${pct !== null ? `<div class="bar"><i style="width:${Math.min(100, Math.max(0, pct))}%"></i></div>` : ''}</${go ? 'button' : 'div'}>`;
 
 // ---------- 연결 ----------
 function viewConnect() {
+  const err = st.loginErr ? `<div class="note warn">${esc(st.loginErr)}</div>` : '';
+  if (CFG.googleClientId) return `<div class="hello">
+    <h1>행사 관리</h1>
+    <p>허용된 구글 계정으로 로그인해 주세요.</p>
+    ${err}
+    <div class="card gbox"><div id="gbtn"></div><p class="hint" style="margin:0">로그인 정보는 이 브라우저에만 남아요. 시트에 접근할 수 있는 계정은 관리자가 정해요.</p></div>
+    <div class="card"><h2>먼저 둘러보기</h2><p class="sub">가짜 데이터로 화면을 미리 써볼 수 있어요. 시트에는 아무것도 저장되지 않아요.</p><button class="btn soft" data-act="demo">둘러보기 시작</button>
+      <details class="more"><summary>비밀키로 연결하기</summary><div style="margin-top:12px">${connectForm()}</div></details></div>
+  </div>`;
   return `<div class="hello">
     <h1>시트와 연결해요</h1>
-    <p>구글 시트에 붙인 Apps Script 주소와 비밀키를 넣어 주세요. 이 브라우저에만 저장돼요.</p>
+    <p>관리자에게 받은 연결 링크를 열면 자동으로 연결돼요. 비밀키를 직접 넣어도 돼요.</p>
+    ${err}
     <div class="card">${connectForm()}</div>
     <div class="card">
       <h2>처음이라면</h2>
@@ -419,7 +495,7 @@ function viewConnect() {
 }
 function connectForm() {
   return `<div class="fields">
-    <div class="field full"><label>웹 앱 주소</label><input class="inp" id="cUrl" placeholder="https://script.google.com/macros/s/…/exec" value="${esc(store.url || '')}" autocomplete="off"></div>
+    <div class="field full"><label>웹 앱 주소</label><input class="inp" id="cUrl" placeholder="https://script.google.com/macros/s/…/exec" value="${esc(apiUrl())}" autocomplete="off"></div>
     <div class="field full"><label>비밀키</label><input class="inp" id="cKey" type="password" placeholder="처음 설정 때 나온 키" value="${esc(store.key || '')}" autocomplete="off"></div>
   </div><div class="acts" style="margin-top:14px"><button class="btn pri" data-act="connect">연결하기</button>${store.url ? '<button class="btn danger" data-act="disconnect">이 기기에서 연결 해제</button>' : ''}</div>`;
 }
@@ -448,7 +524,7 @@ function viewHome() {
         </div>
         <div class="card"><div class="card-h"><h2>내보내기</h2></div>
           <p class="sub">부스 포스에 넣을 선입금 명단, 책에 넣을 작가 후기를 CSV로 받아요.</p>
-          <div class="acts"><button class="btn soft" data-act="exportPos">포스용 선입금 명단</button><button class="btn" data-act="exportReviews">작가 후기</button></div>
+          <div class="acts"><button class="btn soft" data-act="exportPos">포스로 내보내기</button><button class="btn" data-act="exportReviews">작가 후기</button></div>
         </div>
       </div>
     </div>`;
@@ -464,7 +540,7 @@ function viewAuthors() {
   const sb = s => s === '수락' ? 'green' : s === '거절' ? 'red' : s ? 'orange' : '';
   const sub = s => s === '제출 완료' ? 'green' : s ? 'orange' : 'red';
   const rows = list.map(a => `<tr data-open="author:${a.row}">
-      <td class="num muted">${a.no || ''}</td><td><b>${esc(a.nick)}</b><div class="muted" style="font-size:13px">${esc(a.x)}</div></td>
+      <td class="num muted">${a.no || ''}</td><td><div class="who">${avatar(a.nick, a.pic)}<div><b>${esc(a.nick)}</b><div class="muted" style="font-size:13px">${esc(a.x)}</div></div></div></td>
       <td><span class="badge ${sb(a.status)}">${esc(a.status || '미정')}</span></td>
       ${st.authorSeg === 'ok' ? `<td class="c">${esc(a.discord || '-')}</td><td><span class="badge ${sub(a.submit)}">${esc(a.submit || '미제출')}</span></td><td>${esc(a.pickup || '-')}</td><td class="c">${a.revKo ? '✓' : '<span class="muted">-</span>'}${a.revJa ? ' / ✓' : ''}</td>`
       : `<td class="muted clip">${esc(a.r.get('섭외 메모'))}</td>`}
@@ -492,7 +568,7 @@ function viewOrders() {
       <td class="r num">${o.books || '-'}</td><td>${jokjaChips(o.jk)} ${jBadge(o)}</td>
       <td class="r num">${won(o.total)}${o.total !== o.expect ? `<div style="font-size:12px;color:var(--orange)">계산 ${won(o.expect)}</div>` : ''}</td><td>${payBadge(o)}</td>
     </tr>`).join('');
-  return head('주문', `위치폼 선입금 ${cnt(m.orders.length)}건. 줄을 누르면 족자봉 넘버와 입금 처리를 고칠 수 있어요.`, `<button class="btn" data-act="exportPos">포스용 명단</button><button class="btn pri" data-act="paste" data-tab="선입금 리스트">선입금 데이터 넣기</button>`) +
+  return head('주문', `위치폼 선입금 ${cnt(m.orders.length)}건. 줄을 누르면 족자봉 넘버와 입금 처리를 고칠 수 있어요.`, `<button class="btn" data-act="exportPos">포스로 내보내기</button><button class="btn pri" data-act="paste" data-tab="선입금 리스트">선입금 데이터 넣기</button>`) +
     `<div class="chips">${ORDER_FILTERS.map(([k, t, f]) => `<button class="chip" aria-pressed="${st.orderFilter === k}" data-seg="orderFilter:${k}">${t} <b>${m.orders.filter(f).length}</b></button>`).join('')}</div>
     <div class="tools"><input class="search" id="orderQ" placeholder="이름, 닉네임, 입금자명, 전화번호 뒷자리, 주문번호" value="${esc(st.orderQ)}"></div>
     <div class="tbl-wrap">${list.length ? `<table class="tbl"><thead><tr><th>번호</th><th>주문자</th><th class="r">엽서북</th><th>족자봉</th><th class="r">금액</th><th>입금</th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty">${m.orders.length ? '조건에 맞는 주문이 없어요' : '아직 선입금 데이터가 없어요. 오른쪽 위 버튼으로 넣어 주세요.'}</div>`}</div>`;
@@ -540,7 +616,7 @@ function viewMake() {
     </div>
     <div class="grid2">
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>넘버</th><th>작가</th><th class="r">주문</th><th class="r">여분</th><th class="r">추가</th><th class="r">최종</th></tr></thead><tbody>
-        ${m.make.map(x => `<tr><td class="num"><b>${x.no}</b></td><td>${x.author ? esc(x.author.nick) : '<span class="badge orange">작가 없음</span>'}</td><td class="r num">${x.order}</td><td class="r num muted">${x.spare}</td><td class="r num ${x.add ? '' : 'muted'}" title="${esc(x.adds.map(e => e.who + ' ' + e.n).join(', '))}">${x.add}</td><td class="r num"><b>${x.total}</b></td></tr>`).join('')}
+        ${m.make.map(x => `<tr><td class="num"><b>${x.no}</b></td><td>${x.author ? `<div class="who">${avatar(x.author.nick, x.author.pic, 'sm')}${esc(x.author.nick)}</div>` : '<span class="badge orange">작가 없음</span>'}</td><td class="r num">${x.order}</td><td class="r num muted">${x.spare}</td><td class="r num ${x.add ? '' : 'muted'}" title="${esc(x.adds.map(e => e.who + ' ' + e.n).join(', '))}">${x.add}</td><td class="r num"><b>${x.total}</b></td></tr>`).join('')}
       </tbody><tfoot><tr><td colspan="2">합계</td><td class="r num">${sum('order')}</td><td class="r num">${sum('spare')}</td><td class="r num">${sum('add')}</td><td class="r num">${sum('total')}</td></tr></tfoot></table></div>
       <div>${listCard('추가 수량', '하치 1개, 밀키봇 엽서북 2권처럼 주문 밖에서 더 만드는 수량이에요.', ['구분', '넘버', '개수', '대상', '메모'])}</div>
     </div>`;
@@ -582,8 +658,13 @@ function viewSettings() {
     `<div class="grid2"><div>${listCard('설정', '가격, 작가 여분, 분배 비율 같은 값이에요. 시트의 "설정" 탭과 같아요.', ['항목', '값', '설명'])}</div>
     <div>
       <div class="card"><h2>연결</h2><p class="sub">${st.demo ? '지금은 둘러보기 모드예요.' : '이 브라우저에만 저장돼요. 다른 사람 기기에서 쓰면 꼭 연결 해제해 주세요.'}</p>
-        ${st.demo ? '<button class="btn pri" data-act="exitDemo">둘러보기 끝내고 연결하기</button>' : connectForm()}</div>
-      ${st.demo ? '' : `<div class="card"><h2>동료에게 주기</h2><p class="sub">시트 메뉴 <b>관리 사이트 → 동료 추가</b>를 누르면 그 사람 전용 링크가 나와요. 링크를 한 번 열면 자동으로 연결되고, 누가 고쳤는지도 남아요. 한 명만 끊을 수도 있어요.</p>
+        ${st.demo ? '<button class="btn pri" data-act="exitDemo">둘러보기 끝내고 연결하기</button>' : useGoogle() && store.tok ? `<div class="me">${avatar(store.tok.name, store.tok.pic)}<div><b>${esc(store.tok.name)}</b><div class="hint">${esc(store.tok.email)}</div></div></div><div class="acts" style="margin-top:14px"><button class="btn danger" data-act="signOut">로그아웃</button></div>` : connectForm()}</div>
+      ${st.demo ? '' : `<div class="card"><h2>테스트 데이터</h2><p class="sub">작년 데이터로 연습해보고, 끝나면 초기화로 날려요. 작가, 정산, 설정 탭은 건드리지 않아요.</p>
+        <div class="kv"><span>작년 선입금 주문 (164건)</span><b><button class="btn sm soft" data-act="sample" data-which="orders">불러오기</button></b></div>
+        <div class="kv"><span>작년 통장 입금내역 (89건)</span><b><button class="btn sm soft" data-act="sample" data-which="deposits">불러오기</button></b></div>
+        <div class="kv"><span>선입금 내역 초기화<br><small class="muted">선입금 리스트 + 주문 처리(입금 연결, 족자봉 고침)</small></span><b><button class="btn sm danger" data-act="reset" data-which="orders">초기화</button></b></div>
+        <div class="kv"><span>입금내역 초기화<br><small class="muted">입금기록 탭</small></span><b><button class="btn sm danger" data-act="reset" data-which="deposits">초기화</button></b></div></div>`}
+      ${st.demo || useGoogle() ? '' : `<div class="card"><h2>동료에게 주기</h2><p class="sub">시트 메뉴 <b>관리 사이트 → 동료 추가</b>를 누르면 그 사람 전용 링크가 나와요. 링크를 한 번 열면 자동으로 연결되고, 누가 고쳤는지도 남아요. 한 명만 끊을 수도 있어요.</p>
         <div class="acts"><button class="btn soft" data-act="copyLink">내 연결 링크 복사</button></div><p class="hint" style="margin:8px 0 0">내 다른 기기(아이패드, 폰)에서 열 때 쓰세요. 이 링크는 내 키라서 남에게 주면 안 돼요.</p></div>`}
       <div class="card"><h2>원본 데이터 넣기</h2><p class="sub">위치폼 엑셀, 통장 내역을 복사해서 붙여넣거나 CSV 파일을 골라요. 그 탭은 통째로 바뀌고, 사이트에서 처리한 내용(입금 연결, 족자봉 고침)은 주문번호로 그대로 남아요.</p>
         <div class="acts"><button class="btn soft" data-act="paste" data-tab="선입금 리스트">선입금 리스트</button><button class="btn soft" data-act="paste" data-tab="입금기록">입금기록</button></div></div>
@@ -789,7 +870,7 @@ function download(name, rows) {
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
 }
-function exportPos() {
+function posRows() {
   const m = M();
   // 부스 포스(config.js)의 족자봉 종류 글자 (A~Y)
   const booths = (self.BOOTH_CONFIG && self.BOOTH_CONFIG.booths) || {};
@@ -807,9 +888,24 @@ function exportPos() {
     }).join(', ');
     rows.push([o.id, o.nick || o.name, o.phone, paid ? 'O' : '', o.books || '', j]);
   }
-  download('포스용_선입금_명단.csv', rows);
-  toast(over.length ? `넘버 ${[...new Set(over)].join(', ')}번은 포스 족자봉 종류(${letters.length}개)보다 커요. config.js를 확인해 주세요.` : `${rows.length - 1}명을 내보냈어요. 포스 설정 → 선입금 명단 불러오기에 넣어 주세요.`, !!over.length);
+  return { rows, over: [...new Set(over)], letters, useLetters, paid: rows.filter(r => r[3] === 'O').length };
 }
+const POS_HANDOFF = 'booth-pos-handoff';
+function posModal() {
+  const x = posRows(), n = x.rows.length - 1;
+  const sample = x.rows.slice(1).find(r => r[5]);
+  openModal({
+    title: '포스로 내보내기', sub: '입금 확인된 사람만 포스에서 수령할 수 있어요. 미입금은 명단에는 들어가지만 포스가 걸러내요.',
+    body: `<div class="kv"><span>명단</span><b class="num">${cnt(n)}명</b></div>
+      <div class="kv"><span>입금 확인</span><b class="num">${cnt(x.paid)}명</b></div>
+      <div class="kv"><span>족자봉 표기</span><b>${x.useLetters ? `알파벳 (1→A … ${x.letters.length}→${x.letters[x.letters.length - 1]})` : '숫자'}</b></div>
+      ${sample ? `<div class="kv sub"><span>예: ${esc(sample[1])} → ${esc(sample[5])}</span><b></b></div>` : ''}
+      ${x.over.length ? `<div class="note warn"><b>넘버 ${x.over.join(', ')}번</b>은 포스 족자봉 종류(${x.letters.length}개, A~${x.letters[x.letters.length - 1]})에 없어서 포스가 개수를 잘못 셀 수 있어요. 포스 config.js의 족자봉 종류를 늘리거나, 해당 주문의 족자봉 넘버를 고친 뒤 보내 주세요.</div>` : ''}
+      <div class="note" style="margin-top:12px"><b>이 기기 포스로 보내기</b>: 이 브라우저(같은 홈 화면 앱)에 열린 포스가 바로 받아요. 포스 설정 → 선입금 명단 → <b>관리 사이트에서 받기</b>를 누르면 돼요.<br><b>CSV 받기</b>: 다른 기기 포스는 파일을 옮겨서 CSV 파일 불러오기로 넣어요.</div>`,
+    foot: `<span class="sp"></span><button class="btn" data-act="posCsv">CSV 받기</button><button class="btn pri" data-act="posSend">이 기기 포스로 보내기</button>`,
+  });
+}
+function posCsvText(rows) { return '\uFEFF' + rows.map(r => r.map(csvCell).join(',')).join('\r\n'); }
 function exportReviews() {
   const m = M();
   download('작가_후기.csv', [['No', '닉네임', 'X 아이디', '후기 (한)', '후기 (일)'], ...m.confirmed.slice().sort((a, b) => (a.no || 999) - (b.no || 999)).map(a => [a.no || '', a.nick, a.x, a.revKo, a.revJa])]);
@@ -819,6 +915,44 @@ function exportMake() {
   download('제작_수량.csv', [['넘버', '작가', '주문', '작가 여분', '추가', '최종'], ...m.make.map(x => [x.no, x.author ? x.author.nick : '', x.order, x.spare, x.add, x.total]),
     [], ['엽서북', '', m.bookOrder, m.bookAuthor, m.bookExtra, m.bookOrder + m.bookAuthor + m.bookExtra]]);
 }
+
+// ---------------------------------------------------------------------
+// X 프로필 사진: 처음 한 번만 받아서 시트에 저장해요. 사진이 깨지면(바뀌면) 그 사람만 다시 받아요.
+// ---------------------------------------------------------------------
+const AV_TRIED = 'seiroku-admin-av';
+const avTried = (() => { try { return new Set(JSON.parse(sessionStorage.getItem(AV_TRIED)) || []); } catch { return new Set(); } })();
+let avBusy = false, avBroken = new Set(), avTimer;
+async function fetchAvatars(handles) {
+  if (avBusy || st.demo || !st.tabs) return;
+  const authors = T('작가').rows.filter(r => /^@?\w{1,15}$/.test(r.get('X 아이디')));
+  if (!handles) {
+    const miss = authors.filter(r => !r.get('프로필 사진') && !avTried.has(r.get('X 아이디').toLowerCase()));
+    if (!miss.length) return;
+    handles = null;
+    miss.forEach(r => avTried.add(r.get('X 아이디').toLowerCase()));
+  } else {
+    handles = handles.filter(h => !avTried.has('!' + h.toLowerCase()));
+    if (!handles.length) return;
+    handles.forEach(h => avTried.add('!' + h.toLowerCase()));
+  }
+  try { sessionStorage.setItem(AV_TRIED, JSON.stringify([...avTried])); } catch {}
+  avBusy = true;
+  try {
+    const j = await api('avatars', handles ? { handles } : {});
+    const rows = j.rows || {};
+    if (Object.keys(rows).length) {
+      Object.entries(rows).forEach(([row, url]) => applyOp(st.tabs, { action: 'update', sheet: '작가', row: +row, values: { '프로필 사진': url } }));
+      model = null; render();
+    }
+  } catch {} finally { avBusy = false; }
+}
+document.addEventListener('error', e => {
+  const img = e.target;
+  if (!(img instanceof HTMLImageElement) || !img.hasAttribute('data-av')) return;
+  img.remove();
+  const a = M().authors.find(a => a.pic === img.getAttribute('src'));
+  if (a && a.x) { avBroken.add(a.x); clearTimeout(avTimer); avTimer = setTimeout(() => { fetchAvatars([...avBroken]); avBroken = new Set(); }, 1500); }
+}, true);
 
 // ---------------------------------------------------------------------
 // 토스트
@@ -868,7 +1002,27 @@ document.addEventListener('click', async e => {
   if (act === 'newRow') return rowForm(el.dataset.tab, 0);
   if (act === 'paste') return pasteModal(el.dataset.tab);
   if (act === 'pickFile') return $('#fileIn').click();
-  if (act === 'exportPos') return exportPos();
+  if (act === 'exportPos') return posModal();
+  if (act === 'posCsv') { download('포스용_선입금_명단.csv', posRows().rows); return toast('CSV를 받았어요. 포스 설정 → CSV 파일 불러오기에 넣어 주세요'); }
+  if (act === 'posSend') {
+    const x = posRows();
+    try { localStorage.setItem(POS_HANDOFF, JSON.stringify({ csv: posCsvText(x.rows), ts: Date.now(), count: x.rows.length - 1 })); }
+    catch { return toast('이 브라우저에 저장하지 못했어요. CSV 받기를 써 주세요', true); }
+    closeModal();
+    openModal({ title: '포스로 보냈어요', sub: `${cnt(x.rows.length - 1)}명`, body: '<p style="margin:0">포스를 열고 <b>설정 → 선입금 명단 → 관리 사이트에서 받기</b>를 눌러 주세요.</p>',
+      foot: `<span class="sp"></span><button class="btn" data-act="close">닫기</button><a class="btn pri" href="../index.html">포스 열기</a>` });
+    return;
+  }
+  if (act === 'signOut') return signOut();
+  if (act === 'sample' || act === 'reset') {
+    const w = el.dataset.which, what = w === 'orders' ? '선입금 리스트' : '입금기록';
+    const msg = act === 'sample' ? `작년 ${what} 샘플로 ${what} 탭을 덮어쓸까요?` : `${w === 'orders' ? '선입금 리스트와 주문 처리' : '입금기록'} 탭 내용을 모두 지울까요? 되돌릴 수 없어요.`;
+    if (!confirm(msg)) return;
+    setSync('busy');
+    try { const j = await api(act, { which: w }); toast(act === 'sample' ? `${j.count != null ? j.count + '건을 ' : ''}불러왔어요` : '초기화했어요'); }
+    catch (e) { toast(e.message, true); }
+    return load();
+  }
   if (act === 'exportReviews') return exportReviews();
   if (act === 'exportMake') return exportMake();
   if (act === 'demo') { st.demo = true; store.demo = true; saveStore(); st.tabs = null; st.demoTabs = null; return load(); }
@@ -890,7 +1044,7 @@ document.addEventListener('click', async e => {
   }
   if (act === 'disconnect') {
     if (!confirm('이 브라우저에서 연결 정보를 지울까요? 시트 데이터는 그대로예요.')) return;
-    delete store.url; delete store.key; delete store.who; saveStore(); st.tabs = null; render(); return;
+    delete store.url; delete store.key; delete store.who; delete store.tok; saveStore(); st.tabs = null; render(); return;
   }
 });
 
@@ -917,4 +1071,4 @@ $('#fileIn').addEventListener('change', async e => {
 applyTheme();
 render();
 if (linkMsg) toast(linkMsg.replace(/^!/, ''), linkMsg.startsWith('!'));
-if (st.demo || (store.url && store.key)) load();
+if (connected()) load();

@@ -14,10 +14,20 @@ const SOURCE_SHEET_ID = '13ovtJ2eaVsNqu52vkqcdg2lriarol2KCzQFIxzpGbTY';
 // 관리 사이트 주소. 동료용 연결 링크를 만들 때 써요.
 const SITE_URL = 'https://kkkougaa.github.io/project_seiroku/admin/';
 
+// 이 스크립트의 웹 앱 주소 (배포 후 채워 둠)
+const DEPLOYED_URL = 'https://script.google.com/macros/s/AKfycbxtSj0sZ3KUpgC11YHqN_HDLPYhbzyRV61sk00vSbxHpw9o95DiF7ULEMYbqw3ddghL/exec';
+
+// 구글 로그인 ---------------------------------------------------------
+// GOOGLE_CLIENT_ID: Google Cloud 에서 만든 OAuth 클라이언트 ID (www/admin/settings.js 와 같은 값)
+// ALLOWED_EMAILS : 들어올 수 있는 구글 계정. 시트 메뉴 '구글 계정 허용 관리'로도 더할 수 있어요.
+//                  시트 주인 계정은 항상 들어올 수 있어요.
+const GOOGLE_CLIENT_ID = '';
+const ALLOWED_EMAILS = [];
+
 // 탭 이름과 열 구조. 사이트가 이 열 이름으로 값을 찾아요. (열 순서는 바꿔도 되지만 이름은 그대로 둬요)
 const TABS = {
   '작가': ['No', '닉네임', 'X 아이디', '수락 여부', '섭외 메모', '디스코드', '제출 여부', '현장 수령',
-    '후기 (한)', '후기 (일)', '작업 폴더 링크', '주소', '계좌번호', '실명', '기타'],
+    '후기 (한)', '후기 (일)', '작업 폴더 링크', '주소', '계좌번호', '실명', '기타', '프로필 사진'],
   '선입금 리스트': ['번호', '작성시간', '엽서북', '족자봉', '배송방법', '배송비', '총 주문금액', '주문자명', '닉네임',
     '주문자연락처', '결제날짜', '수령자명', '수령자연락처', '우편번호', '주소', '배송메모', '환불은행', '환불계좌',
     '환불예금주', '총 주문금액', '이메일', '족자봉', '트위터계정', '인스타계정', '택배사', '운송장번호', '진행상태', '메모', '주문번호'],
@@ -57,11 +67,31 @@ function onOpen() {
     .addItem('동료 목록 / 연결 끊기', 'manageMembers')
     .addItem('웹 앱 주소 바꾸기', 'setWebAppUrl')
     .addSeparator()
+    .addItem('구글 계정 허용 관리', 'manageEmails')
+    .addSeparator()
     .addItem('작년 선입금/입금 데이터 가져오기 (연습용)', 'importLastYearOrders')
     .addToUi();
 }
 
 function setup() {
+  const ss = SpreadsheetApp.getActive();
+  ensureTabs_();
+  const def = ss.getSheetByName('시트1') || ss.getSheetByName('Sheet1');
+  if (def && def.getLastRow() === 0 && ss.getSheets().length > 1) ss.deleteSheet(def);
+  let msg = '탭을 만들었어요.';
+  const au = ss.getSheetByName('작가');
+  if (au.getLastRow() <= 1) {
+    try { msg += '\n작가 ' + importAuthors_() + '명을 작년 시트에서 가져왔어요.'; }
+    catch (e) { msg += '\n작가 가져오기 실패: ' + e.message; }
+  }
+  const key = getKey_();
+  SpreadsheetApp.getUi().alert(msg + '\n\n이제 관리 사이트를 쓸 수 있어요.\n(비밀키 연결용: ' + key + ')');
+}
+
+// 탭이 없으면 만들어요. 사이트에서 처음 부를 때도 알아서 해요.
+function ensureTabs_() {
+  const cache = CacheService.getScriptCache();
+  if (cache.get('tabs-ok')) return;
   const ss = SpreadsheetApp.getActive();
   Object.entries(TABS).forEach(([name, header]) => {
     let sh = ss.getSheetByName(name);
@@ -72,20 +102,14 @@ function setup() {
     }
     if (TEXT_TABS.includes(name)) sh.getRange('A:AZ').setNumberFormat('@');
   });
-  const def = ss.getSheetByName('시트1') || ss.getSheetByName('Sheet1');
-  if (def && def.getLastRow() === 0 && ss.getSheets().length > 1) ss.deleteSheet(def);
-
   const st = ss.getSheetByName('설정');
   if (st.getLastRow() <= 1) st.getRange(2, 1, DEFAULT_SETTINGS.length, 3).setValues(DEFAULT_SETTINGS);
-
-  let msg = '탭을 만들었어요.';
   const au = ss.getSheetByName('작가');
-  if (au.getLastRow() <= 1) {
-    try { msg += '\n작가 ' + importAuthors_() + '명을 작년 시트에서 가져왔어요.'; }
-    catch (e) { msg += '\n작가 가져오기 실패: ' + e.message; }
+  if (au.getLastRow() <= 1 && !PropertiesService.getScriptProperties().getProperty('AUTHORS_IMPORTED')) {
+    PropertiesService.getScriptProperties().setProperty('AUTHORS_IMPORTED', '1');
+    try { importAuthors_(); } catch (e) { /* 작년 시트를 못 열면 빈 탭으로 둬요 */ }
   }
-  const key = getKey_();
-  SpreadsheetApp.getUi().alert(msg + '\n\n사이트 설정에 넣을 비밀키:\n' + key + '\n\n이제 배포 → 새 배포 → 웹 앱 으로 배포해 주세요.');
+  cache.put('tabs-ok', '1', 600);
 }
 
 // 섭외 진행 + 확정 작가 리스트를 한 탭(작가)으로 합쳐요. X 아이디로 짝을 맞춰요.
@@ -101,7 +125,7 @@ function importAuthors_() {
     const ok = String(r[2]).trim() === '수락';
     const c = byX[String(r[1]).trim().toLowerCase()];
     return [ok ? ++no : '', r[0], r[1], r[2], r[3], pick(c, '디스코드'), pick(c, '제출 여부'), pick(c, '현장 수령'),
-      pick(c, '후기 (한)'), pick(c, '후기 (일)'), pick(c, '작업 폴더 링크'), pick(c, '주소'), pick(c, '계좌번호'), pick(c, '실명'), pick(c, '기타')];
+      pick(c, '후기 (한)'), pick(c, '후기 (일)'), pick(c, '작업 폴더 링크'), pick(c, '주소'), pick(c, '계좌번호'), pick(c, '실명'), pick(c, '기타'), ''];
   });
   if (rows.length) SpreadsheetApp.getActive().getSheetByName('작가').getRange(2, 1, rows.length, rows[0].length).setValues(rows);
   return rows.length;
@@ -111,12 +135,62 @@ function importAuthors_() {
 function importLastYearOrders() {
   const ui = SpreadsheetApp.getUi();
   if (ui.alert('작년 선입금/입금 데이터로 덮어쓸까요?', '지금 선입금 리스트, 입금기록 탭 내용이 지워져요.', ui.ButtonSet.YES_NO) !== ui.Button.YES) return;
+  ui.alert('선입금 ' + sample_('orders') + '건, 입금 ' + sample_('deposits') + '건을 가져왔어요.');
+}
+
+// 작년 데이터를 연습용으로 복사해요. orders = 선입금 리스트(A~AC), deposits = 입금기록(A~H)
+function sample_(which) {
   const src = SpreadsheetApp.openById(SOURCE_SHEET_ID);
-  const o = src.getSheetByName('선입금 리스트').getRange('A:AC').getDisplayValues().filter((r, i) => i === 0 || (r[0] && /^\d+$/.test(r[0])));
-  const d = src.getSheetByName('입금기록').getRange('A:H').getDisplayValues().filter(r => r.some(Boolean));
-  replace_('선입금 리스트', o);
-  replace_('입금기록', d);
-  ui.alert('선입금 ' + (o.length - 1) + '건, 입금 ' + (d.length - 1) + '건을 가져왔어요.');
+  if (which === 'orders') {
+    const o = src.getSheetByName('선입금 리스트').getRange('A:AC').getDisplayValues().filter((r, i) => i === 0 || (r[0] && /^\d+$/.test(r[0])));
+    replace_('선입금 리스트', o);
+    return o.length - 1;
+  }
+  if (which === 'deposits') {
+    const d = src.getSheetByName('입금기록').getRange('A:H').getDisplayValues().filter(r => r.some(Boolean));
+    replace_('입금기록', d);
+    return d.length - 1;
+  }
+  throw new Error('모르는 샘플이에요: ' + which);
+}
+
+// orders: 선입금 리스트 + 주문 처리 를 비워요 / deposits: 입금기록을 비워요 (첫 줄 제목은 남겨요)
+function reset_(which) {
+  const names = which === 'orders' ? ['선입금 리스트', '주문 처리'] : which === 'deposits' ? ['입금기록'] : null;
+  if (!names) throw new Error('모르는 초기화예요: ' + which);
+  names.forEach(n => { const sh = sheet_(n); if (sh.getLastRow() > 1) sh.deleteRows(2, sh.getLastRow() - 1); });
+}
+
+// X 프로필 사진 주소를 받아서 작가 탭 '프로필 사진' 열에 저장해요. (한 번 받으면 다시 안 받아요)
+//  handles 를 주면 그 아이디만 다시 받아요 (사진이 바뀌어서 깨졌을 때)
+function avatars_(handles) {
+  const sh = sheet_('작가');
+  const header = header_(sh);
+  let pi = colIndex_(header, '프로필 사진');
+  if (pi < 0) { pi = header.length; sh.getRange(1, pi + 1).setValue('프로필 사진').setFontWeight('bold'); header.push('프로필 사진'); }
+  const xi = colIndex_(header, 'X 아이디');
+  if (xi < 0 || sh.getLastRow() < 2) return {};
+  const vals = sh.getRange(2, 1, sh.getLastRow() - 1, header.length).getDisplayValues();
+  const want = handles ? handles.map(h => String(h).replace(/^@/, '').toLowerCase()) : null;
+  const out = {}, started = Date.now();
+  vals.forEach((r, i) => {
+    if (Date.now() - started > 20000) return; // 너무 오래 걸리면 다음에 이어서
+    const h = String(r[xi] || '').trim().replace(/^@/, '');
+    if (!/^\w{1,15}$/.test(h)) return;
+    if (want ? !want.includes(h.toLowerCase()) : r[pi]) return;
+    const url = lookupAvatar_(h);
+    if (url) { sh.getRange(i + 2, pi + 1).setValue(url); out[i + 2] = url; }
+  });
+  return out;
+}
+
+function lookupAvatar_(h) {
+  const get = u => { try { const r = UrlFetchApp.fetch(u, { muteHttpExceptions: true, followRedirects: true }); return r.getResponseCode() === 200 ? JSON.parse(r.getContentText()) : null; } catch (e) { return null; } };
+  const fx = get('https://api.fxtwitter.com/' + encodeURIComponent(h));
+  let url = fx && fx.user && fx.user.avatar_url;
+  if (!url) { const ua = get('https://unavatar.io/x/' + encodeURIComponent(h) + '?json&fallback=false'); url = ua && ua.url; }
+  if (!url || !/^https:\/\//.test(url)) return '';
+  return url.replace(/_normal(\.\w+)$/, '_bigger$1'); // 48px → 73px
 }
 
 function getKey_() {
@@ -146,7 +220,7 @@ function whoIs_(key) {
 
 function webAppUrl_(quiet) {
   const p = PropertiesService.getScriptProperties();
-  let url = p.getProperty('WEBAPP_URL');
+  let url = p.getProperty('WEBAPP_URL') || DEPLOYED_URL;
   if (!url && !quiet) url = setWebAppUrl();
   return url;
 }
@@ -199,6 +273,48 @@ function manageMembers() {
   ui.alert(name + ' 님 연결을 끊었어요.');
 }
 
+// ------------------------------------------------------------------
+// 구글 로그인: 사이트가 보낸 ID 토큰을 구글에 확인하고, 허용된 계정인지 봐요
+// ------------------------------------------------------------------
+function allowedEmails_() {
+  const extra = (PropertiesService.getScriptProperties().getProperty('ALLOWED') || '').split(',');
+  const owner = Session.getEffectiveUser().getEmail();
+  return ALLOWED_EMAILS.concat(extra, [owner]).map(e => String(e || '').trim().toLowerCase()).filter(Boolean);
+}
+
+// 맞으면 { email, name }, 토큰이 틀리거나 지났으면 null
+function verifyToken_(t) {
+  if (!GOOGLE_CLIENT_ID || !t) return null;
+  const cache = CacheService.getScriptCache();
+  const ck = 't' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, t));
+  const hit = cache.get(ck);
+  if (hit) return JSON.parse(hit);
+  const r = UrlFetchApp.fetch('https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(t), { muteHttpExceptions: true });
+  if (r.getResponseCode() !== 200) return null;
+  const j = JSON.parse(r.getContentText());
+  const left = Math.floor(+j.exp - Date.now() / 1000);
+  if (j.aud !== GOOGLE_CLIENT_ID || String(j.email_verified) !== 'true' || left <= 0) return null;
+  const u = { email: String(j.email).toLowerCase(), name: j.name || String(j.email).split('@')[0] };
+  cache.put(ck, JSON.stringify(u), Math.min(21600, left));
+  return u;
+}
+
+function manageEmails() {
+  const ui = SpreadsheetApp.getUi(), p = PropertiesService.getScriptProperties();
+  const extra = (p.getProperty('ALLOWED') || '').split(',').filter(Boolean);
+  const r = ui.prompt('구글 계정 허용 관리',
+    '지금 들어올 수 있는 계정:\n' + allowedEmails_().join('\n') +
+    '\n\n더할 계정은 그냥 쓰고, 뺄 계정은 앞에 - 를 붙여요. 여러 개는 쉼표로.\n예: friend@gmail.com, -old@gmail.com\n(코드의 ALLOWED_EMAILS 와 시트 주인은 여기서 못 빼요)', ui.ButtonSet.OK_CANCEL);
+  if (r.getSelectedButton() !== ui.Button.OK) return;
+  let list = extra.slice();
+  r.getResponseText().split(',').map(x => x.trim().toLowerCase()).filter(Boolean).forEach(x => {
+    if (x[0] === '-') list = list.filter(e => e !== x.slice(1));
+    else if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x) && !list.includes(x)) list.push(x);
+  });
+  p.setProperty('ALLOWED', list.join(','));
+  ui.alert('저장했어요.\n\n' + allowedEmails_().join('\n'));
+}
+
 function esc_(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function resetKey() {
   PropertiesService.getScriptProperties().deleteProperty('KEY');
@@ -211,17 +327,26 @@ function resetKey() {
 //  응답: { ok: true, ... } 또는 { ok: false, error }
 // ------------------------------------------------------------------
 function doGet() {
-  return json_({ ok: true, hello: '관리 사이트 API예요. 사이트에서 연결해 주세요.' });
+  return json_({ ok: true, hello: '관리 사이트 API예요. 사이트에서 연결해 주세요.', login: !!GOOGLE_CLIENT_ID });
 }
 
 function doPost(e) {
   try {
     const req = JSON.parse(e.postData.contents);
-    const who = whoIs_(req.key);
-    if (!who) {
-      Utilities.sleep(800);
-      return json_({ ok: false, error: '비밀키가 맞지 않아요.' });
+    let who = null;
+    if (req.idToken) {
+      const u = verifyToken_(req.idToken);
+      if (!u) return json_({ ok: false, code: 'LOGIN', error: '구글 로그인이 만료됐어요. 다시 로그인해 주세요.' });
+      if (!allowedEmails_().includes(u.email)) return json_({ ok: false, code: 'DENIED', error: u.email + ' 계정은 허용되지 않았어요. 관리자에게 말해 주세요.' });
+      who = u.name;
+    } else {
+      who = whoIs_(req.key);
+      if (!who) {
+        Utilities.sleep(800);
+        return json_({ ok: false, code: 'LOGIN', error: '비밀키가 맞지 않아요.' });
+      }
     }
+    ensureTabs_();
     if (req.action === 'read') return json_({ ok: true, tabs: readAll_(), at: new Date().toISOString(), who: who });
     if (req.sheet === '주문 처리' && req.values) req.values['수정한 사람'] = who;
 
@@ -234,6 +359,9 @@ function doPost(e) {
         case 'append': return json_({ ok: true, row: append_(req.sheet, req.values) });
         case 'remove': remove_(req.sheet, req.row, req.match); return json_({ ok: true });
         case 'replace': replace_(req.sheet, req.rows); return json_({ ok: true, count: req.rows.length - 1 });
+        case 'sample': return json_({ ok: true, count: sample_(req.which) });
+        case 'reset': reset_(req.which); return json_({ ok: true });
+        case 'avatars': return json_({ ok: true, rows: avatars_(req.handles || null) });
         default: return json_({ ok: false, error: '모르는 요청이에요: ' + req.action });
       }
     } finally { lock.releaseLock(); }

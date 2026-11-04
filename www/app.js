@@ -591,6 +591,8 @@ function settingsView() {
       <div class="sr"><div class="l"><div class="t">소리 파일</div><div class="s">${ls.get(SOUND_KEY) ? esc(ls.get(SOUND_KEY + ':name') || '내 소리 파일') : '기본 소리'}</div></div>
         <button class="mini gray" data-act="pickSound">파일 고르기</button>${ls.get(SOUND_KEY) ? '<button class="mini gray" data-act="clearSound">기본으로</button>' : ''}</div></div>
     <div class="box"><h2>선입금 명단</h2>
+      ${(() => { const h = handoff(); return h ? `<button class="link" data-act="importHandoff"><span>관리 사이트에서 받기<span class="s">${h.count}명 · ${mdhm(h.ts)} 보냄</span></span><span class="chev">›</span></button>` : ''; })()}
+      <a class="link" href="admin/"><span>관리 사이트 열기<span class="s">입금 대조가 끝난 명단을 여기로 보낼 수 있어요</span></span><span class="chev">›</span></a>
       <button class="link" data-act="importCsv"><span>CSV 파일 불러오기<span class="s">${ii ? `${esc(ii.file)} · ${mdhm(ii.ts)} · ${ii.count}명` : ''}</span></span><span class="chev">›</span></button>
       <button class="link" data-act="loadTest"><span>테스트용 선입금 넣기<span class="s">가짜 40명</span></span><span class="chev">›</span></button>
       <button class="link" data-act="sampleCsv"><span>양식 예시 파일 받기</span><span class="chev">›</span></button></div>
@@ -838,6 +840,9 @@ function analyzeCSV(rows, file) {
   const keep = D.preorders.filter(p => p.at).length;
   return { file, total: body.length, list, unpaid, noPhone, unknownVar, matched, unknown, missingCols, keep, keyset };
 }
+
+// 관리 사이트(admin/)가 같은 브라우저에 남겨둔 선입금 명단
+function handoff() { try { const h = JSON.parse(localStorage.getItem('booth-pos-handoff')); return h && h.csv ? h : null; } catch { return null; } }
 
 function applyImport(r) {
   const old = new Map(D.preorders.map(p => [p.key, p]));
@@ -1105,6 +1110,7 @@ app.addEventListener('click', e => {
     case 'peBack': sheet = 'prod'; break;
     case 'peDelGo': { const cat = ensureCatalog(); cat.products = cat.products.filter(x => x.id !== pe.id); for (const id of Object.keys(cat.pools)) if (!cat.products.some(x => x.pool === id)) delete cat.pools[id]; ls.del(IMG_KEY(pe.id)); delete cart[pe.id]; save(); toast(`${pe.name} 상품을 삭제했어요`); pe = null; sheet = null; break; }
     case 'catReset': D.catalog = null; save(); toast('config.js 기본 상품으로 되돌렸어요'); break;
+    case 'importHandoff': { const h = handoff(); if (!h) return; const rows = parseCSV(h.csv.replace(/^\uFEFF/, '')); importDraft = analyzeCSV(rows, `관리 사이트 (${mdhm(h.ts)})`); sheet = 'import'; break; }
     case 'loadTest': { const rows = parseCSV(testCSV().replace(/^\uFEFF/, '')); importDraft = analyzeCSV(rows, '테스트 데이터 (가짜 40명)'); sheet = 'import'; break; }
     case 'sampleCsv': doSave('선입금_양식_예시.csv', sampleCSV(), 'text/csv'); return;
     case 'backup': {
