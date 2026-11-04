@@ -35,7 +35,7 @@ const TABS = {
   '주문 처리': ['주문번호', '족자봉 확정', '입금 처리', '입금 키', '메모', '수정 시각', '수정한 사람'],
   '추가 수량': ['구분', '넘버', '개수', '대상', '메모'],
   '수입': ['항목', '금액', '메모'],
-  '비용': ['항목', '단가', '개수', '출금자', '처리', '메모'],
+  '비용': ['내용', '단가', '개수', '사용 출처', '처리', '메모'],
   '예외기록': ['날짜', '대상', '내용', '상태'],
   '설정': ['항목', '값', '설명'],
 };
@@ -91,8 +91,14 @@ function setup() {
 // 탭이 없으면 만들어요. 사이트에서 처음 부를 때도 알아서 해요.
 function ensureTabs_() {
   const cache = CacheService.getScriptCache();
-  if (cache.get('tabs-ok')) return;
+  if (cache.get('tabs-ok2')) return;
   const ss = SpreadsheetApp.getActive();
+  // 비용 탭 열 이름 바꾸기: 항목 → 내용, 출금자 → 사용 출처
+  const cost = ss.getSheetByName('비용');
+  if (cost && cost.getLastColumn() > 0) {
+    const h = cost.getRange(1, 1, 1, cost.getLastColumn()).getDisplayValues()[0];
+    [['항목', '내용'], ['출금자', '사용 출처']].forEach(([o, n]) => { const i = h.indexOf(o); if (i >= 0 && !h.includes(n)) { cost.getRange(1, i + 1).setValue(n); clearReadCache_(); } });
+  }
   Object.entries(TABS).forEach(([name, header]) => {
     let sh = ss.getSheetByName(name);
     if (!sh) sh = ss.insertSheet(name);
@@ -109,7 +115,7 @@ function ensureTabs_() {
     PropertiesService.getScriptProperties().setProperty('AUTHORS_IMPORTED', '1');
     try { importAuthors_(); } catch (e) { /* 작년 시트를 못 열면 빈 탭으로 둬요 */ }
   }
-  cache.put('tabs-ok', '1', 600);
+  cache.put('tabs-ok2', '1', 600);
 }
 
 // 섭외 진행 + 확정 작가 리스트를 한 탭(작가)으로 합쳐요. X 아이디로 짝을 맞춰요.

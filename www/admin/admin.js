@@ -97,7 +97,7 @@ const VIEWS = [['home', '홈'], ['authors', '작가'], ['orders', '주문'], ['m
 const st = {
   view: (location.hash.slice(1) || 'home'),
   tabs: null, loading: false, err: '', at: null, demo: !!store.demo,
-  authorSeg: 'all', orderFilter: 'all', orderQ: '', authorQ: '',
+  authorSeg: 'ok', orderFilter: 'all', orderQ: '', authorQ: '',
 };
 if (!VIEWS.some(v => v[0] === st.view)) st.view = 'home';
 
@@ -370,9 +370,9 @@ function build() {
 
   // 정산
   const income = T('수입').rows.filter(r => r.get('항목') || r.get('금액')).map(r => ({ row: r.row, r, name: r.get('항목'), amt: toNum(r.get('금액')), memo: r.get('메모') }));
-  const costs = T('비용').rows.filter(r => r.get('항목') || r.get('단가')).map(r => {
+  const costs = T('비용').rows.filter(r => r.get('내용') || r.get('항목') || r.get('단가')).map(r => {
     const unit = toNum(r.get('단가')), n = r.get('개수') === '' ? 1 : toNum(r.get('개수'));
-    return { row: r.row, r, name: r.get('항목'), unit, n, amt: unit * n, who: r.get('출금자') || '공금', done: r.get('처리') === '완료', memo: r.get('메모') };
+    return { row: r.row, r, name: r.get('내용') || r.get('항목'), unit, n, amt: unit * n, who: r.get('사용 출처') || r.get('출금자') || '공금', done: r.get('처리') === '완료', memo: r.get('메모') };
   });
   const preForm = paid.filter(o => o.pay === 'form').reduce((a, o) => a + o.total, 0);
   const preBank = paid.filter(o => o.pay !== 'form').reduce((a, o) => a + o.total, 0);
@@ -493,7 +493,7 @@ function viewConnect() {
     <p>허용된 구글 계정으로 로그인해 주세요.</p>
     ${err}
     <div class="card gbox"><div id="gbtn"></div><p class="hint" style="margin:0">로그인 정보는 이 브라우저에만 남아요. 시트에 접근할 수 있는 계정은 관리자가 정해요.</p></div>
-    <div class="card"><h2>먼저 둘러보기</h2><p class="sub">가짜 데이터로 화면을 미리 써볼 수 있어요. 시트에는 아무것도 저장되지 않아요.</p><button class="btn soft" data-act="demo">둘러보기 시작</button>
+    <div class="card"><h2>먼저 둘러보기</h2><p class="sub">가짜 데이터 · 시트에 저장 안 됨</p><button class="btn soft" data-act="demo">둘러보기 시작</button>
       <details class="more"><summary>비밀키로 연결하기</summary><div style="margin-top:12px">${connectForm()}</div></details></div>
   </div>`;
   return `<div class="hello">
@@ -511,7 +511,7 @@ function viewConnect() {
         <li>나온 웹 앱 주소(<code>https://script.google.com/macros/s/…/exec</code>)를 위에 넣어요.</li>
       </ol>
     </div>
-    <div class="card"><h2>먼저 둘러보기</h2><p class="sub">가짜 데이터로 화면을 미리 써볼 수 있어요. 시트에는 아무것도 저장되지 않아요.</p><button class="btn soft" data-act="demo">둘러보기 시작</button></div>
+    <div class="card"><h2>먼저 둘러보기</h2><p class="sub">가짜 데이터 · 시트에 저장 안 됨</p><button class="btn soft" data-act="demo">둘러보기 시작</button></div>
   </div>`;
 }
 function connectForm() {
@@ -527,7 +527,7 @@ function viewHome() {
   const diff = m.live.filter(o => o.pay === 'diff').length, none = m.live.filter(o => ['none', 'unpaid'].includes(o.pay)).length;
   const sub = m.confirmed.filter(a => a.submit === '제출 완료').length;
   const jTotal = m.make.reduce((a, x) => a + x.total, 0), bTotal = m.bookOrder + m.bookAuthor + m.bookExtra;
-  return head('홈', st.demo ? '가짜 데이터로 둘러보는 중이에요. 고친 내용은 새로고침하면 사라져요.' : '시트 데이터를 한눈에 봐요.') +
+  return head('홈', st.demo ? '둘러보기 모드 · 새로고침하면 고친 내용이 사라져요' : '') +
     `<div class="stats">
       ${stat('선입금 주문', cnt(m.live.length) + '<small>건</small>', `입금 완료 ${cnt(m.paid.length)}건`, '', 'orders', m.live.length ? m.paid.length / m.live.length * 100 : 0)}
       ${stat('입금 확인 필요', cnt(diff + none) + '<small>건</small>', `금액·이름 확인 ${diff} · 미입금 ${none}`, diff + none ? 'warn' : 'good', 'match')}
@@ -535,7 +535,7 @@ function viewHome() {
       ${stat('선입금 금액', won(m.preForm + m.preBank), `폼 결제 ${won(m.preForm)} · 통장 ${won(m.preBank)}`, '', 'money')}
     </div>
     <div class="grid2">
-      <div class="card"><h2>확인할 것</h2><p class="sub">시트 데이터를 서로 맞춰본 결과예요.</p>${checkList(checks())}</div>
+      <div class="card"><h2>확인할 것</h2>${checkList(checks())}</div>
       <div>
         <div class="card"><div class="card-h"><div><h2>제작 수량</h2></div><button class="btn sm" data-go="make">자세히</button></div>
           <div class="kv"><span>엽서북</span><b class="num">${cnt(bTotal)}권</b></div>
@@ -544,7 +544,7 @@ function viewHome() {
           <div class="kv sub"><span>주문 ${cnt(m.make.reduce((a, x) => a + x.order, 0))} + 작가 여분 ${cnt(m.make.reduce((a, x) => a + x.spare, 0))} + 추가 ${cnt(m.make.reduce((a, x) => a + x.add, 0))}</span><b></b></div>
         </div>
         <div class="card"><div class="card-h"><h2>내보내기</h2></div>
-          <p class="sub">부스 포스에 넣을 선입금 명단, 책에 넣을 작가 후기를 CSV로 받아요.</p>
+          
           <div class="acts"><button class="btn soft" data-act="exportPos">포스로 내보내기</button><button class="btn" data-act="exportReviews">작가 후기</button></div>
         </div>
       </div>
@@ -566,8 +566,8 @@ function viewAuthors() {
       ${st.authorSeg === 'ok' ? `<td class="c">${esc(a.discord || '-')}</td><td><span class="badge ${sub(a.submit)}">${esc(a.submit || '미제출')}</span></td><td style="white-space:nowrap">${esc(a.pickup || '-')}</td><td class="rev" title="${esc(a.revKo)}">${esc(a.revKo) || '<span class="muted">-</span>'}</td><td class="rev" title="${esc(a.revJa)}">${esc(a.revJa) || '<span class="muted">-</span>'}</td><td class="muted clip" title="${esc(a.comment)}">${esc(a.comment)}</td>`
       : `<td class="muted clip">${esc(a.r.get('섭외 메모'))}</td>`}
     </tr>`).join('');
-  return head('작가', '섭외 수락 여부만 바꾸면 확정 작가 목록에 자동으로 들어가요. 줄을 누르면 고칠 수 있어요.', `<button class="btn" data-act="exportReviews">후기 내보내기</button><button class="btn pri" data-act="newRow" data-tab="작가">작가 추가</button>`) +
-    `<div class="tools"><div class="seg">${[['all', '섭외 전체'], ['ok', '확정 작가']].map(([k, t]) => `<button aria-selected="${st.authorSeg === k}" data-seg="authorSeg:${k}">${t} ${counts[k]}</button>`).join('')}</div>
+  return head('작가', '', `<button class="btn" data-act="exportReviews">후기 내보내기</button><button class="btn pri" data-act="newRow" data-tab="작가">작가 추가</button>`) +
+    `<div class="tools"><div class="seg">${[['ok', '확정 작가'], ['all', '섭외 전체']].map(([k, t]) => `<button aria-selected="${st.authorSeg === k}" data-seg="authorSeg:${k}">${t} ${counts[k]}</button>`).join('')}</div>
       <input class="search" id="authorQ" placeholder="닉네임, X 아이디 검색" value="${esc(st.authorQ)}"></div>
     <div class="tbl-wrap">${list.length ? `<table class="tbl"><thead><tr><th>No</th><th>작가</th><th>수락</th>${st.authorSeg === 'ok' ? '<th class="c">디스코드</th><th>원고</th><th>현장 수령</th><th>후기 (한)</th><th>후기 (일)</th><th>코멘트</th>' : '<th>섭외 메모</th>'}</tr></thead><tbody>${rows}</tbody></table>` : '<div class="empty">작가가 없어요</div>'}</div>`;
 }
@@ -589,7 +589,7 @@ function viewOrders() {
       <td class="r num">${o.books || '-'}</td><td>${jokjaChips(o.jk)} ${jBadge(o)}</td>
       <td class="r num">${won(o.total)}${o.total !== o.expect ? `<div style="font-size:12px;color:var(--orange)">계산 ${won(o.expect)}</div>` : ''}</td><td>${payBadge(o)}</td>
     </tr>`).join('');
-  return head('주문', `위치폼 선입금 ${cnt(m.orders.length)}건. 줄을 누르면 족자봉 넘버와 입금 처리를 고칠 수 있어요.`, `<button class="btn" data-act="exportPos">포스로 내보내기</button><button class="btn pri" data-act="paste" data-tab="선입금 리스트">선입금 데이터 넣기</button>`) +
+  return head('주문', '', `<button class="btn" data-act="exportPos">포스로 내보내기</button><button class="btn pri" data-act="paste" data-tab="선입금 리스트">선입금 데이터 넣기</button>`) +
     `<div class="chips">${ORDER_FILTERS.map(([k, t, f]) => `<button class="chip" aria-pressed="${st.orderFilter === k}" data-seg="orderFilter:${k}">${t} <b>${m.orders.filter(f).length}</b></button>`).join('')}</div>
     <div class="tools"><input class="search" id="orderQ" placeholder="이름, 닉네임, 입금자명, 전화번호 뒷자리, 주문번호" value="${esc(st.orderQ)}"></div>
     <div class="tbl-wrap">${list.length ? `<table class="tbl"><thead><tr><th>번호</th><th>주문자</th><th class="r">엽서북</th><th>족자봉</th><th class="r">금액</th><th>입금</th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty">${m.orders.length ? '조건에 맞는 주문이 없어요' : '아직 선입금 데이터가 없어요. 오른쪽 위 버튼으로 넣어 주세요.'}</div>`}</div>`;
@@ -601,24 +601,24 @@ function viewMatch() {
   const need = m.live.filter(o => ['diff', 'none', 'unpaid'].includes(o.pay));
   const auto = m.live.filter(o => ['auto', 'linked'].includes(o.pay));
   const bankOrders = m.live.filter(o => o.pay !== 'form');
-  return head('입금 대조', '통장 입금자명과 금액으로 주문을 자동으로 연결해요. 안 맞는 것만 손으로 확인하면 돼요.', `<button class="btn pri" data-act="paste" data-tab="입금기록">통장 내역 넣기</button>`) +
+  return head('입금 대조', '', `<button class="btn pri" data-act="paste" data-tab="입금기록">통장 내역 넣기</button>`) +
     `<div class="stats">
       ${stat('통장 입금 주문', cnt(bankOrders.length) + '<small>건</small>', '폼 결제 제외')}
       ${stat('자동·수동 연결', cnt(auto.length + m.live.filter(o => o.pay === 'manual').length) + '<small>건</small>', '', 'good')}
       ${stat('확인 필요', cnt(need.length) + '<small>건</small>', '', need.length ? 'warn' : 'good')}
       ${stat('남은 입금', cnt(m.unusedDeps.length) + '<small>건</small>', won(m.unusedDeps.reduce((a, d) => a + d.amt, 0)), m.unusedDeps.length ? 'warn' : '')}
     </div>
-    <div class="card"><div class="card-h"><div><h2>확인이 필요한 주문</h2><p class="sub" style="margin:2px 0 0">비슷한 입금이 있으면 바로 연결할 수 있어요.</p></div></div>
+    <div class="card"><div class="card-h"><div><h2>확인이 필요한 주문</h2></div></div>
       ${need.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>주문자</th><th class="r">신청 금액</th><th>상태</th><th>비슷한 입금</th><th></th></tr></thead><tbody>${need.map(o => `<tr>
         <td><b>${esc(o.payer || o.name)}</b><div class="muted" style="font-size:13px">${esc(o.nick)} · ${esc(o.num)}번</div></td>
         <td class="r num">${won(o.total)}${o.deps.length ? `<div style="font-size:12px;color:var(--orange)">연결 ${won(o.depSum)}</div>` : ''}</td><td>${payBadge(o)}</td>
         <td>${(o.cand || []).slice(0, 3).map(d => `<button class="btn sm soft" data-link="${esc(o.id)}" data-dep="${esc(d.key)}">${esc(d.who)} ${won(d.amt)}</button>`).join(' ') || '<span class="muted">-</span>'}</td>
         <td class="r"><button class="btn sm" data-open="order:${esc(o.id)}">처리</button></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">모두 확인됐어요 🎉</div>'}
     </div>
-    <div class="card"><div class="card-h"><div><h2>주문과 연결 안 된 입금</h2><p class="sub" style="margin:2px 0 0">입금자명이 신청서와 다르면 여기 남아요. 눌러서 주문에 연결해요.</p></div></div>
+    <div class="card"><div class="card-h"><div><h2>주문과 연결 안 된 입금</h2></div></div>
       ${m.unusedDeps.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>입금 일시</th><th>입금자명</th><th class="r">금액</th><th>메모</th></tr></thead><tbody>${m.unusedDeps.map(d => `<tr data-open="dep:${esc(d.key)}"><td class="num muted">${esc(d.at)}</td><td><b>${esc(d.who)}</b></td><td class="r num">${won(d.amt)}</td><td class="muted">${esc(d.memo)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">남은 입금이 없어요</div>'}
     </div>
-    <div class="card"><div class="card-h"><div><h2>자동으로 연결된 입금</h2><p class="sub" style="margin:2px 0 0">틀린 게 있으면 주문을 눌러 연결을 풀 수 있어요.</p></div></div>
+    <div class="card"><div class="card-h"><div><h2>자동으로 연결된 입금</h2></div></div>
       ${auto.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>주문자</th><th>입금자명</th><th class="r">금액</th><th>방법</th></tr></thead><tbody>${auto.map(o => `<tr data-open="order:${esc(o.id)}"><td><b>${esc(o.payer || o.name)}</b> <span class="muted">${esc(o.nick)}</span></td><td>${o.deps.map(d => esc(d.who)).join(' + ')}</td><td class="r num">${won(o.depSum)}</td><td class="muted">${o.pay === 'linked' ? '손으로 연결' : esc(o.how)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">아직 없어요</div>'}
     </div>`;
 }
@@ -628,7 +628,7 @@ function viewMake() {
   const m = M();
   const sum = k => m.make.reduce((a, x) => a + x[k], 0);
   const bTotal = m.bookOrder + m.bookAuthor + m.bookExtra;
-  return head('제작 수량', `족자봉 넘버별로 주문 + 작가 여분(${m.spareJ}개) + 추가 수량을 더했어요.`, `<button class="btn" data-act="exportMake">CSV로 받기</button><button class="btn pri" data-act="newRow" data-tab="추가 수량">추가 수량 넣기</button>`) +
+  return head('제작 수량', '', `<button class="btn" data-act="exportMake">CSV로 받기</button><button class="btn pri" data-act="newRow" data-tab="추가 수량">추가 수량 넣기</button>`) +
     `<div class="stats">
       ${stat('족자봉 전체', cnt(sum('total')) + '<small>개</small>', `${m.make.length}종`)}
       ${stat('주문', cnt(sum('order')) + '<small>개</small>')}
@@ -639,7 +639,7 @@ function viewMake() {
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>넘버</th><th>작가</th><th class="r">주문</th><th class="r">여분</th><th class="r">추가</th><th class="r">최종</th></tr></thead><tbody>
         ${m.make.map(x => `<tr><td class="num"><b>${jName(x.no)}</b></td><td>${x.author ? `<div class="who">${avatar(x.author.nick, x.author.pic, 'sm', x.author.x)}${esc(x.author.nick)}</div>` : '<span class="badge orange">작가 없음</span>'}</td><td class="r num">${x.order}</td><td class="r num muted">${x.spare}</td><td class="r num ${x.add ? '' : 'muted'}" title="${esc(x.adds.map(e => e.who + ' ' + e.n).join(', '))}">${x.add}</td><td class="r num"><b>${x.total}</b></td></tr>`).join('')}
       </tbody><tfoot><tr><td colspan="2">합계</td><td class="r num">${sum('order')}</td><td class="r num">${sum('spare')}</td><td class="r num">${sum('add')}</td><td class="r num">${sum('total')}</td></tr></tfoot></table></div>
-      <div>${listCard('추가 수량', '하치 1개, 밀키봇 엽서북 2권처럼 주문 밖에서 더 만드는 수량이에요.', ['구분', '넘버', '개수', '대상', '메모'])}</div>
+      <div>${listCard('추가 수량', '', ['구분', '넘버', '개수', '대상', '메모'])}</div>
     </div>`;
 }
 
@@ -658,43 +658,43 @@ function viewMoney() {
     <h4 style="margin:22px 0 2px">사람별 받을 돈</h4><p class="hint" style="margin:0 0 6px">분배 금액 + 개인 선정산</p>
     ${m.people.length ? m.people.map(p => `<div class="kv"><span>${esc(p.name)}${p.w ? ` <span class="muted">(${p.w})</span>` : ''}</span><b class="num">${won(p.total)}</b></div><div class="kv sub"><span>분배 ${won(p.share)} · 선정산 ${won(p.pre)}</span><b></b></div>`).join('') : '<div class="empty">아직 없어요</div>'}`;
   const nPre = Object.keys(m.personal).length;
-  return head('정산', '비용은 누구나 추가할 수 있어요. 분배 금액은 관리자만 볼 수 있어요.', `${st.admin ? '<button class="btn soft" data-act="dist">분배 · 받을 돈 보기</button>' : ''}<button class="btn" data-act="newRow" data-tab="수입">수입 추가</button><button class="btn pri" data-act="newRow" data-tab="비용">비용 추가</button>`) +
+  return head('정산', '', `${st.admin ? '<button class="btn soft" data-act="dist">분배 · 받을 돈 보기</button>' : ''}<button class="btn" data-act="newRow" data-tab="수입">수입 추가</button><button class="btn pri" data-act="newRow" data-tab="비용">비용 추가</button>`) +
     `<div class="grid2">
-      <div class="card"><h2>수입</h2><p class="sub">선입금은 입금 대조 결과로 자동 계산해요.</p>${incomeList}</div>
-      <div class="card"><h2>비용</h2><p class="sub">아래 비용 목록을 합친 값이에요.</p>
+      <div class="card"><h2>수입</h2>${incomeList}</div>
+      <div class="card"><h2>비용</h2>
         <div class="kv"><span>공동 비용 합계</span><b class="num">${won(m.costShared)}</b></div>
         <div class="kv"><span>공금 미처리 비용</span><b class="num">${won(m.reserveAuto)}</b></div>
         <div class="kv"><span>개인 선정산 대상</span><b class="num">${nPre}명</b></div>
         ${st.admin ? '<button class="btn soft" data-act="dist" style="margin-top:12px">분배 · 받을 돈 보기</button>' : ''}
       </div>
     </div>
-    ${listCard('비용', `줄을 누르면 고쳐요. 출금자가 공금이 아니고 처리가 "완료"가 아니면 개인 선정산에 들어가요. 개인이 공금에서 가져간 돈은 단가를 마이너스로 적어요. 공동 비용 합계 ${won(m.costShared)}`, ['항목', '단가', '개수', '금액', '출금자', '처리', '메모'], { amount: true })}
-    ${listCard('수입', '현장 판매처럼 선입금 말고 들어온 돈이에요.', ['항목', '금액', '메모'])}
-    <div class="card"><h2>검증</h2><p class="sub">작년 "최종 정산" 시트의 검증용 데이터를 자동으로 맞춰봐요.</p>${checkList(checks())}</div>`;
+    ${listCard('비용', '', [costCol('내용', '항목'), '단가', '개수', '금액', costCol('사용 출처', '출금자'), '처리', '메모'], { amount: true })}
+    ${listCard('수입', '', ['항목', '금액', '메모'])}
+    <div class="card"><h2>검증</h2>${checkList(checks())}</div>`;
 }
 
 // ---------- 예외기록 ----------
 function viewMemo() {
-  return head('예외기록', '추가 구매, 입금자명 변경, 수동 환불 같은 예외를 적어둬요.', `<button class="btn pri" data-act="newRow" data-tab="예외기록">기록 추가</button>`) +
+  return head('예외기록', '', `<button class="btn pri" data-act="newRow" data-tab="예외기록">기록 추가</button>`) +
     listCard('예외기록', '', ['날짜', '대상', '내용', '상태'], { bare: true });
 }
 
 // ---------- 설정 ----------
 function viewSettings() {
   return head('설정', '') +
-    `<div class="grid2"><div>${listCard('설정', '가격, 작가 여분, 분배 비율 같은 값이에요. 시트의 "설정" 탭과 같아요.', ['항목', '값', '설명'])}</div>
+    `<div class="${st.admin ? 'grid2' : ''}">${st.admin ? `<div>${listCard('설정', '', ['항목', '값', '설명'])}</div>` : ''}
     <div>
-      <div class="card"><h2>연결</h2><p class="sub">${st.demo ? '지금은 둘러보기 모드예요.' : '이 브라우저에만 저장돼요. 다른 사람 기기에서 쓰면 꼭 연결 해제해 주세요.'}</p>
+      <div class="card"><h2>연결</h2>
         ${st.demo ? '<button class="btn pri" data-act="exitDemo">둘러보기 끝내고 연결하기</button>' : useGoogle() && store.tok ? `<div class="me">${avatar(store.tok.name, store.tok.pic)}<div><b>${esc(store.tok.name)}</b><div class="hint">${esc(store.tok.email)}</div></div></div><div class="acts" style="margin-top:14px"><button class="btn danger" data-act="signOut">로그아웃</button></div>` : connectForm()}</div>
-      ${st.demo || !CFG.googleClientId ? '' : emailsCard()}
-      ${st.demo ? '' : `<div class="card"><h2>테스트 데이터</h2><p class="sub">작년 데이터로 연습해보고, 끝나면 초기화로 날려요. 작가, 정산, 설정 탭은 건드리지 않아요.</p>
+      ${st.demo || !CFG.googleClientId || !st.admin ? '' : emailsCard()}
+      ${st.demo ? '' : `<div class="card"><h2>테스트 데이터</h2>
         <div class="kv"><span>작년 선입금 주문 (164건)</span><b><button class="btn sm soft" data-act="sample" data-which="orders">불러오기</button></b></div>
         <div class="kv"><span>작년 통장 입금내역 (89건)</span><b><button class="btn sm soft" data-act="sample" data-which="deposits">불러오기</button></b></div>
         <div class="kv"><span>선입금 내역 초기화<br><small class="muted">선입금 리스트 + 주문 처리(입금 연결, 족자봉 고침)</small></span><b><button class="btn sm danger" data-act="reset" data-which="orders">초기화</button></b></div>
         <div class="kv"><span>입금내역 초기화<br><small class="muted">입금기록 탭</small></span><b><button class="btn sm danger" data-act="reset" data-which="deposits">초기화</button></b></div></div>`}
       ${st.demo || useGoogle() ? '' : `<div class="card"><h2>동료에게 주기</h2><p class="sub">시트 메뉴 <b>관리 사이트 → 동료 추가</b>를 누르면 그 사람 전용 링크가 나와요. 링크를 한 번 열면 자동으로 연결되고, 누가 고쳤는지도 남아요. 한 명만 끊을 수도 있어요.</p>
         <div class="acts"><button class="btn soft" data-act="copyLink">내 연결 링크 복사</button></div><p class="hint" style="margin:8px 0 0">내 다른 기기(아이패드, 폰)에서 열 때 쓰세요. 이 링크는 내 키라서 남에게 주면 안 돼요.</p></div>`}
-      <div class="card"><h2>원본 데이터 넣기</h2><p class="sub">위치폼 엑셀, 통장 내역을 복사해서 붙여넣거나 CSV 파일을 골라요. 그 탭은 통째로 바뀌고, 사이트에서 처리한 내용(입금 연결, 족자봉 고침)은 주문번호로 그대로 남아요.</p>
+      <div class="card"><h2>원본 데이터 넣기</h2>
         <div class="acts"><button class="btn soft" data-act="paste" data-tab="선입금 리스트">선입금 리스트</button><button class="btn soft" data-act="paste" data-tab="입금기록">입금기록</button></div></div>
       <div class="card"><h2>테마</h2><div class="seg">${[['', '자동'], ['light', '밝게'], ['dark', '어둡게']].map(([k, t]) => `<button aria-selected="${(store.theme || '') === k}" data-theme-set="${k}">${t}</button>`).join('')}</div></div>
     </div></div>`;
@@ -704,7 +704,7 @@ function viewSettings() {
 function emailsCard() {
   if (!st.emails) { if (!st.emailsLoading) loadEmails(); return '<div class="card"><h2>로그인 허용 계정</h2><div class="loading" style="min-height:80px"><div class="spin"></div></div></div>'; }
   const e = st.emails;
-  return `<div class="card"><h2>로그인 허용 계정</h2><p class="sub">이 구글 계정들만 사이트에 로그인할 수 있어요.${e.canEdit ? '' : ' 바꾸는 건 시트 주인만 할 수 있어요.'}</p>
+  return `<div class="card"><h2>로그인 허용 계정</h2>${e.canEdit ? '' : '<p class="sub">시트 주인만 바꿀 수 있어요</p>'}
     <div class="kv"><span>${esc(e.owner)}</span><b><span class="badge blue">시트 주인</span></b></div>
     ${(e.fixed || []).map(x => `<div class="kv"><span>${esc(x)}</span><b><span class="badge">코드에 고정</span></b></div>`).join('')}
     ${e.list.map(x => `<div class="kv"><span>${esc(x)}</span><b>${e.canEdit ? `<button class="btn sm danger" data-email-del="${esc(x)}">빼기</button>` : ''}</b></div>`).join('')}
@@ -726,6 +726,8 @@ async function saveEmails(list) {
 // ---------------------------------------------------------------------
 // 일반 표 카드 (비용, 수입, 추가 수량, 예외기록, 설정)
 // ---------------------------------------------------------------------
+// 비용 탭 열 이름이 바뀌기 전(항목, 출금자) 시트도 읽게
+function costCol(now, old) { const h = T('비용').header; return h.includes(now) || !h.includes(old) ? now : old; }
 function listCard(tab, sub, cols, opt = {}) {
   const t = T(tab);
   const rows = t.rows.filter(r => r.raw.some(v => String(v).trim()));
@@ -761,14 +763,21 @@ function closeModal() { const d = $('#dim'); if (d) d.remove(); modalSave = null
 const LONG = ['후기 (한)', '후기 (일)', '섭외 메모', '기타', '주소', '메모', '내용', '설명'];
 const SUGGEST = {
   '수락 여부': ['수락', '대기', '보류', '거절'], '디스코드': ['O', 'X'], '제출 여부': ['제출 완료', '연장', '미제출'], '현장 수령': ['O (퍼클)', 'O', 'X'],
-  '출금자': ['공금'], '처리': ['완료', '미완료'], '구분': ['족자봉', '엽서북'], '상태': ['확인 필요', '처리 완료'],
+  '출금자': ['공금'], '처리': ['미완료', '완료'], '구분': ['족자봉', '엽서북'], '상태': ['확인 필요', '처리 완료'],
 };
+// 비용의 사용 출처: 공금 + 운영진 (분배 비율에 있는 이름도 자동으로 붙어요)
+function sources() { return [...new Set(['공금', '라굴', '하치', '잏엫', ...M().ratios.map(x => x.name)])]; }
 function rowForm(tab, rowNo) {
   const t = T(tab);
   const r = rowNo ? t.rows.find(x => x.row === rowNo) : null;
   const cols = t.header.length ? t.header.filter(Boolean) : [];
   const fields = cols.map((c, i) => {
-    const v = r ? String(r.raw[i] ?? '') : (c === 'No' && tab === '작가' ? '' : c === '처리' ? '미완료' : c === '출금자' ? '공금' : c === '개수' ? '1' : '');
+    const v = r ? String(r.raw[i] ?? '') : (c === 'No' && tab === '작가' ? '' : c === '처리' ? '미완료' : ['출금자', '사용 출처'].includes(c) ? '공금' : c === '개수' ? '1' : '');
+    const segOpts = tab === '비용' && ['사용 출처', '출금자'].includes(c) ? sources() : tab === '비용' && c === '처리' ? ['미완료', '완료'] : null;
+    if (segOpts) {
+      const all = v && !segOpts.includes(v) ? [...segOpts, v] : segOpts;
+      return `<div class="field"><label>${esc(c)}</label><input type="hidden" data-col="${esc(c)}" id="f${i}" value="${esc(v)}"><div class="seg segf">${all.map(o => `<button type="button" aria-selected="${o === v}" data-segf="f${i}" data-val="${esc(o)}">${esc(o)}</button>`).join('')}</div></div>`;
+    }
     const opts = [...new Set([...(SUGGEST[c] || []), ...t.rows.map(x => x.get(c)).filter(x => x && x.length < 30)])].slice(0, 30);
     const id = 'f' + i;
     const input = LONG.includes(c) ? `<textarea class="inp" data-col="${esc(c)}" id="${id}">${esc(v)}</textarea>` :
@@ -807,8 +816,13 @@ function orderModal(id) {
   if (!o) return;
   const unlinked = new Set();
   modalUnlink = k => { unlinked.add(k); const b = document.querySelector(`[data-unlink="${CSS.escape(k)}"]`); if (b) { b.textContent = '저장하면 풀려요'; b.disabled = true; } };
-  const opts = m.unusedDeps.map(d => `<option value="${esc(d.key)}">${esc(d.who)} · ${won(d.amt)} · ${esc(d.at)}</option>`).join('');
-  const manual = o.pay !== 'auto' && o.deps.length;
+  // 입금 고르기: 연결된 것 → 이름 비슷한 것 → 남은 금액과 가까운 것 순서
+  const ns = [o.payer, o.name, o.recv, o.nick].map(normName).filter(x => x.length >= 2);
+  const like = d => { const w = normName(d.who); return ns.some(n => w === n || w.includes(n) || n.includes(w)); };
+  const left = o.total - o.depSum;
+  const pool = [...o.deps, ...m.unusedDeps.filter(d => !o.deps.includes(d)).sort((a, b) => (like(b) - like(a)) || (Math.abs(a.amt - left) - Math.abs(b.amt - left)))];
+  const depItems = pool.map(d => `<label class="depi" data-q="${esc(normName(d.who))}"><input type="checkbox" value="${esc(d.key)}" data-amt="${d.amt}" ${o.deps.includes(d) ? 'checked' : ''}>
+      <span class="t"><b>${esc(d.who)}</b>${like(d) ? ' <span class="badge blue">이름 비슷</span>' : ''}<small>${esc(d.at)}</small></span><b class="num">${won(d.amt)}</b></label>`).join('');
   const info = [['닉네임', o.nick], ['주문자', o.name], ['입금자(환불예금주)', o.payer], ['수령자', o.recv], ['연락처', o.phone], ['수령 방법', o.method], ['주문번호', o.id], ['폼 진행상태', o.formStatus]]
     .map(([k, v]) => `<div class="kv"><span>${k}</span><b>${esc(v || '-')}</b></div>`).join('');
   openModal({
@@ -824,22 +838,33 @@ function orderModal(id) {
       </div><div>
         <h4 style="margin:4px 0 6px">입금</h4>
         <div class="kv"><span>지금 상태</span><b>${payBadge(o)}</b></div>
-        ${o.deps.map(d => `<div class="kv"><span>${esc(d.who)} · ${won(d.amt)}<br><small class="muted">${esc(d.at)}${o.how ? ' · ' + esc(o.how) : ''}</small></span><b>${manual ? `<button class="btn sm" data-unlink="${esc(d.key)}">연결 풀기</button>` : ''}</b></div>`).join('')}
-        ${o.deps.length > 1 || (o.deps.length && o.depSum !== o.total) ? `<div class="kv"><span>연결된 입금 합계</span><b class="num" style="${o.depSum !== o.total ? 'color:var(--orange)' : ''}">${won(o.depSum)} / ${won(o.total)}</b></div>` : ''}
+        ${o.how ? `<div class="kv sub"><span>${esc(o.how)}으로 자동 연결됨</span><b></b></div>` : ''}
         <div class="field" style="margin-top:8px"><label for="oPay">입금 처리</label><select class="inp" id="oPay">
           ${[['', '자동 (폼 상태·통장 대조)'], ['확인', '입금 확인 (통장 밖에서 받음)'], ['미입금', '미입금으로 표시'], ['취소', '주문 취소·환불']].map(([v, t]) => `<option value="${v}" ${o.proc.pay === v ? 'selected' : ''}>${t}</option>`).join('')}
         </select></div>
-        <div class="field" style="margin-top:12px"><label for="oDep">입금 연결</label><select class="inp" id="oDep"><option value="">${o.pay === 'auto' ? '자동 연결 그대로' : o.deps.length ? '더 연결 안 함' : '연결 안 함'}</option>${opts}</select><span class="hint">입금자명이 다르거나 나눠서 입금했을 때 골라요. 여러 건 연결할 수 있어요.</span></div>
+        <div class="field" style="margin-top:12px"><label for="oDepQ">입금 연결 · 나눠서 입금했으면 여러 건 골라요</label>
+          <input class="inp" id="oDepQ" placeholder="입금자명 검색" autocomplete="off">
+          <div class="deplist" id="oDepList">${depItems || '<div class="empty" style="padding:16px">고를 수 있는 입금이 없어요</div>'}</div>
+          <div class="kv"><span>고른 입금 합계</span><b class="num" id="oDepSum"></b></div></div>
         <div class="field" style="margin-top:12px"><label for="oMemo">메모</label><textarea class="inp" id="oMemo">${esc(o.proc.memo || '')}</textarea></div>
       </div></div>`,
     foot: `<span class="sp"></span><button class="btn" data-act="close">닫기</button><button class="btn pri" data-act="save">저장</button>`,
     onSave: async () => {
-      const j = $('#oJ').value.trim(), pay = $('#oPay').value, dep = $('#oDep').value, memo = $('#oMemo').value;
-      const keys = (o.pay === 'auto' ? [] : o.deps.map(d => d.key).filter(k => !unlinked.has(k)));
-      if (dep) { if (o.pay === 'auto') keys.push(o.dep.key); keys.push(dep); }
+      const j = $('#oJ').value.trim(), pay = $('#oPay').value, memo = $('#oMemo').value;
+      let keys = [...document.querySelectorAll('#oDepList input:checked')].map(x => x.value);
+      if (o.pay === 'auto' && keys.length === 1 && keys[0] === o.dep.key) keys = []; // 자동 연결 그대로
       const values = { '족자봉 확정': j ? jokjaText(parseJokja(j)) : '', '입금 처리': pay, '입금 키': keys.join('\n'), '메모': memo, '수정 시각': new Date().toLocaleString('ko-KR') };
       if (await write('upsert', { sheet: '주문 처리', keyCol: '주문번호', keyVal: o.id, values }, '저장했어요')) closeModal();
     },
+  });
+  const sum = () => {
+    const t = [...document.querySelectorAll('#oDepList input:checked')].reduce((a, x) => a + +x.dataset.amt, 0);
+    const el = $('#oDepSum'); el.textContent = `${won(t)} / 신청 ${won(o.total)}`; el.style.color = t === o.total ? 'var(--green)' : t ? 'var(--orange)' : '';
+  };
+  $('#oDepList').addEventListener('change', sum); sum();
+  $('#oDepQ').addEventListener('input', e => {
+    const q = normName(e.target.value);
+    document.querySelectorAll('#oDepList .depi').forEach(l => { l.hidden = !!q && !l.dataset.q.includes(q) && !l.querySelector('input').checked; });
   });
 }
 
@@ -1030,6 +1055,8 @@ function go(v) {
 }
 
 document.addEventListener('click', async e => {
+  const sf = e.target.closest('[data-segf]');
+  if (sf) { document.getElementById(sf.dataset.segf).value = sf.dataset.val; sf.parentElement.querySelectorAll('button').forEach(b => b.setAttribute('aria-selected', b === sf)); return; }
   const pk = e.target.closest('[data-pick-for]');
   if (pk) {
     const inp = document.getElementById(pk.dataset.pickFor); inp.value = pk.dataset.pick;
