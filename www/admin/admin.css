@@ -161,7 +161,15 @@ table.tbl{width:100%;border-collapse:collapse;font-size:15px}
 .field label{font-size:13px;font-weight:600;color:var(--ink3)}
 .inp{height:46px;border-radius:12px;border:1px solid var(--line);background:var(--card);padding:0 14px;font-size:15px;width:100%}
 textarea.inp{height:auto;min-height:96px;padding:12px 14px;line-height:1.5;resize:vertical}
-select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--ink3) 50%),linear-gradient(135deg,var(--ink3) 50%,transparent 50%);background-position:calc(100% - 20px) 20px,calc(100% - 15px) 20px;background-size:5px 5px;background-repeat:no-repeat;padding-right:36px}
+select.inp{appearance:none;-webkit-appearance:none;cursor:pointer;font-weight:500;background-color:var(--fill);border-color:transparent;padding-right:42px;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%238b95a1' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 16px center;background-size:12px 8px}
+select.inp:hover{background-color:var(--press)}
+select.inp:focus{background-color:var(--card)}
+.picks{display:flex;flex-wrap:wrap;gap:6px}
+.pick{height:30px;padding:0 11px;border-radius:15px;background:var(--fill);color:var(--ink2);font-size:13px;font-weight:600}
+.pick:hover{background:var(--press)}
+.pick.on{background:var(--blue-soft);color:var(--blue)}
 .inp:focus{outline:0;border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-soft)}
 .hint{font-size:13px;color:var(--ink3)}
 .raw{background:var(--fill);border-radius:12px;padding:12px 14px;font-size:15px;white-space:pre-wrap;word-break:break-all}
@@ -208,3 +216,4 @@ code{background:var(--fill);border-radius:6px;padding:1px 6px;font-size:.92em}
 .me .av{width:44px;height:44px}
 details.more{margin-top:12px}
 details.more summary{cursor:pointer;color:var(--ink3);font-size:14px;font-weight:600}
+.tbl td.rev{max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;color:var(--ink2)}

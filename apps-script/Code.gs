@@ -20,8 +20,8 @@ const DEPLOYED_URL = 'https://script.google.com/macros/s/AKfycbxtSj0sZ3KUpgC11YH
 // 구글 로그인 ---------------------------------------------------------
 // GOOGLE_CLIENT_ID: Google Cloud 에서 만든 OAuth 클라이언트 ID (www/admin/settings.js 와 같은 값)
 // ALLOWED_EMAILS : 들어올 수 있는 구글 계정. 시트 메뉴 '구글 계정 허용 관리'로도 더할 수 있어요.
-//                  시트 주인 계정은 항상 들어올 수 있어요.
-const GOOGLE_CLIENT_ID = '';
+//                  보통은 사이트 설정 → 로그인 허용 계정 에서 관리해요. 시트 주인 계정은 항상 들어올 수 있어요.
+const GOOGLE_CLIENT_ID = '75198476685-1jiqig544kvoephkcirpqbp5cp37aoqq.apps.googleusercontent.com';
 const ALLOWED_EMAILS = [];
 
 // 탭 이름과 열 구조. 사이트가 이 열 이름으로 값을 찾아요. (열 순서는 바꿔도 되지만 이름은 그대로 둬요)
@@ -51,7 +51,7 @@ const DEFAULT_SETTINGS = [
   ['분배 비율', '잏엫 5, 하치 4, 라굴 1', '수익 분배. "이름 비율" 을 쉼표로 구분'],
   ['현재 잔고 + 현금', '', '정산할 때 통장 잔고와 현금을 더한 금액'],
   ['남겨둘 금액', '', '분배하지 않고 남겨둘 돈 (비워두면 공금 미처리 비용 합계)'],
-  ['포스 족자봉 표기', '알파벳', '포스용 명단을 뽑을 때 1→A 로 바꿀지 (알파벳 / 숫자)'],
+  ['족자봉 표기', '알파벳', '족자봉 넘버를 A, B, C 로 쓸지 (알파벳 / 숫자). 작가 No 1 = A'],
 ];
 
 // ------------------------------------------------------------------
@@ -186,9 +186,9 @@ function avatars_(handles) {
 
 function lookupAvatar_(h) {
   const get = u => { try { const r = UrlFetchApp.fetch(u, { muteHttpExceptions: true, followRedirects: true }); return r.getResponseCode() === 200 ? JSON.parse(r.getContentText()) : null; } catch (e) { return null; } };
-  const fx = get('https://api.fxtwitter.com/' + encodeURIComponent(h));
-  let url = fx && fx.user && fx.user.avatar_url;
-  if (!url) { const ua = get('https://unavatar.io/x/' + encodeURIComponent(h) + '?json&fallback=false'); url = ua && ua.url; }
+  const ua = get('https://unavatar.io/x/' + encodeURIComponent(h) + '?json&fallback=false');
+  let url = ua && ua.url;
+  if (!url) { const fx = get('https://api.fxtwitter.com/' + encodeURIComponent(h)); url = fx && fx.user && fx.user.avatar_url; }
   if (!url || !/^https:\/\//.test(url)) return '';
   return url.replace(/_normal(\.\w+)$/, '_bigger$1'); // 48px → 73px
 }
@@ -276,10 +276,10 @@ function manageMembers() {
 // ------------------------------------------------------------------
 // 구글 로그인: 사이트가 보낸 ID 토큰을 구글에 확인하고, 허용된 계정인지 봐요
 // ------------------------------------------------------------------
+function ownerEmail_() { return String(Session.getEffectiveUser().getEmail() || '').toLowerCase(); }
+function extraEmails_() { return (PropertiesService.getScriptProperties().getProperty('ALLOWED') || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean); }
 function allowedEmails_() {
-  const extra = (PropertiesService.getScriptProperties().getProperty('ALLOWED') || '').split(',');
-  const owner = Session.getEffectiveUser().getEmail();
-  return ALLOWED_EMAILS.concat(extra, [owner]).map(e => String(e || '').trim().toLowerCase()).filter(Boolean);
+  return ALLOWED_EMAILS.concat(extraEmails_(), [ownerEmail_()]).map(e => String(e || '').trim().toLowerCase()).filter(Boolean);
 }
 
 // 맞으면 { email, name }, 토큰이 틀리거나 지났으면 null
@@ -333,21 +333,21 @@ function doGet() {
 function doPost(e) {
   try {
     const req = JSON.parse(e.postData.contents);
-    let who = null;
+    let who = null, me = null;
     if (req.idToken) {
       const u = verifyToken_(req.idToken);
       if (!u) return json_({ ok: false, code: 'LOGIN', error: '구글 로그인이 만료됐어요. 다시 로그인해 주세요.' });
       if (!allowedEmails_().includes(u.email)) return json_({ ok: false, code: 'DENIED', error: u.email + ' 계정은 허용되지 않았어요. 관리자에게 말해 주세요.' });
-      who = u.name;
+      who = u.name; me = { email: u.email, owner: u.email === ownerEmail_() };
     } else {
-      who = whoIs_(req.key);
+      who = whoIs_(req.key); me = { email: '', owner: who === '관리자' };
       if (!who) {
         Utilities.sleep(800);
         return json_({ ok: false, code: 'LOGIN', error: '비밀키가 맞지 않아요.' });
       }
     }
     ensureTabs_();
-    if (req.action === 'read') return json_({ ok: true, tabs: readAll_(), at: new Date().toISOString(), who: who });
+    if (req.action === 'read') return json_({ ok: true, tabs: readAll_(), at: new Date().toISOString(), who: who, admin: !!me.owner });
     if (req.sheet === '주문 처리' && req.values) req.values['수정한 사람'] = who;
 
     const lock = LockService.getScriptLock();
@@ -362,6 +362,13 @@ function doPost(e) {
         case 'sample': return json_({ ok: true, count: sample_(req.which) });
         case 'reset': reset_(req.which); return json_({ ok: true });
         case 'avatars': return json_({ ok: true, rows: avatars_(req.handles || null) });
+        case 'emails': return json_({ ok: true, list: extraEmails_(), owner: ownerEmail_(), fixed: ALLOWED_EMAILS, canEdit: me.owner });
+        case 'setEmails': {
+          if (!me.owner) return json_({ ok: false, error: '로그인 허용 계정은 시트 주인만 바꿀 수 있어요.' });
+          const list = (req.list || []).map(e => String(e).trim().toLowerCase()).filter(e => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e));
+          PropertiesService.getScriptProperties().setProperty('ALLOWED', [...new Set(list)].join(','));
+          return json_({ ok: true, list: extraEmails_() });
+        }
         default: return json_({ ok: false, error: '모르는 요청이에요: ' + req.action });
       }
     } finally { lock.releaseLock(); }

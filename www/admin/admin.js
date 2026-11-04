@@ -46,7 +46,9 @@ if (location.hash.startsWith('#c=')) {
 // 기본 설정 (settings.js) + 구글 로그인
 // ---------------------------------------------------------------------
 const CFG = self.ADMIN_SETTINGS || {};
-const apiUrl = () => store.url || CFG.apiUrl || '';
+// settings.js 에 주소가 있으면 항상 그 주소를 써요 (예전에 직접 넣은 주소는 무시)
+const apiUrl = () => CFG.apiUrl || store.url || '';
+if (CFG.apiUrl && store.url && store.url !== CFG.apiUrl) { delete store.url; saveStore(); }
 const tokOk = () => !!(store.tok && store.tok.exp * 1000 > Date.now() + 30000);
 const useGoogle = () => !!CFG.googleClientId && !store.key;
 const connected = () => st.demo || (apiUrl() && (store.key || (CFG.googleClientId && tokOk())));
@@ -85,7 +87,7 @@ function drawGoogleButton() {
 }
 function signOut() {
   if (store.tok && self.google) try { google.accounts.id.disableAutoSelect(); } catch {}
-  delete store.tok; saveStore(); st.tabs = null; render();
+  delete store.tok; saveStore(); dropCache(); st.tabs = null; st.emails = null; render();
 }
 
 // ---------------------------------------------------------------------
@@ -114,6 +116,7 @@ async function api(action, payload = {}) {
       return { ok: true };
     }
     if (action === 'avatars') return { ok: true, rows: {} };
+    if (action === 'emails') return { ok: true, list: [], owner: 'demo@example.com', canEdit: false };
     applyOp(st.demoTabs, { action, ...payload });
     return { ok: true };
   }
@@ -166,30 +169,35 @@ function applyOp(tabs, req) {
   else if (req.action === 'replace') { tabs[req.sheet] = { header: req.rows[0].map(String), rows: req.rows.slice(1).map(r => r.map(v => String(v ?? ''))) }; }
 }
 
-async function write(action, payload, okMsg) {
-  setSync('busy');
-  try {
-    await api(action, payload);
-    applyOp(st.tabs, { action, ...payload });
-    model = null;
-    setSync('ok');
-    if (okMsg) toast(okMsg);
-    render();
-    return true;
-  } catch (e) {
-    setSync('err');
-    toast(e.message, true);
-    return false;
-  }
+// 화면에 먼저 반영하고, 시트 저장은 뒤에서 순서대로 해요. (기다리지 않아도 돼요)
+let pending = 0, queue = Promise.resolve();
+function write(action, payload, okMsg) {
+  try { applyOp(st.tabs, { action, ...payload }); }
+  catch (e) { toast(e.message, true); return Promise.resolve(false); }
+  model = null; saveCache(); render();
+  if (okMsg) toast(okMsg);
+  pending++; setSync('busy');
+  queue = queue.then(() => api(action, payload)).then(() => { pending--; if (!pending) setSync('ok'); }, e => {
+    pending = 0; queue = Promise.resolve();
+    toast('시트에 저장하지 못했어요: ' + e.message, true); setSync('err');
+    load();
+  });
+  return Promise.resolve(true);
 }
+const CACHE = 'seiroku-admin-cache';
+function saveCache() { if (st.demo || !st.tabs) return; try { sessionStorage.setItem(CACHE, JSON.stringify(st.tabs)); } catch {} }
+function readCache() { try { return JSON.parse(sessionStorage.getItem(CACHE)); } catch { return null; } }
+function dropCache() { try { sessionStorage.removeItem(CACHE); } catch {} }
 
 async function load() {
+  await queue.catch(() => {});
   st.loading = true; st.err = ''; setSync('busy');
   if (!st.tabs) render();
   try {
     const j = await api('read');
-    st.tabs = j.tabs; st.at = new Date(); model = null;
+    st.tabs = j.tabs; st.at = new Date(); model = null; saveCache();
     if (j.who && j.who !== store.who) { store.who = j.who; saveStore(); }
+    st.admin = st.demo ? true : !!j.admin;
     if (!st.demo) setTimeout(fetchAvatars, 300);
     setSync('ok');
   } catch (e) { st.err = e.message; setSync('err'); }
@@ -215,23 +223,30 @@ function T(name) {
 // 족자봉 글자 → 넘버 목록
 //  "2,27,18" / "9번, 11번" / "4번 / 15번" / "2호×2, 7호×1" / "18번 2개" / "1번 6번 8번"
 // ---------------------------------------------------------------------
+//  알파벳: "A, C", "B×2", "a b", "D번" / 숫자(작년): "2,27,18" 도 같이 읽어요. 안에서는 A=1, B=2 … 로 셉니다.
+//  "UZA", "ku-n" 처럼 단어 속 알파벳은 넘버로 안 봐요.
 function parseJokja(text) {
   const out = {};
-  const s = String(text || '').replace(/[xX＊*]/g, '×');
-  const re = /(\d+)\s*(?:번|호)?\s*(?:×\s*(\d+)|(\d+)\s*개)?/g;
+  let s = String(text || '').replace(/[＊*]/g, '×').replace(/(?<=[A-Za-z0-9번호]\s*)[xX](?=\s*\d)/g, '×');
+  if (!/[A-Za-z]{2,}/.test(s)) s = s.toUpperCase(); // 소문자 a, b 는 단어가 없을 때만 넘버로 봐요
+  const re = /(?<![A-Za-z])([A-Z])(?![A-Za-z])(?:(\d+)(?!\d)|\s*(?:번|호)?\s*(?:×\s*(\d+)|(\d+)\s*개))?|(\d+)\s*(?:번|호)?\s*(?:×\s*(\d+)|(\d+)\s*개)?/g;
   let m;
   while ((m = re.exec(s))) {
-    const n = +m[1], q = m[2] ? +m[2] : m[3] ? +m[3] : 1;
+    let n, q;
+    if (m[1]) { n = m[1].charCodeAt(0) - 64; q = +(m[2] || m[3] || m[4] || 1); }
+    else { n = +m[5]; q = +(m[6] || m[7] || 1); }
     if (!n) continue;
     out[n] = (out[n] || 0) + q;
   }
   return out;
 }
+let jAlpha = true; // 설정 '족자봉 표기' (build 에서 정해요)
+const jName = n => jAlpha && n >= 1 && n <= 26 ? String.fromCharCode(64 + n) : String(n);
 const sumObj = o => Object.values(o || {}).reduce((a, b) => a + b, 0);
-const jokjaText = o => Object.keys(o).map(Number).sort((a, b) => a - b).map(n => o[n] > 1 ? `${n}×${o[n]}` : String(n)).join(', ');
+const jokjaText = o => Object.keys(o).map(Number).sort((a, b) => a - b).map(n => o[n] > 1 ? `${jName(n)}×${o[n]}` : jName(n)).join(', ');
 const jokjaChips = o => {
   const ks = Object.keys(o || {}).map(Number).sort((a, b) => a - b);
-  return ks.length ? `<span class="jk">${ks.map(n => `<span>${n}${o[n] > 1 ? `<em>×${o[n]}</em>` : ''}</span>`).join('')}</span>` : '<span class="muted">-</span>';
+  return ks.length ? `<span class="jk">${ks.map(n => `<span>${jName(n)}${o[n] > 1 ? `<em>×${o[n]}</em>` : ''}</span>`).join('')}</span>` : '<span class="muted">-</span>';
 };
 
 // ---------------------------------------------------------------------
@@ -244,6 +259,7 @@ function build() {
   // 설정
   const cfg = {};
   for (const r of T('설정').rows) if (r.get('항목')) cfg[r.get('항목')] = r.get('값');
+  jAlpha = (cfg['족자봉 표기'] || cfg['포스 족자봉 표기'] || '알파벳') !== '숫자';
   const priceBook = toNum(cfg['엽서북 가격']) || 20000;
   const priceJ = toNum(cfg['족자봉 가격']) || 25000;
   const spareJ = cfg['작가 여분 족자봉'] === '' || cfg['작가 여분 족자봉'] === undefined ? 1 : toNum(cfg['작가 여분 족자봉']);
@@ -255,7 +271,7 @@ function build() {
   // 작가
   const authors = T('작가').rows.filter(r => r.get('닉네임') || r.get('X 아이디')).map(r => ({
     row: r.row, r, no: toNum(r.get('No')) || null, nick: r.get('닉네임'), x: r.get('X 아이디'), status: r.get('수락 여부'),
-    discord: r.get('디스코드'), submit: r.get('제출 여부'), pickup: r.get('현장 수령'), revKo: r.get('후기 (한)'), revJa: r.get('후기 (일)'), pic: r.get('프로필 사진'),
+    discord: r.get('디스코드'), submit: r.get('제출 여부'), pickup: r.get('현장 수령'), revKo: r.get('후기 (한)'), revJa: r.get('후기 (일)'), pic: r.get('프로필 사진'), comment: r.get('기타'),
   }));
   const confirmed = authors.filter(a => a.status === '수락');
   const authorByNo = {}; confirmed.forEach(a => { if (a.no) authorByNo[a.no] = a; });
@@ -442,7 +458,7 @@ function render() {
   const y = scrollY;
   app.innerHTML = topBar(true) + `<main>${body}</main>`;
   scrollTo(0, y);
-  setSync(st.loading ? 'busy' : st.err ? 'err' : 'ok');
+  setSync(st.loading || pending ? 'busy' : st.err ? 'err' : 'ok');
 }
 
 function topBar(nav) {
@@ -455,11 +471,14 @@ function topBar(nav) {
 function setSync(s) {
   const el = $('#sync'); if (!el) return;
   el.className = 'sync ' + (s === 'busy' ? 'busy' : s === 'err' ? 'err' : '');
-  $('#syncT').textContent = s === 'busy' ? '저장 중' : s === 'err' ? '연결 오류' : st.at ? st.at.toTimeString().slice(0, 5) + ' 불러옴' : '';
+  $('#syncT').textContent = s === 'busy' ? (pending ? '저장 중' : '불러오는 중') : s === 'err' ? '연결 오류' : st.at ? st.at.toTimeString().slice(0, 5) + ' 불러옴' : '';
 }
-function avatar(name, pic, cls = '') {
+// 시트에 저장된 사진 주소가 있으면 그걸, 없으면 unavatar 에서 바로 받아요 (브라우저가 캐시해요)
+function avatar(name, pic, cls = '', handle = '') {
   const ini = esc(String(name || '?').replace(/[(（].*$/, '').trim().slice(0, 1).toUpperCase());
-  return `<span class="av ${cls}">${ini}${pic ? `<img src="${esc(pic)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-av>` : ''}</span>`;
+  const h = String(handle || '').trim().replace(/^@/, '');
+  const src = pic || (/^\w{1,15}$/.test(h) ? `https://unavatar.io/x/${h}?fallback=false` : '');
+  return `<span class="av ${cls}">${ini}${src ? `<img src="${esc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer" ${pic ? 'data-av' : ''}>` : ''}</span>`;
 }
 const head = (title, sub, acts = '') => `<div class="head"><div><h1>${title}</h1>${sub ? `<p>${sub}</p>` : ''}</div><div class="acts">${acts}</div></div>`;
 const stat = (k, v, d, cls = '', go = '', pct = null) => `<${go ? 'button' : 'div'} class="stat ${cls}" ${go ? `data-go="${go}"` : ''}><div class="k">${k}</div><div class="v num">${v}</div>${d ? `<div class="d">${d}</div>` : ''}${pct !== null ? `<div class="bar"><i style="width:${Math.min(100, Math.max(0, pct))}%"></i></div>` : ''}</${go ? 'button' : 'div'}>`;
@@ -540,15 +559,15 @@ function viewAuthors() {
   const sb = s => s === '수락' ? 'green' : s === '거절' ? 'red' : s ? 'orange' : '';
   const sub = s => s === '제출 완료' ? 'green' : s ? 'orange' : 'red';
   const rows = list.map(a => `<tr data-open="author:${a.row}">
-      <td class="num muted">${a.no || ''}</td><td><div class="who">${avatar(a.nick, a.pic)}<div><b>${esc(a.nick)}</b><div class="muted" style="font-size:13px">${esc(a.x)}</div></div></div></td>
+      <td class="num muted">${a.no || ''}</td><td><div class="who">${avatar(a.nick, a.pic, '', a.x)}<div><b>${esc(a.nick)}</b><div class="muted" style="font-size:13px">${esc(a.x)}</div></div></div></td>
       <td><span class="badge ${sb(a.status)}">${esc(a.status || '미정')}</span></td>
-      ${st.authorSeg === 'ok' ? `<td class="c">${esc(a.discord || '-')}</td><td><span class="badge ${sub(a.submit)}">${esc(a.submit || '미제출')}</span></td><td>${esc(a.pickup || '-')}</td><td class="c">${a.revKo ? '✓' : '<span class="muted">-</span>'}${a.revJa ? ' / ✓' : ''}</td>`
+      ${st.authorSeg === 'ok' ? `<td class="c">${esc(a.discord || '-')}</td><td><span class="badge ${sub(a.submit)}">${esc(a.submit || '미제출')}</span></td><td style="white-space:nowrap">${esc(a.pickup || '-')}</td><td class="rev" title="${esc(a.revKo)}">${esc(a.revKo) || '<span class="muted">-</span>'}</td><td class="rev" title="${esc(a.revJa)}">${esc(a.revJa) || '<span class="muted">-</span>'}</td><td class="muted clip" title="${esc(a.comment)}">${esc(a.comment)}</td>`
       : `<td class="muted clip">${esc(a.r.get('섭외 메모'))}</td>`}
     </tr>`).join('');
   return head('작가', '섭외 수락 여부만 바꾸면 확정 작가 목록에 자동으로 들어가요. 줄을 누르면 고칠 수 있어요.', `<button class="btn" data-act="exportReviews">후기 내보내기</button><button class="btn pri" data-act="newRow" data-tab="작가">작가 추가</button>`) +
     `<div class="tools"><div class="seg">${[['all', '섭외 전체'], ['ok', '확정 작가']].map(([k, t]) => `<button aria-selected="${st.authorSeg === k}" data-seg="authorSeg:${k}">${t} ${counts[k]}</button>`).join('')}</div>
       <input class="search" id="authorQ" placeholder="닉네임, X 아이디 검색" value="${esc(st.authorQ)}"></div>
-    <div class="tbl-wrap">${list.length ? `<table class="tbl"><thead><tr><th>No</th><th>작가</th><th>수락</th>${st.authorSeg === 'ok' ? '<th class="c">디스코드</th><th>원고</th><th>현장 수령</th><th class="c">후기 한/일</th>' : '<th>섭외 메모</th>'}</tr></thead><tbody>${rows}</tbody></table>` : '<div class="empty">작가가 없어요</div>'}</div>`;
+    <div class="tbl-wrap">${list.length ? `<table class="tbl"><thead><tr><th>No</th><th>작가</th><th>수락</th>${st.authorSeg === 'ok' ? '<th class="c">디스코드</th><th>원고</th><th>현장 수령</th><th>후기 (한)</th><th>후기 (일)</th><th>코멘트</th>' : '<th>섭외 메모</th>'}</tr></thead><tbody>${rows}</tbody></table>` : '<div class="empty">작가가 없어요</div>'}</div>`;
 }
 
 // ---------- 주문 ----------
@@ -616,7 +635,7 @@ function viewMake() {
     </div>
     <div class="grid2">
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>넘버</th><th>작가</th><th class="r">주문</th><th class="r">여분</th><th class="r">추가</th><th class="r">최종</th></tr></thead><tbody>
-        ${m.make.map(x => `<tr><td class="num"><b>${x.no}</b></td><td>${x.author ? `<div class="who">${avatar(x.author.nick, x.author.pic, 'sm')}${esc(x.author.nick)}</div>` : '<span class="badge orange">작가 없음</span>'}</td><td class="r num">${x.order}</td><td class="r num muted">${x.spare}</td><td class="r num ${x.add ? '' : 'muted'}" title="${esc(x.adds.map(e => e.who + ' ' + e.n).join(', '))}">${x.add}</td><td class="r num"><b>${x.total}</b></td></tr>`).join('')}
+        ${m.make.map(x => `<tr><td class="num"><b>${jName(x.no)}</b></td><td>${x.author ? `<div class="who">${avatar(x.author.nick, x.author.pic, 'sm', x.author.x)}${esc(x.author.nick)}</div>` : '<span class="badge orange">작가 없음</span>'}</td><td class="r num">${x.order}</td><td class="r num muted">${x.spare}</td><td class="r num ${x.add ? '' : 'muted'}" title="${esc(x.adds.map(e => e.who + ' ' + e.n).join(', '))}">${x.add}</td><td class="r num"><b>${x.total}</b></td></tr>`).join('')}
       </tbody><tfoot><tr><td colspan="2">합계</td><td class="r num">${sum('order')}</td><td class="r num">${sum('spare')}</td><td class="r num">${sum('add')}</td><td class="r num">${sum('total')}</td></tr></tfoot></table></div>
       <div>${listCard('추가 수량', '하치 1개, 밀키봇 엽서북 2권처럼 주문 밖에서 더 만드는 수량이에요.', ['구분', '넘버', '개수', '대상', '메모'])}</div>
     </div>`;
@@ -633,12 +652,18 @@ function viewMoney() {
        <div class="kv minus"><span>남겨둘 금액 ${m.cfg['남겨둘 금액'] ? '' : '(공금 미처리 비용)'}</span><b class="num">${won(-m.reserve)}</b></div>
        <div class="kv minus"><span>개인 선정산 합계</span><b class="num">${won(-m.personalSum)}</b></div>
        <div class="kv total"><span>분배할 금액</span><b class="num">${won(m.pool)}</b></div>`;
-  return head('정산', '비용과 수입을 넣으면 사람별 분배 금액까지 계산해요.', `<button class="btn" data-act="newRow" data-tab="수입">수입 추가</button><button class="btn pri" data-act="newRow" data-tab="비용">비용 추가</button>`) +
-    `<div class="grid3">
+  st.distHtml = `<h4 style="margin:4px 0 2px">분배</h4><p class="hint" style="margin:0 0 6px">${esc(m.ratios.map(r => r.name + ' ' + r.w).join(' : ') || '설정에서 분배 비율을 넣어 주세요')}</p>${dist}
+    <h4 style="margin:22px 0 2px">사람별 받을 돈</h4><p class="hint" style="margin:0 0 6px">분배 금액 + 개인 선정산</p>
+    ${m.people.length ? m.people.map(p => `<div class="kv"><span>${esc(p.name)}${p.w ? ` <span class="muted">(${p.w})</span>` : ''}</span><b class="num">${won(p.total)}</b></div><div class="kv sub"><span>분배 ${won(p.share)} · 선정산 ${won(p.pre)}</span><b></b></div>`).join('') : '<div class="empty">아직 없어요</div>'}`;
+  const nPre = Object.keys(m.personal).length;
+  return head('정산', '비용은 누구나 추가할 수 있어요. 분배 금액은 관리자만 볼 수 있어요.', `${st.admin ? '<button class="btn soft" data-act="dist">분배 · 받을 돈 보기</button>' : ''}<button class="btn" data-act="newRow" data-tab="수입">수입 추가</button><button class="btn pri" data-act="newRow" data-tab="비용">비용 추가</button>`) +
+    `<div class="grid2">
       <div class="card"><h2>수입</h2><p class="sub">선입금은 입금 대조 결과로 자동 계산해요.</p>${incomeList}</div>
-      <div class="card"><h2>분배</h2><p class="sub">${esc(m.ratios.map(r => r.name + ' ' + r.w).join(' : ') || '설정에서 분배 비율을 넣어 주세요')}</p>${dist}</div>
-      <div class="card"><h2>사람별 받을 돈</h2><p class="sub">분배 금액 + 개인 선정산</p>
-        ${m.people.length ? m.people.map(p => `<div class="kv"><span>${esc(p.name)}${p.w ? ` <span class="muted">(${p.w})</span>` : ''}</span><b class="num">${won(p.total)}</b></div><div class="kv sub"><span>분배 ${won(p.share)} · 선정산 ${won(p.pre)}</span><b></b></div>`).join('') : '<div class="empty">아직 없어요</div>'}
+      <div class="card"><h2>비용</h2><p class="sub">아래 비용 목록을 합친 값이에요.</p>
+        <div class="kv"><span>공동 비용 합계</span><b class="num">${won(m.costShared)}</b></div>
+        <div class="kv"><span>공금 미처리 비용</span><b class="num">${won(m.reserveAuto)}</b></div>
+        <div class="kv"><span>개인 선정산 대상</span><b class="num">${nPre}명</b></div>
+        ${st.admin ? '<button class="btn soft" data-act="dist" style="margin-top:12px">분배 · 받을 돈 보기</button>' : ''}
       </div>
     </div>
     ${listCard('비용', `줄을 누르면 고쳐요. 출금자가 공금이 아니고 처리가 "완료"가 아니면 개인 선정산에 들어가요. 개인이 공금에서 가져간 돈은 단가를 마이너스로 적어요. 공동 비용 합계 ${won(m.costShared)}`, ['항목', '단가', '개수', '금액', '출금자', '처리', '메모'], { amount: true })}
@@ -659,6 +684,7 @@ function viewSettings() {
     <div>
       <div class="card"><h2>연결</h2><p class="sub">${st.demo ? '지금은 둘러보기 모드예요.' : '이 브라우저에만 저장돼요. 다른 사람 기기에서 쓰면 꼭 연결 해제해 주세요.'}</p>
         ${st.demo ? '<button class="btn pri" data-act="exitDemo">둘러보기 끝내고 연결하기</button>' : useGoogle() && store.tok ? `<div class="me">${avatar(store.tok.name, store.tok.pic)}<div><b>${esc(store.tok.name)}</b><div class="hint">${esc(store.tok.email)}</div></div></div><div class="acts" style="margin-top:14px"><button class="btn danger" data-act="signOut">로그아웃</button></div>` : connectForm()}</div>
+      ${st.demo || !CFG.googleClientId ? '' : emailsCard()}
       ${st.demo ? '' : `<div class="card"><h2>테스트 데이터</h2><p class="sub">작년 데이터로 연습해보고, 끝나면 초기화로 날려요. 작가, 정산, 설정 탭은 건드리지 않아요.</p>
         <div class="kv"><span>작년 선입금 주문 (164건)</span><b><button class="btn sm soft" data-act="sample" data-which="orders">불러오기</button></b></div>
         <div class="kv"><span>작년 통장 입금내역 (89건)</span><b><button class="btn sm soft" data-act="sample" data-which="deposits">불러오기</button></b></div>
@@ -670,6 +696,29 @@ function viewSettings() {
         <div class="acts"><button class="btn soft" data-act="paste" data-tab="선입금 리스트">선입금 리스트</button><button class="btn soft" data-act="paste" data-tab="입금기록">입금기록</button></div></div>
       <div class="card"><h2>테마</h2><div class="seg">${[['', '자동'], ['light', '밝게'], ['dark', '어둡게']].map(([k, t]) => `<button aria-selected="${(store.theme || '') === k}" data-theme-set="${k}">${t}</button>`).join('')}</div></div>
     </div></div>`;
+}
+
+// ---------- 로그인 허용 계정 ----------
+function emailsCard() {
+  if (!st.emails) { if (!st.emailsLoading) loadEmails(); return '<div class="card"><h2>로그인 허용 계정</h2><div class="loading" style="min-height:80px"><div class="spin"></div></div></div>'; }
+  const e = st.emails;
+  return `<div class="card"><h2>로그인 허용 계정</h2><p class="sub">이 구글 계정들만 사이트에 로그인할 수 있어요.${e.canEdit ? '' : ' 바꾸는 건 시트 주인만 할 수 있어요.'}</p>
+    <div class="kv"><span>${esc(e.owner)}</span><b><span class="badge blue">시트 주인</span></b></div>
+    ${(e.fixed || []).map(x => `<div class="kv"><span>${esc(x)}</span><b><span class="badge">코드에 고정</span></b></div>`).join('')}
+    ${e.list.map(x => `<div class="kv"><span>${esc(x)}</span><b>${e.canEdit ? `<button class="btn sm danger" data-email-del="${esc(x)}">빼기</button>` : ''}</b></div>`).join('')}
+    ${e.canEdit ? `<div class="tools" style="margin:12px 0 0"><input class="inp" id="newEmail" type="email" placeholder="friend@gmail.com" style="flex:1;min-width:180px"><button class="btn pri" data-act="emailAdd">추가</button></div>` : ''}
+  </div>`;
+}
+async function loadEmails() {
+  st.emailsLoading = true;
+  try { const j = await api('emails'); st.emails = j; } catch (e) { st.emails = { list: [], owner: '?', canEdit: false, err: e.message }; }
+  st.emailsLoading = false; render();
+}
+async function saveEmails(list) {
+  setSync('busy');
+  try { const j = await api('setEmails', { list }); st.emails = { ...st.emails, list: j.list }; toast('저장했어요'); setSync('ok'); }
+  catch (e) { toast(e.message, true); setSync('err'); }
+  render();
 }
 
 // ---------------------------------------------------------------------
@@ -721,10 +770,10 @@ function rowForm(tab, rowNo) {
     const opts = [...new Set([...(SUGGEST[c] || []), ...t.rows.map(x => x.get(c)).filter(x => x && x.length < 30)])].slice(0, 30);
     const id = 'f' + i;
     const input = LONG.includes(c) ? `<textarea class="inp" data-col="${esc(c)}" id="${id}">${esc(v)}</textarea>` :
-      `<input class="inp" data-col="${esc(c)}" id="${id}" value="${esc(v)}" ${opts.length ? `list="dl${i}"` : ''} ${['단가', '금액', '개수', '넘버', 'No'].includes(c) ? 'inputmode="numeric"' : ''}>${opts.length ? `<datalist id="dl${i}">${opts.map(o => `<option value="${esc(o)}">`).join('')}</datalist>` : ''}`;
+      `<input class="inp" data-col="${esc(c)}" id="${id}" value="${esc(v)}" autocomplete="off" ${['단가', '금액', '개수', '넘버', 'No'].includes(c) ? 'inputmode="numeric"' : ''}>${opts.length ? `<div class="picks">${opts.slice(0, 8).map(o => `<button type="button" class="pick ${o === v ? 'on' : ''}" data-pick-for="${id}" data-pick="${esc(o)}">${esc(o)}</button>`).join('')}</div>` : ''}`;
     return `<div class="field ${LONG.includes(c) ? 'full' : ''}"><label for="${id}">${esc(c)}</label>${input}</div>`;
   }).join('');
-  const hint = tab === '작가' ? '<p class="hint">수락 여부를 "수락"으로 바꾸면 확정 작가에 들어가요. No는 족자봉 넘버예요.</p>' :
+  const hint = tab === '작가' ? '<p class="hint">수락 여부를 "수락"으로 바꾸면 확정 작가에 들어가요. No는 족자봉 넘버예요. (1 = A, 2 = B …)</p>' :
     tab === '비용' ? '<p class="hint">공금에서 개인 용도로 쓴 돈은 단가를 마이너스(-)로 적어요.</p>' :
     tab === '설정' ? '<p class="hint">분배 비율은 "이름 비율, 이름 비율" 형식이에요. 예: 잏엫 5, 하치 4, 라굴 1</p>' : '';
   const match = r ? { [cols[0]]: String(r.raw[0] ?? '') } : null;
@@ -767,8 +816,8 @@ function orderModal(id) {
         <div class="raw">${esc(o.text || '(적은 내용 없음)')}</div>
         <div class="kv"><span>자동으로 읽은 넘버</span><b>${jokjaChips(o.parsed)}</b></div>
         <div class="kv"><span>신청 개수 / 읽은 개수</span><b class="num" style="${sumObj(o.parsed) !== o.qty ? 'color:var(--orange)' : ''}">${o.qty} / ${sumObj(o.parsed)}</b></div>
-        ${o.bad.length ? `<div class="note warn">없는 넘버: ${o.bad.join(', ')}</div>` : ''}
-        <div class="field" style="margin-top:8px"><label for="oJ">확정 넘버 (고칠 때만)</label><input class="inp" id="oJ" placeholder="예: 2, 7×2, 18" value="${esc(o.proc.j || '')}"><span class="hint">비워두면 자동으로 읽은 값을 써요.</span></div>
+        ${o.bad.length ? `<div class="note warn">없는 넘버: ${o.bad.map(jName).join(', ')}</div>` : ''}
+        <div class="field" style="margin-top:8px"><label for="oJ">확정 넘버 (고칠 때만)</label><input class="inp" id="oJ" placeholder="${jAlpha ? '예: A, C×2, F' : '예: 2, 7×2, 18'}" value="${esc(o.proc.j || '')}"><span class="hint">비워두면 자동으로 읽은 값을 써요.</span></div>
         <h4 style="margin:18px 0 6px">주문 정보</h4>${info}
       </div><div>
         <h4 style="margin:4px 0 6px">입금</h4>
@@ -876,7 +925,7 @@ function posRows() {
   const booths = (self.BOOTH_CONFIG && self.BOOTH_CONFIG.booths) || {};
   const jp = Object.values(booths).flatMap(b => b.products || []).find(p => p.variants);
   const letters = jp ? jp.variants : 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
-  const useLetters = (m.cfg['포스 족자봉 표기'] || '알파벳') !== '숫자';
+  const useLetters = jAlpha;
   const over = [];
   const rows = [['주문번호', '이름', '전화번호', '입금확인', '엽서북', '족자봉']];
   for (const o of m.live) {
@@ -912,7 +961,7 @@ function exportReviews() {
 }
 function exportMake() {
   const m = M();
-  download('제작_수량.csv', [['넘버', '작가', '주문', '작가 여분', '추가', '최종'], ...m.make.map(x => [x.no, x.author ? x.author.nick : '', x.order, x.spare, x.add, x.total]),
+  download('제작_수량.csv', [['넘버', '작가', '주문', '작가 여분', '추가', '최종'], ...m.make.map(x => [jName(x.no), x.author ? x.author.nick : '', x.order, x.spare, x.add, x.total]),
     [], ['엽서북', '', m.bookOrder, m.bookAuthor, m.bookExtra, m.bookOrder + m.bookAuthor + m.bookExtra]]);
 }
 
@@ -948,8 +997,9 @@ async function fetchAvatars(handles) {
 }
 document.addEventListener('error', e => {
   const img = e.target;
-  if (!(img instanceof HTMLImageElement) || !img.hasAttribute('data-av')) return;
+  if (!(img instanceof HTMLImageElement) || !img.closest('.av')) return;
   img.remove();
+  if (!img.hasAttribute('data-av')) return;
   const a = M().authors.find(a => a.pic === img.getAttribute('src'));
   if (a && a.x) { avBroken.add(a.x); clearTimeout(avTimer); avTimer = setTimeout(() => { fetchAvatars([...avBroken]); avBroken = new Set(); }, 1500); }
 }, true);
@@ -978,12 +1028,18 @@ function go(v) {
 }
 
 document.addEventListener('click', async e => {
-  const el = e.target.closest('[data-go],[data-act],[data-open],[data-seg],[data-link],[data-unlink],[data-theme-set]');
+  const pk = e.target.closest('[data-pick-for]');
+  if (pk) {
+    const inp = document.getElementById(pk.dataset.pickFor); inp.value = pk.dataset.pick;
+    pk.parentElement.querySelectorAll('.pick').forEach(b => b.classList.toggle('on', b === pk)); return;
+  }
+  const el = e.target.closest('[data-go],[data-act],[data-open],[data-seg],[data-link],[data-unlink],[data-theme-set],[data-email-del]');
   if (!el) { if (e.target.id === 'dim') closeModal(); return; }
   if (el.dataset.go) return go(el.dataset.go);
   if (el.dataset.seg) { const [k, v] = el.dataset.seg.split(':'); st[k] = v; return render(); }
   if (el.dataset.link) return linkDep(el.dataset.link, el.dataset.dep);
   if (el.dataset.unlink) return modalUnlink && modalUnlink(el.dataset.unlink);
+  if (el.dataset.emailDel) { if (!confirm(el.dataset.emailDel + ' 계정을 뺄까요? 바로 로그인이 막혀요.')) return; return saveEmails(st.emails.list.filter(x => x !== el.dataset.emailDel)); }
   if (el.dataset.themeSet !== undefined) { store.theme = el.dataset.themeSet; saveStore(); applyTheme(); return render(); }
   if (el.dataset.open) {
     e.stopPropagation();
@@ -1014,6 +1070,13 @@ document.addEventListener('click', async e => {
     return;
   }
   if (act === 'signOut') return signOut();
+  if (act === 'dist') { if (!st.admin) return; viewMoney(); return openModal({ title: '분배 · 받을 돈', sub: '관리자만 볼 수 있어요', body: st.distHtml, foot: '<span class="sp"></span><button class="btn pri" data-act="close">닫기</button>' }); }
+  if (act === 'emailAdd') {
+    const v = $('#newEmail').value.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) return toast('이메일 주소를 확인해 주세요', true);
+    if (st.emails.list.includes(v) || v === st.emails.owner) return toast('이미 있는 계정이에요', true);
+    return saveEmails([...st.emails.list, v]);
+  }
   if (act === 'sample' || act === 'reset') {
     const w = el.dataset.which, what = w === 'orders' ? '선입금 리스트' : '입금기록';
     const msg = act === 'sample' ? `작년 ${what} 샘플로 ${what} 탭을 덮어쓸까요?` : `${w === 'orders' ? '선입금 리스트와 주문 처리' : '입금기록'} 탭 내용을 모두 지울까요? 되돌릴 수 없어요.`;
@@ -1044,7 +1107,7 @@ document.addEventListener('click', async e => {
   }
   if (act === 'disconnect') {
     if (!confirm('이 브라우저에서 연결 정보를 지울까요? 시트 데이터는 그대로예요.')) return;
-    delete store.url; delete store.key; delete store.who; delete store.tok; saveStore(); st.tabs = null; render(); return;
+    delete store.url; delete store.key; delete store.who; delete store.tok; saveStore(); dropCache(); st.tabs = null; render(); return;
   }
 });
 
@@ -1071,4 +1134,9 @@ $('#fileIn').addEventListener('change', async e => {
 applyTheme();
 render();
 if (linkMsg) toast(linkMsg.replace(/^!/, ''), linkMsg.startsWith('!'));
-if (connected()) load();
+if (connected()) {
+  // 같은 탭에서 다시 열면 지난 데이터를 먼저 보여주고 뒤에서 새로 불러와요
+  const c = !st.demo && readCache();
+  if (c) { st.tabs = c; render(); }
+  load();
+}
