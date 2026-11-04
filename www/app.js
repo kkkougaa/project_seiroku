@@ -10,7 +10,7 @@ const dataKey = b => 'boothpos:v1:' + b;
 const REASONS_OUT = ['파손·불량', '전시용 샘플', '증정·서비스', '분실', '기타'];
 const REASONS_IN = ['추가 입고', '재고 정정', '기타'];
 const BACKUP_WARN_MIN = 60;
-const APP_VERSION = '22';
+const APP_VERSION = '23';
 
 /* ---------------- 저장소 ---------------- */
 const ls = {
@@ -608,7 +608,8 @@ function settingsView() {
       <div class="kv"><span>앱 버전</span><b class="num">${APP_VERSION}</b></div>
       <a class="link" href="monitor.html?booth=${booth}" target="_blank" rel="noopener"><span>족자봉 모니터 열기</span><span class="chev">›</span></a>
       <button class="link" data-act="switchBooth"><span>다른 부스로 바꾸기</span><span class="chev">›</span></button></div>
-    <div class="box"><button class="link danger" data-act="askReset"><span>이 부스 데이터 모두 지우기</span><span class="chev">›</span></button></div>
+    <div class="box"><button class="link danger" data-act="askClear"><span>판매·선입금 기록만 지우기<span class="s">상품 설정은 그대로</span></span><span class="chev">›</span></button>
+      <button class="link danger" data-act="askReset"><span>전부 초기화<span class="s">상품 설정까지 config.js 기본값으로</span></span><span class="chev">›</span></button></div>
   </div></div></div>`;
 }
 
@@ -738,7 +739,9 @@ function sheetView() {
     <p class="warnline">지금 이 기기의 ${esc(CFG.booths[r.booth]?.name || r.booth)} 데이터는 백업 내용으로 바뀌어요</p>
     <div class="foot"><button class="back" data-act="close">닫기</button><button class="cta" data-act="restoreGo">되살리기</button></div>`;
   }
-  if (sheet === 'reset') h = `<h3>${esc(B().name)} 데이터를 모두 지울까요?</h3><p class="amt">되돌릴 수 없어요</p>
+  if (sheet === 'clear') h = `<h3>판매·선입금 기록을 지울까요?</h3><p class="amt">선입금 명단, 현장 판매, 재고 조정, 미전달 기록이 지워져요. 부스 이름, 상품, 가격, 재고, 시작 현금은 그대로예요. 되돌릴 수 없어요</p>
+    <div class="foot"><button class="back" data-act="close">닫기</button><button class="cta danger" data-act="clearGo">기록 지우기</button></div>`;
+  if (sheet === 'reset') h = `<h3>${esc(B().name)} 전부 초기화할까요?</h3><p class="amt">기록과 상품 설정이 모두 지워지고 config.js 기본값으로 돌아가요. 되돌릴 수 없어요</p>
     <div class="foot"><button class="back" data-act="close">닫기</button><button class="cta danger" data-act="resetGo">모두 지우기</button></div>`;
   if (sheet === 'booth') h = `<h3>부스 선택</h3>
     ${Object.entries(CFG.booths).map(([k, b]) => `<button class="opt" data-pick="${k}"><span><span class="t">${esc(b.name)}</span><br><span class="s">${k === booth ? '지금 쓰는 부스' : '상품 ' + b.products.length + '개'}</span></span></button>`).join('')}`;
@@ -1130,6 +1133,12 @@ app.addEventListener('click', e => {
     case 'exportCsv': doSave(`부스포스_${booth}_정산_${stamp()}.csv`, settlementCSV(), 'text/csv'); return;
     case 'switchBooth': sheet = 'booth'; break;
     case 'askReset': sheet = 'reset'; break;
+    case 'askClear': sheet = 'clear'; break;
+    case 'clearGo': {
+      const keep = { catalog: D.catalog, ov: D.ov, cashStart: D.cashStart, sound: D.sound, backupAt: D.backupAt };
+      D = Object.assign(emptyData(), keep); save(); hist = []; redo = []; sheet = null; cart = {}; digits = ''; selKey = null; justDone = null;
+      toast('판매·선입금 기록을 지웠어요'); break;
+    }
     case 'resetGo': ls.del(dataKey(booth)); D = emptyData(); hist = []; redo = []; sheet = null; cart = {}; digits = ''; selKey = null; justDone = null; toast('이 부스 데이터를 모두 지웠어요'); break;
   }
   render();
