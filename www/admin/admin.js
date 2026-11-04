@@ -127,7 +127,9 @@ async function api(action, payload = {}) {
   let j; try { j = await r.json(); } catch { throw new Error('응답을 못 읽었어요. 웹 앱 배포 주소가 맞는지 확인해 주세요.'); }
   if (!j.ok) {
     if (j.code === 'LOGIN' || j.code === 'DENIED') {
-      if (store.tok && !store.key) { delete store.tok; saveStore(); }
+      // 틀린 비밀키·만료된 로그인은 지우고 로그인 화면으로 보내요 (갇히지 않게)
+      if (store.key) { delete store.key; delete store.who; } else delete store.tok;
+      saveStore(); dropCache();
       st.loginErr = j.error; st.tabs = null; setTimeout(render);
     }
     throw new Error(j.error || '알 수 없는 오류');
@@ -453,7 +455,7 @@ function render() {
   const app = $('#app');
   if (!connected()) { app.innerHTML = topBar(false) + `<main>${viewConnect()}</main>`; drawGoogleButton(); return; }
   let body;
-  if (!st.tabs) body = st.err ? `<div class="hello"><div class="note warn"><b>불러오지 못했어요</b><br>${esc(st.err)}</div><div class="acts"><button class="btn pri" data-act="reload">다시 시도</button><button class="btn" data-go="settings">연결 설정</button></div></div>` : '<div class="loading"><div class="spin"></div>시트를 불러오는 중이에요</div>';
+  if (!st.tabs) body = st.err ? `<div class="hello"><div class="note warn"><b>불러오지 못했어요</b><br>${esc(st.err)}</div><div class="acts"><button class="btn pri" data-act="reload">다시 시도</button><button class="btn" data-act="relogin">다시 로그인</button></div></div>` : '<div class="loading"><div class="spin"></div>시트를 불러오는 중이에요</div>';
   else body = ({ home: viewHome, authors: viewAuthors, orders: viewOrders, match: viewMatch, make: viewMake, money: viewMoney, memo: viewMemo, settings: viewSettings }[st.view] || viewHome)();
   const y = scrollY;
   app.innerHTML = topBar(true) + `<main>${body}</main>`;
@@ -1070,6 +1072,7 @@ document.addEventListener('click', async e => {
     return;
   }
   if (act === 'signOut') return signOut();
+  if (act === 'relogin') { delete store.key; delete store.who; delete store.tok; saveStore(); dropCache(); st.tabs = null; st.err = ''; return render(); }
   if (act === 'dist') { if (!st.admin) return; viewMoney(); return openModal({ title: '분배 · 받을 돈', sub: '관리자만 볼 수 있어요', body: st.distHtml, foot: '<span class="sp"></span><button class="btn pri" data-act="close">닫기</button>' }); }
   if (act === 'emailAdd') {
     const v = $('#newEmail').value.trim().toLowerCase();
