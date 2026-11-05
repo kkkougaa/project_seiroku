@@ -90,11 +90,50 @@ function setup() {
   SpreadsheetApp.getUi().alert(msg + '\n\n이제 관리 사이트를 쓸 수 있어요.\n(비밀키 연결용: ' + key + ')');
 }
 
+// ------------------------------------------------------------------
+// 회차: 회차마다 구글 시트가 따로 있어요. 이 스크립트가 붙은 시트가 첫 회차예요.
+//  목록은 스크립트 속성 EDITIONS 에 [{ id, name, sheet }] 로 저장해요.
+// ------------------------------------------------------------------
+const HOME_EDITION_NAME = '3rd : WORK!';
+let BOOK_ = null; // 이번 요청에서 쓰는 시트
+function book_() { return BOOK_ || SpreadsheetApp.getActive(); }
+function isHome_() { return book_().getId() === SpreadsheetApp.getActive().getId(); }
+function editions_() {
+  let list = [];
+  try { list = JSON.parse(PropertiesService.getScriptProperties().getProperty('EDITIONS') || '[]'); } catch (e) {}
+  const home = SpreadsheetApp.getActive().getId();
+  if (!list.some(e => e.sheet === home)) list.unshift({ id: 'home', name: HOME_EDITION_NAME, sheet: home });
+  return list;
+}
+function saveEditions_(list) { PropertiesService.getScriptProperties().setProperty('EDITIONS', JSON.stringify(list)); }
+function addEdition_(name, fromLastYear) {
+  name = String(name || '').trim();
+  if (!name) throw new Error('회차 이름을 넣어 주세요.');
+  const list = editions_();
+  if (list.some(e => e.name === name)) throw new Error('같은 이름의 회차가 있어요.');
+  const ss = SpreadsheetApp.create('행사 관리 · ' + name);
+  const ed = { id: 'e' + Date.now().toString(36), name: name, sheet: ss.getId() };
+  list.push(ed); saveEditions_(list);
+  BOOK_ = ss; ensureTabs_();
+  const def = ss.getSheetByName('Sheet1') || ss.getSheetByName('시트1');
+  if (def && ss.getSheets().length > 1) ss.deleteSheet(def);
+  if (fromLastYear) { sample_('orders'); sample_('deposits'); }
+  return { id: ed.id, name: ed.name, url: ss.getUrl() };
+}
+function renameEdition_(id, name) {
+  name = String(name || '').trim();
+  if (!name) throw new Error('회차 이름을 넣어 주세요.');
+  const list = editions_(), ed = list.find(e => e.id === id);
+  if (!ed) throw new Error('없는 회차예요.');
+  ed.name = name; saveEditions_(list);
+  return ed;
+}
+
 // 탭이 없으면 만들어요. 사이트에서 처음 부를 때도 알아서 해요.
 function ensureTabs_() {
-  const cache = CacheService.getScriptCache();
-  if (cache.get('tabs-ok4')) return;
-  const ss = SpreadsheetApp.getActive();
+  const cache = CacheService.getScriptCache(), ck = 'tabs-ok4:' + book_().getId();
+  if (cache.get(ck)) return;
+  const ss = book_();
   // 비용 탭 열 이름 바꾸기: 항목 → 내용, 출금자 → 사용 출처
   const cost = ss.getSheetByName('비용');
   if (cost && cost.getLastColumn() > 0) {
@@ -113,11 +152,11 @@ function ensureTabs_() {
   const st = ss.getSheetByName('설정');
   if (st.getLastRow() <= 1) st.getRange(2, 1, DEFAULT_SETTINGS.length, 3).setValues(DEFAULT_SETTINGS);
   const au = ss.getSheetByName('작가');
-  if (au.getLastRow() <= 1 && !PropertiesService.getScriptProperties().getProperty('AUTHORS_IMPORTED')) {
+  if (isHome_() && au.getLastRow() <= 1 && !PropertiesService.getScriptProperties().getProperty('AUTHORS_IMPORTED')) {
     PropertiesService.getScriptProperties().setProperty('AUTHORS_IMPORTED', '1');
     try { importAuthors_(); } catch (e) { /* 작년 시트를 못 열면 빈 탭으로 둬요 */ }
   }
-  cache.put('tabs-ok4', '1', 600);
+  cache.put(ck, '1', 600);
 }
 
 // 섭외 진행 + 확정 작가 리스트를 한 탭(작가)으로 합쳐요. X 아이디로 짝을 맞춰요.
@@ -135,7 +174,7 @@ function importAuthors_() {
     return [ok ? ++no : '', r[0], r[1], r[2], r[3], pick(c, '디스코드'), pick(c, '제출 여부'), pick(c, '현장 수령'),
       pick(c, '후기 (한)'), pick(c, '후기 (일)'), pick(c, '작업 폴더 링크'), pick(c, '주소'), pick(c, '계좌번호'), pick(c, '실명'), pick(c, '기타'), ''];
   });
-  if (rows.length) SpreadsheetApp.getActive().getSheetByName('작가').getRange(2, 1, rows.length, rows[0].length).setValues(rows);
+  if (rows.length) book_().getSheetByName('작가').getRange(2, 1, rows.length, rows[0].length).setValues(rows);
   return rows.length;
 }
 
@@ -354,8 +393,16 @@ function doPost(e) {
         return json_({ ok: false, code: 'LOGIN', error: '비밀키가 맞지 않아요.' });
       }
     }
+    const eds = editions_(), ed = eds.find(e => e.id === req.edition) || eds[0];
+    BOOK_ = ed.sheet === SpreadsheetApp.getActive().getId() ? SpreadsheetApp.getActive() : SpreadsheetApp.openById(ed.sheet);
+    if (req.action === 'addEdition' || req.action === 'renameEdition') {
+      if (!me.owner) return json_({ ok: false, error: '회차는 시트 주인만 만들 수 있어요.' });
+      const r = req.action === 'addEdition' ? addEdition_(req.name, !!req.fromLastYear) : renameEdition_(req.id, req.name);
+      return json_({ ok: true, edition: r, editions: editions_().map(e => ({ id: e.id, name: e.name })) });
+    }
     ensureTabs_();
-    if (req.action === 'read') return json_({ ok: true, tabs: readFast_(!!req.fresh), at: new Date().toISOString(), who: who, admin: !!me.owner });
+    if (req.action === 'read') return json_({ ok: true, tabs: readFast_(!!req.fresh), at: new Date().toISOString(), who: who, admin: !!me.owner,
+      editions: eds.map(e => ({ id: e.id, name: e.name })), edition: ed.id, sheetUrl: me.owner ? book_().getUrl() : '' });
     if ((req.sheet === '주문 처리' || req.sheet === '출금 처리') && req.values) req.values['수정한 사람'] = who;
 
     const lock = LockService.getScriptLock();
@@ -392,7 +439,7 @@ function json_(o) {
 
 function sheet_(name) {
   if (!TABS[name]) throw new Error('없는 탭이에요: ' + name);
-  const sh = SpreadsheetApp.getActive().getSheetByName(name);
+  const sh = book_().getSheetByName(name);
   if (!sh) throw new Error('"' + name + '" 탭이 없어요. 시트 메뉴에서 처음 설정을 눌러 주세요.');
   return sh;
 }
@@ -402,24 +449,24 @@ function sheet_(name) {
 function readFast_(fresh) {
   const cache = CacheService.getScriptCache();
   if (!fresh) {
-    const hit = cache.get('read');
+    const hit = cache.get('read:' + book_().getId());
     if (hit) { try { return JSON.parse(Utilities.ungzip(Utilities.newBlob(Utilities.base64Decode(hit), 'application/x-gzip')).getDataAsString()); } catch (e) {} }
   }
   const tabs = readAll_();
   try {
     const z = Utilities.base64Encode(Utilities.gzip(Utilities.newBlob(JSON.stringify(tabs), 'application/json')).getBytes());
-    if (z.length < 95000) cache.put('read', z, 300);
+    if (z.length < 95000) cache.put('read:' + book_().getId(), z, 300);
   } catch (e) {}
   return tabs;
 }
-function clearReadCache_() { CacheService.getScriptCache().remove('read'); }
+function clearReadCache_() { CacheService.getScriptCache().remove('read:' + book_().getId()); }
 function onEdit() { clearReadCache_(); } // 시트에서 직접 고치면 캐시를 지워요
 
 function readAll_() {
   const names = Object.keys(TABS);
   if (typeof Sheets !== 'undefined') {
     try {
-      const ss = SpreadsheetApp.getActive();
+      const ss = book_();
       const have = new Set(ss.getSheets().map(sh => sh.getName()));
       const want = names.filter(n => have.has(n));
       const res = Sheets.Spreadsheets.Values.batchGet(ss.getId(), { ranges: want.map(n => "'" + n.replace(/'/g, "''") + "'"), valueRenderOption: 'FORMATTED_VALUE' });
@@ -434,7 +481,7 @@ function readAll_() {
   }
   const out = {};
   names.forEach(name => {
-    const sh = SpreadsheetApp.getActive().getSheetByName(name);
+    const sh = book_().getSheetByName(name);
     if (!sh || sh.getLastRow() === 0) { out[name] = { header: TABS[name], rows: [] }; return; }
     const v = sh.getDataRange().getDisplayValues();
     out[name] = { header: v[0], rows: v.slice(1) };

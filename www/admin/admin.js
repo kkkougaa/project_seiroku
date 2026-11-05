@@ -106,7 +106,7 @@ if (!VIEWS.some(v => v[0] === st.view)) st.view = 'home';
 // ---------------------------------------------------------------------
 async function api(action, payload = {}) {
   if (st.demo) {
-    if (action === 'read') { if (!st.demoTabs) st.demoTabs = self.DEMO_TABS(); return { ok: true, tabs: JSON.parse(JSON.stringify(st.demoTabs)) }; }
+    if (action === 'read') { if (!st.demoTabs) st.demoTabs = self.DEMO_TABS(); return { ok: true, tabs: JSON.parse(JSON.stringify(st.demoTabs)), editions: [{ id: 'demo', name: '둘러보기' }], edition: 'demo' }; }
     if (action === 'sample') {
       const fresh = self.DEMO_TABS(), name = payload.which === 'orders' ? '선입금 리스트' : '입금기록';
       st.demoTabs[name] = fresh[name]; return { ok: true, count: fresh[name].rows.length };
@@ -122,7 +122,7 @@ async function api(action, payload = {}) {
   }
   if (!connected()) throw new Error('로그인해 주세요.');
   const auth = store.key ? { key: store.key } : { idToken: store.tok.t };
-  const r = await fetch(apiUrl(), { method: 'POST', body: JSON.stringify({ ...auth, action, ...payload }), headers: { 'Content-Type': 'text/plain;charset=utf-8' }, redirect: 'follow' });
+  const r = await fetch(apiUrl(), { method: 'POST', body: JSON.stringify({ ...auth, edition: store.edition || '', action, ...payload }), headers: { 'Content-Type': 'text/plain;charset=utf-8' }, redirect: 'follow' });
   if (!r.ok) throw new Error('연결 실패 (' + r.status + ')');
   let j; try { j = await r.json(); } catch { throw new Error('응답을 못 읽었어요. 웹 앱 배포 주소가 맞는지 확인해 주세요.'); }
   if (!j.ok) {
@@ -187,9 +187,10 @@ function write(action, payload, okMsg) {
   return Promise.resolve(true);
 }
 const CACHE = 'seiroku-admin-cache';
-function saveCache() { if (st.demo || !st.tabs) return; try { sessionStorage.setItem(CACHE, JSON.stringify(st.tabs)); } catch {} }
-function readCache() { try { return JSON.parse(sessionStorage.getItem(CACHE)); } catch { return null; } }
-function dropCache() { try { sessionStorage.removeItem(CACHE); } catch {} }
+const cacheKey = () => CACHE + ':' + (store.edition || '');
+function saveCache() { if (st.demo || !st.tabs) return; try { sessionStorage.setItem(cacheKey(), JSON.stringify({ tabs: st.tabs, editions: st.editions })); } catch {} }
+function readCache() { try { const c = JSON.parse(sessionStorage.getItem(cacheKey())); if (c && c.tabs) { st.editions = c.editions || st.editions; return c.tabs; } } catch {} return null; }
+function dropCache() { try { Object.keys(sessionStorage).filter(k => k.startsWith(CACHE)).forEach(k => sessionStorage.removeItem(k)); } catch {} }
 
 async function load(fresh = false) {
   await queue.catch(() => {});
@@ -200,6 +201,7 @@ async function load(fresh = false) {
     st.tabs = j.tabs; st.at = new Date(); model = null; saveCache();
     if (j.who && j.who !== store.who) { store.who = j.who; saveStore(); }
     st.admin = st.demo ? true : !!j.admin;
+    if (j.editions) { st.editions = j.editions; st.sheetUrl = j.sheetUrl || ''; if (j.edition && j.edition !== store.edition) { store.edition = j.edition; saveStore(); } }
     if (!st.demo) setTimeout(fetchAvatars, 300);
     setSync('ok');
   } catch (e) { st.err = e.message; setSync('err'); }
@@ -497,11 +499,52 @@ function render() {
 
 function topBar(nav) {
   return `<header class="top"><div class="top-in">
-    <div class="brand">행사 관리${st.demo ? ' <span class="badge orange">둘러보기</span>' : store.tok && !store.key ? ` <span class="badge">${esc(store.tok.name)}</span>` : store.who ? ` <span class="badge">${esc(store.who)}</span>` : ''}</div>
+    <div class="brand">${nav ? edButton() : '행사 관리'}${st.demo ? ' <span class="badge orange">둘러보기</span>' : ''}</div>
     ${nav ? `<nav class="tabs" role="tablist">${VIEWS.map(([k, t]) => `<button role="tab" aria-selected="${st.view === k}" data-go="${k}">${t}</button>`).join('')}</nav>
     <div class="sync" id="sync"><i></i><span id="syncT"></span><button data-act="reload">새로고침</button></div>` : ''}
   </div></header>`;
 }
+// ---------- 회차 고르기 ----------
+const curEdition = () => (st.editions || []).find(e => e.id === store.edition) || (st.editions || [])[0];
+function edButton() {
+  const cur = curEdition();
+  return `<button class="edbtn" data-act="edMenu" aria-haspopup="menu">${esc(cur ? cur.name : '행사 관리')}<svg width="12" height="8" viewBox="0 0 12 8" aria-hidden="true"><path d="M1 1.5l5 5 5-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
+}
+function edMenu() {
+  closeEdMenu();
+  const btn = document.querySelector('.edbtn'); if (!btn) return;
+  const r = btn.getBoundingClientRect(), cur = curEdition();
+  const m = document.createElement('div'); m.className = 'edmenu'; m.id = 'edmenu'; m.setAttribute('role', 'menu');
+  m.style.left = Math.max(8, r.left) + 'px'; m.style.top = (r.bottom + 6) + 'px';
+  m.innerHTML = (st.editions || []).map(e => `<button role="menuitem" data-ed="${esc(e.id)}" class="${cur && e.id === cur.id ? 'on' : ''}"><span>${esc(e.name)}</span>${cur && e.id === cur.id ? '<b>✓</b>' : ''}</button>`).join('') +
+    (st.admin ? `<hr><button role="menuitem" data-act="edNew"><span>+ 새 회차 만들기</span></button><button role="menuitem" data-act="edRename"><span>지금 회차 이름 바꾸기</span></button>${st.sheetUrl ? `<a role="menuitem" href="${esc(st.sheetUrl)}" target="_blank" rel="noopener"><span>지금 회차 시트 열기 ↗</span></a>` : ''}` : '');
+  document.body.appendChild(m);
+}
+function closeEdMenu() { const m = $('#edmenu'); if (m) m.remove(); }
+function switchEdition(id) {
+  closeEdMenu();
+  if (id === store.edition) return;
+  store.edition = id; saveStore(); model = null; st.tabs = readCache(); render(); load();
+}
+function edModal(rename) {
+  const cur = curEdition();
+  openModal({
+    title: rename ? '회차 이름 바꾸기' : '새 회차 만들기', sub: rename ? '' : '구글 드라이브에 새 시트를 만들어요. 작가·주문·정산이 회차마다 따로예요.',
+    body: `<div class="field"><label for="edName">회차 이름</label><input class="inp" id="edName" value="${rename && cur ? esc(cur.name) : ''}" placeholder="예: 4th : PLAY!" autocomplete="off"></div>
+      ${rename ? '' : '<label class="depi" style="border:0;padding:12px 0 0"><input type="checkbox" id="edLast"><span class="t"><b>작년 선입금·입금 데이터 넣기</b><small>2nd 회차를 만들 때처럼 작년 시트의 주문과 통장 내역을 그대로 가져와요</small></span></label>'}`,
+    foot: `<span class="sp"></span><button class="btn" data-act="close">취소</button><button class="btn pri" data-act="save">${rename ? '저장' : '만들기'}</button>`,
+    onSave: async () => {
+      const name = $('#edName').value.trim(); if (!name) return toast('회차 이름을 넣어 주세요', true);
+      const b = document.querySelector('#dim [data-act=save]'); b.disabled = true; b.textContent = rename ? '저장 중' : '시트 만드는 중…';
+      try {
+        const j = await api(rename ? 'renameEdition' : 'addEdition', rename ? { id: cur.id, name } : { name, fromLastYear: $('#edLast').checked });
+        st.editions = j.editions; closeModal();
+        if (rename) { toast('이름을 바꿨어요'); render(); } else { toast(`${name} 회차를 만들었어요`); switchEdition(j.edition.id); }
+      } catch (e) { toast(e.message, true); b.disabled = false; b.textContent = rename ? '저장' : '만들기'; }
+    },
+  });
+}
+
 function setSync(s) {
   const el = $('#sync'); if (!el) return;
   el.className = 'sync ' + (s === 'busy' ? 'busy' : s === 'err' ? 'err' : '');
@@ -1194,6 +1237,9 @@ document.addEventListener('click', async e => {
     const inp = document.getElementById(pk.dataset.pickFor); inp.value = pk.dataset.pick;
     pk.parentElement.querySelectorAll('.pick').forEach(b => b.classList.toggle('on', b === pk)); return;
   }
+  const edi = e.target.closest('[data-ed]');
+  if (edi) return switchEdition(edi.dataset.ed);
+  if (!e.target.closest('#edmenu') && !e.target.closest('[data-act=edMenu]')) closeEdMenu();
   const el = e.target.closest('[data-go],[data-act],[data-open],[data-seg],[data-link],[data-unlink],[data-theme-set],[data-email-del]');
   if (!el) { if (e.target.id === 'dim') closeModal(); return; }
   if (el.dataset.go) return go(el.dataset.go);
@@ -1232,6 +1278,9 @@ document.addEventListener('click', async e => {
     return;
   }
   if (act === 'signOut') return signOut();
+  if (act === 'edMenu') { e.stopPropagation(); return $('#edmenu') ? closeEdMenu() : edMenu(); }
+  if (act === 'edNew') { closeEdMenu(); return edModal(false); }
+  if (act === 'edRename') { closeEdMenu(); return edModal(true); }
   if (act === 'newOrder') return newOrderModal();
   if (act === 'newOrderFromDep') return newOrderModal({ dep: M().deposits.find(d => d.key === el.dataset.dep) });
   if (act === 'editOrder') return newOrderModal({ edit: M().orders.find(o => o.id === el.dataset.id) });
