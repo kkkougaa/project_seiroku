@@ -149,9 +149,12 @@ function colIdx(header, name) {
 // 선입금 리스트 열 찾기. 위치폼 양식이 회차마다 조금씩 달라서 열 이름 후보를 여러 개 받아요.
 //  띄어쓰기는 무시하고("작성 시간" = "작성시간"), 딱 맞는 이름이 없으면 그 이름으로 시작하는 열을 찾아요.
 const normCol = s => String(s ?? '').replace(/\s+/g, '');
-function findCol(header, names, nth = 1) {
+//  loose 면 이름이 중간에 들어 있는 열도 찾아요. ("[상품1] 일러스트 앤솔로지 엽서북(단품) 개수" → 엽서북)
+function findCol(header, names, nth = 1, loose = false) {
   const h = header.map(normCol);
-  for (const test of [(x, n) => x === n, (x, n) => x.startsWith(n)]) for (const n of names) {
+  const tests = [(x, n) => x === n, (x, n) => x.startsWith(n)];
+  if (loose) tests.push((x, n) => x.includes(n));
+  for (const test of tests) for (const n of names) {
     let seen = 0;
     for (let i = 0; i < h.length; i++) if (test(h[i], n) && ++seen === nth) return i;
   }
@@ -161,11 +164,14 @@ function findCol(header, names, nth = 1) {
 // 예전 양식: 번호, 엽서북, 족자봉(개수), 주문자명, 주문자연락처, 족자봉(넘버) …
 function orderCols(header) {
   const f = (...names) => findCol(header, names);
-  const jSel = f('족자봉선택'), jQty = f('족자봉수량');
+  // 상품 열은 제목이 상품 이름 그대로라 길어요. '족자봉'이 들어간 첫 열 = 개수, 그다음 열 = 고른 넘버
+  const jAll = header.map((x, i) => normCol(x).includes('족자봉') ? i : -1).filter(i => i >= 0);
+  const jSel = f('족자봉선택'), jQty = f('족자봉수량', '족자봉개수');
+  const qty = jQty >= 0 ? jQty : (jAll.find(i => i !== jSel) ?? -1);
+  const text = jSel >= 0 ? jSel : (jAll.find(i => i !== qty) ?? -1);
   return {
-    id: f('주문번호'), num: f('순번', '번호'), at: f('작성시간'), books: f('엽서북수량', '엽서북'),
-    qty: jQty >= 0 ? jQty : findCol(header, ['족자봉'], 1),
-    text: jSel >= 0 ? jSel : findCol(header, ['족자봉'], jQty >= 0 ? 1 : 2),
+    id: f('주문번호'), num: f('순번', '번호'), at: f('작성시간'), books: findCol(header, ['엽서북수량', '엽서북개수', '엽서북'], 1, true),
+    qty, text,
     ship: f('배송비'), total: f('총주문금액'), name: f('이름', '주문자명'), payer: f('입금자명'), refundName: f('환불예금주'),
     nick: f('닉네임'), phone: f('연락처', '주문자연락처'), recv: f('수령자명'), recvPhone: f('수령자연락처'),
     method: f('배송방법'), status: f('진행상태'),
@@ -329,6 +335,7 @@ function build() {
   // 주문
   const oT = T('선입금 리스트'), oc = orderCols(oT.header);
   const oGet = (r, k) => oc[k] >= 0 ? String(r.raw[oc[k]] ?? '').trim() : '';
+  const colMiss = oT.rows.length ? [['books', '엽서북 수량'], ['qty', '족자봉 수량'], ['text', '족자봉 선택'], ['total', '총 주문금액'], ['status', '진행 상태']].filter(([k]) => oc[k] < 0).map(x => x[1]) : [];
   const orders = oT.rows.filter(r => oGet(r, 'id') || oGet(r, 'num')).map(r => {
     const g = k => oGet(r, k);
     const id = g('id') || ('#' + g('num'));
@@ -445,6 +452,9 @@ function build() {
   const bookOrder = live.reduce((a, o) => a + o.books, 0);
   const bookAuthor = confirmed.length * bookPerAuthor;
   const bookExtra = extra.filter(e => e.kind === '엽서북').reduce((a, e) => a + e.n, 0);
+  // 포토카드: 족자봉 1개를 살 때마다 1개씩 같이 나가요 (넘버를 안 적은 주문도 개수대로 세요)
+  const cardOrder = live.reduce((a, o) => a + Math.max(o.qty, o.jCount), 0);
+  const cardExtra = extra.filter(e => e.kind === '포토카드').reduce((a, e) => a + e.n, 0);
 
   // 정산
   const income = T('수입').rows.filter(r => r.get('항목') || r.get('금액')).map(r => ({ row: r.row, r, name: r.get('항목'), amt: toNum(r.get('금액')), memo: r.get('메모') }));
@@ -484,8 +494,8 @@ function build() {
   }
 
   return {
-    cfg, priceBook, priceJ, spareJ, bookPerAuthor, ratios, authors, confirmed, authorByNo, maxNo, orders, live, paid, deposits, unusedDeps, withdrawals, refundSum,
-    extra, make, bookOrder, bookAuthor, bookExtra, income, costs, preForm, preBank, incomeSum, costShared, personal, personalSum, reserve, reserveAuto,
+    cfg, priceBook, priceJ, spareJ, bookPerAuthor, ratios, authors, confirmed, authorByNo, maxNo, orders, colMiss, live, paid, deposits, unusedDeps, withdrawals, refundSum,
+    extra, make, bookOrder, bookAuthor, bookExtra, cardOrder, cardExtra, income, costs, preForm, preBank, incomeSum, costShared, personal, personalSum, reserve, reserveAuto,
     balanceIn, pool, people, wsum, dIn, dOut, bankCheck,
   };
 }
@@ -514,6 +524,7 @@ function checks() {
   if (wdNew.length) add('warn', `분류 안 된 출금 ${wdNew.length}건`, '환불인지, 비용인지 입금 대조에서 표시해 주세요.', 'match');
   const jc = m.live.filter(o => o.jState === 'check');
   if (jc.length) add('warn', `족자봉 넘버를 확인할 주문 ${jc.length}건`, '적은 넘버 개수가 주문 개수와 다르거나 없는 넘버가 있어요.', 'orders:jokja');
+  if (m.colMiss.length) add('bad', `선입금 리스트에서 못 찾은 열: ${m.colMiss.join(', ')}`, '', 'orders');
   for (const [k, t] of ISSUES) { const n = m.live.filter(o => o.issues.some(i => i[0] === k)).length; if (n) add(k === 'dup' || k === 'phone' ? 'warn' : 'bad', `${t} ${n}건`, '', 'orders:issue'); }
   const money = m.live.filter(o => o.amtWarn);
   if (money.length) add('warn', `금액이 맞지 않는 주문 ${money.length}건`, `실제 개수로 계산한 금액(엽서북 ${won(m.priceBook)}, 족자봉 ${won(m.priceJ)})과 받은·신청 금액이 달라요.`, 'orders:money');
@@ -651,6 +662,8 @@ function viewHome() {
         <div class="card"><div class="card-h"><div><h2>제작 수량</h2></div><button class="btn sm" data-go="make">자세히</button></div>
           <div class="kv"><span>엽서북</span><b class="num">${cnt(bTotal)}권</b></div>
           <div class="kv sub"><span>주문 ${cnt(m.bookOrder)} + 작가 ${cnt(m.bookAuthor)} + 추가 ${cnt(m.bookExtra)}</span><b></b></div>
+          <div class="kv"><span>포토카드</span><b class="num">${cnt(m.cardOrder + m.cardExtra)}개</b></div>
+          <div class="kv sub"><span>족자봉 주문 ${cnt(m.cardOrder)} + 추가 ${cnt(m.cardExtra)}</span><b></b></div>
           <div class="kv"><span>족자봉 (${m.make.length}종)</span><b class="num">${cnt(jTotal)}개</b></div>
           <div class="kv sub"><span>주문 ${cnt(m.make.reduce((a, x) => a + x.order, 0))} + 작가 여분 ${cnt(m.make.reduce((a, x) => a + x.spare, 0))} + 추가 ${cnt(m.make.reduce((a, x) => a + x.add, 0))}</span><b></b></div>
         </div>
@@ -742,9 +755,9 @@ function viewMake() {
   const bTotal = m.bookOrder + m.bookAuthor + m.bookExtra;
   return head('제작 수량', '', `<button class="btn" data-act="exportMake">CSV로 받기</button><button class="btn pri" data-act="newRow" data-tab="추가 수량">추가 수량 넣기</button>`) +
     `<div class="stats">
-      ${stat('족자봉 전체', cnt(sum('total')) + '<small>개</small>', `${m.make.length}종`)}
-      ${stat('주문', cnt(sum('order')) + '<small>개</small>')}
+      ${stat('족자봉 전체', cnt(sum('total')) + '<small>개</small>', `${m.make.length}종 · 주문 ${cnt(sum('order'))}`)}
       ${stat('엽서북 전체', cnt(bTotal) + '<small>권</small>', `주문 ${cnt(m.bookOrder)} + 작가 ${cnt(m.bookAuthor)} + 추가 ${cnt(m.bookExtra)}`)}
+      ${stat('포토카드 전체', cnt(m.cardOrder + m.cardExtra) + '<small>개</small>', `족자봉 주문 ${cnt(m.cardOrder)} + 추가 ${cnt(m.cardExtra)}`)}
       ${stat('확정 작가', cnt(m.confirmed.length) + '<small>명</small>', `작가 1명당 엽서북 ${m.bookPerAuthor}권`)}
     </div>
     <div class="grid2">
@@ -875,7 +888,7 @@ function closeModal() { const d = $('#dim'); if (d) d.remove(); modalSave = null
 const LONG = ['후기 (한)', '후기 (일)', '섭외 메모', '기타', '주소', '메모', '내용', '설명'];
 const SUGGEST = {
   '수락 여부': ['수락', '대기', '보류', '거절'], '디스코드': ['O', 'X'], '제출 여부': ['제출 완료', '연장', '미제출'], '현장 수령': ['O (퍼클)', 'O', 'X'],
-  '출금자': ['공금'], '처리': ['미완료', '완료'], '구분': ['족자봉', '엽서북'], '상태': ['확인 필요', '처리 완료'],
+  '출금자': ['공금'], '처리': ['미완료', '완료'], '구분': ['족자봉', '엽서북', '포토카드'], '상태': ['확인 필요', '처리 완료'],
 };
 // 비용의 사용 출처: 공금 + 운영진 (분배 비율에 있는 이름도 자동으로 붙어요)
 function sources() { return [...new Set(['공금', '라굴', '하치', '잏엫', ...M().ratios.map(x => x.name)])]; }
@@ -1215,7 +1228,8 @@ function exportReviews() {
 function exportMake() {
   const m = M();
   download('제작_수량.csv', [['넘버', '작가', '주문', '작가 여분', '추가', '최종'], ...m.make.map(x => [jName(x.no), x.author ? x.author.nick : '', x.order, x.spare, x.add, x.total]),
-    [], ['엽서북', '', m.bookOrder, m.bookAuthor, m.bookExtra, m.bookOrder + m.bookAuthor + m.bookExtra]]);
+    [], ['엽서북', '', m.bookOrder, m.bookAuthor, m.bookExtra, m.bookOrder + m.bookAuthor + m.bookExtra],
+    ['포토카드', '', m.cardOrder, 0, m.cardExtra, m.cardOrder + m.cardExtra]]);
 }
 
 // ---------------------------------------------------------------------
