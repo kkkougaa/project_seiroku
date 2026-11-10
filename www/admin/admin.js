@@ -509,16 +509,6 @@ function build() {
   costs.filter(c => c.who !== '공금' && !c.done).forEach(c => { personal[c.who] = (personal[c.who] || 0) + c.amt; });
   const personalSum = Object.values(personal).reduce((a, b) => a + b, 0);
   const reserveAuto = costs.filter(c => c.who === '공금' && !c.done && c.amt > 0).reduce((a, c) => a + c.amt, 0);
-  const balanceIn = cfg['현재 잔고 + 현금'] === undefined || cfg['현재 잔고 + 현금'] === '' ? null : toNum(cfg['현재 잔고 + 현금']);
-  const reserve = cfg['남겨둘 금액'] === undefined || cfg['남겨둘 금액'] === '' ? reserveAuto : toNum(cfg['남겨둘 금액']);
-  const pool = balanceIn === null ? null : balanceIn - reserve - personalSum;
-  const wsum = ratios.reduce((a, x) => a + x.w, 0);
-  const people = [...new Set([...ratios.map(x => x.name), ...Object.keys(personal)])].map(name => {
-    const w = (ratios.find(x => x.name === name) || {}).w || 0;
-    const share = pool === null || !wsum ? 0 : pool * w / wsum;
-    return { name, w, share, pre: personal[name] || 0, total: share + (personal[name] || 0) };
-  });
-
   // 통장 흐름 (입금기록이 최신순이든 오래된순이든 상관없게 잔액으로 확인)
   const dIn = deposits.filter(d => d.type === '입금').reduce((a, d) => a + d.amt, 0);
   const dOut = deposits.filter(d => d.type !== '입금').reduce((a, d) => a + d.amt, 0);
@@ -529,11 +519,27 @@ function build() {
     const start = first.balN - (first.type === '입금' ? first.amt : -first.amt);
     bankCheck = { start, end: last.balN, calc: start + dIn - dOut };
   }
+  // 정산할 돈 = 통장 마지막 잔액 − 통장 시작 금액(행사 전부터 있던 개인 돈) + 보유 현금
+  //  통장 시작 금액을 비워두면 입금기록 첫 거래 직전 잔액을 써요.
+  const has = k => cfg[k] !== undefined && cfg[k] !== '';
+  const bankStartAuto = !has('통장 시작 금액');
+  const bankStart = bankStartAuto ? (bankCheck ? bankCheck.start : null) : toNum(cfg['통장 시작 금액']);
+  const cash = toNum(cfg['보유 현금']);
+  const balanceIn = bankCheck && bankStart !== null ? bankCheck.end - bankStart + cash : null;
+  const reserve = has('남겨둘 금액') ? toNum(cfg['남겨둘 금액']) : reserveAuto;
+  const pool = balanceIn === null ? null : balanceIn - reserve - personalSum;
+  const wsum = ratios.reduce((a, x) => a + x.w, 0);
+  const people = [...new Set([...ratios.map(x => x.name), ...Object.keys(personal)])].map(name => {
+    const w = (ratios.find(x => x.name === name) || {}).w || 0;
+    const share = pool === null || !wsum ? 0 : pool * w / wsum;
+    return { name, w, share, pre: personal[name] || 0, total: share + (personal[name] || 0) };
+  });
+
 
   return {
     cfg, priceBook, priceJ, spareJ, bookPerAuthor, ratios, authors, confirmed, authorByNo, maxNo, orders, posAlpha, live, paid, deposits, unusedDeps, withdrawals, refundSum,
     extra, make, bookOrder, bookAuthor, bookExtra, cardOrder, cardExtra, income, costs, preForm, preBank, incomeSum, costShared, personal, personalSum, reserve, reserveAuto,
-    balanceIn, pool, people, wsum, dIn, dOut, bankCheck,
+    balanceIn, bankStart, bankStartAuto, cash, pool, people, wsum, dIn, dOut, bankCheck,
   };
 }
 
@@ -577,7 +583,7 @@ function checks() {
   if (bankPaid || bankWant) add(bankPaid === bankWant ? 'ok' : 'warn', `연결된 입금 ${won(bankPaid)} / 신청서 기준 ${won(bankWant)}`, bankPaid === bankWant ? '입금액과 신청 금액이 같아요.' : '손으로 연결한 주문 중 금액이 다른 게 있어요.', bankPaid === bankWant ? null : 'match');
   const noSub = m.confirmed.filter(a => a.submit !== '제출 완료');
   if (m.confirmed.length) add(noSub.length ? 'warn' : 'ok', noSub.length ? `원고 제출 안 된 작가 ${noSub.length}명` : '확정 작가 원고가 모두 제출됐어요', noSub.slice(0, 6).map(a => a.nick).join(', ') + (noSub.length > 6 ? ' 외' : ''), noSub.length ? 'authors' : null);
-  if (m.ratios.length && m.wsum && m.balanceIn === null) add('warn', '정산할 잔고가 아직 없어요', '설정의 "현재 잔고 + 현금"을 넣으면 분배 금액이 계산돼요.', 'money');
+  if (m.ratios.length && m.wsum && m.balanceIn === null) add('warn', '정산할 돈을 아직 계산할 수 없어요', '입금 대조에서 통장 내역을 넣으면 분배 금액이 계산돼요.', 'match');
   return out.sort((a, b) => ({ bad: 0, warn: 1, ok: 2 }[a.lv] - { bad: 0, warn: 1, ok: 2 }[b.lv]));
 }
 const checkList = list => list.length ? `<div class="checks">${list.map(c => `<div class="chk ${c.lv}"><span class="ic">${c.lv === 'ok' ? '✓' : '!'}</span><div><div class="t">${esc(c.t)}</div>${c.d ? `<div class="d">${esc(c.d)}</div>` : ''}</div>${c.go ? `<button class="btn sm go" data-go="${c.go}">보기</button>` : ''}</div>`).join('')}</div>` : '<div class="empty">확인할 게 없어요</div>';
@@ -813,8 +819,11 @@ function viewMoney() {
   const incomeList = `<div class="kv"><span>선입금 · 폼 결제</span><b class="num">${won(m.preForm)}</b></div><div class="kv"><span>선입금 · 통장 입금 확인</span><b class="num">${won(m.preBank)}</b></div>${m.refundSum ? `<div class="kv minus"><span>환불</span><b class="num">${won(-m.refundSum)}</b></div>` : ''}` +
     m.income.map(x => `<div class="kv"><span>${esc(x.name)}</span><b class="num">${won(x.amt)}</b></div>`).join('') + `<div class="kv total"><span>수입 합계</span><b class="num">${won(m.incomeSum)}</b></div>`;
   const dist = m.balanceIn === null
-    ? `<div class="note warn"><b>현재 잔고 + 현금</b>을 설정에 넣으면 분배 금액을 계산해요.</div><button class="btn soft" data-go="settings">설정에서 넣기</button>`
-    : `<div class="kv"><span>현재 잔고 + 현금</span><b class="num">${won(m.balanceIn)}</b></div>
+    ? `<div class="note warn"><b>통장 내역</b>을 넣으면 분배 금액을 계산해요.</div><button class="btn soft" data-go="match">입금 대조에서 넣기</button>`
+    : `<div class="kv"><span>통장 마지막 잔액</span><b class="num">${won(m.bankCheck.end)}</b></div>
+       <div class="kv minus"><span>통장 시작 금액${m.bankStartAuto ? ' (첫 거래 직전 잔액)' : ''}</span><b class="num">${won(-m.bankStart)}</b></div>
+       ${m.cash ? `<div class="kv"><span>보유 현금</span><b class="num">${won(m.cash)}</b></div>` : ''}
+       <div class="kv total"><span>정산할 돈</span><b class="num">${won(m.balanceIn)}</b></div>
        <div class="kv minus"><span>남겨둘 금액 ${m.cfg['남겨둘 금액'] ? '' : '(공금 미처리 비용)'}</span><b class="num">${won(-m.reserve)}</b></div>
        <div class="kv minus"><span>개인 선정산 합계</span><b class="num">${won(-m.personalSum)}</b></div>
        <div class="kv total"><span>분배할 금액</span><b class="num">${won(m.pool)}</b></div>`;
@@ -829,6 +838,7 @@ function viewMoney() {
         <div class="kv"><span>공동 비용 합계</span><b class="num">${won(m.costShared)}</b></div>
         <div class="kv"><span>공금 미처리 비용</span><b class="num">${won(m.reserveAuto)}</b></div>
         <div class="kv"><span>개인 선정산 대상</span><b class="num">${nPre}명</b></div>
+        <div class="kv" style="align-items:center"><span>보유 현금</span><b class="num">${m.cash ? won(m.cash) + ' ' : ''}<button class="btn sm" data-act="setting" data-key="${CASH[0]}">${m.cash ? '고치기' : '적기'}</button></b></div>
         ${st.admin ? '<button class="btn soft" data-act="dist" style="margin-top:12px">분배 · 받을 돈 보기</button>' : ''}
       </div>
     </div>
@@ -844,9 +854,50 @@ function viewMemo() {
 }
 
 // ---------- 설정 ----------
+// 사이트가 읽는 설정. 시트에 아직 없는 항목도 보여주고, 고치면 그때 시트에 적어요. [항목, 설명, 고를 수 있는 값]
+const SETTINGS = [
+  ['엽서북 가격', '선입금 1권 가격'], ['족자봉 가격', '선입금 1개 가격'],
+  ['작가 여분 족자봉', '족자봉 넘버마다 작가 몫으로 더 만드는 개수'], ['작가 증정 엽서북', '확정 작가 1명당 엽서북 권수'],
+  ['족자봉 표기', '족자봉 넘버를 숫자로 쓸지 A, B, C 로 쓸지. 비워두면 숫자', ['숫자', '알파벳']],
+  ['포스 족자봉 표기', '포스용 명단을 뽑을 때 1→A 로 바꿀지. 비워두면 알파벳', ['알파벳', '숫자']],
+  ['분배 비율', '수익 분배. "이름 비율"을 쉼표로 구분. 예: 잏엫 5, 하치 4, 라굴 1'],
+  ['통장 시작 금액', '행사 전부터 통장에 있던 개인 돈. 정산할 때 빼요. 비워두면 통장 내역 첫 거래 직전 잔액'],
+  ['남겨둘 금액', '분배하지 않고 남겨둘 돈. 비워두면 공금 미처리 비용 합계'],
+  [ORDER_COLS_KEY, '선입금 리스트의 어느 열을 읽을지. 주문 탭 → 열 설정'],
+];
+const CASH = ['보유 현금', '통장에 안 넣은 행사 현금. 정산할 돈에 더해요']; // 행사가 끝난 뒤 정산 탭에서 적어요
+const SETTINGS_OLD = ['현재 잔고 + 현금', CASH[0]]; // 안 쓰는 항목, 다른 화면에서 적는 항목은 설정 목록에서 숨겨요
+function settingsCard() {
+  const t = T('설정'), val = {}, desc = {};
+  t.rows.forEach(r => { const k = r.get('항목'); if (k) { val[k] = r.get('값'); desc[k] = r.get('설명'); } });
+  const known = SETTINGS.map(x => x[0]);
+  const list = [...SETTINGS, ...Object.keys(val).filter(k => !known.includes(k) && !SETTINGS_OLD.includes(k)).map(k => [k, desc[k] || ''])];
+  const row = ([k, d]) => `<tr ${k === ORDER_COLS_KEY ? 'data-act="orderCols"' : `data-act="setting" data-key="${esc(k)}"`} title="${esc(d)}" style="cursor:pointer">
+      <td style="white-space:nowrap">${esc(k)}</td><td class="r" style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${val[k] ? `<b>${esc(val[k])}</b>` : '<span class="muted">-</span>'}</td></tr>`;
+  return `<div class="card"><div class="card-h"><h2>설정</h2><button class="btn sm" data-act="setting" data-key="">추가</button></div>
+    <div class="tbl-wrap"><table class="tbl"><tbody>${list.map(row).join('')}</tbody></table></div></div>`;
+}
+function settingModal(key) {
+  const def = [...SETTINGS, CASH].find(x => x[0] === key) || [key, ''], r = T('설정').rows.find(x => x.get('항목') === key);
+  const picks = def[2] || [], v = r ? r.get('값') : '';
+  openModal({
+    title: key ? esc(key) : '설정 추가', sub: esc(def[1] || (r ? r.get('설명') : '')),
+    body: `${key ? '' : '<div class="field"><label for="sK">항목</label><input class="inp" id="sK" autocomplete="off"></div>'}
+      <div class="field"><label for="sV">값</label><input class="inp" id="sV" value="${esc(v)}" autocomplete="off">
+      ${picks.length ? `<div class="picks">${picks.map(o => `<button type="button" class="pick ${o === v ? 'on' : ''}" data-pick-for="sV" data-pick="${esc(o)}">${esc(o)}</button>`).join('')}</div>` : ''}</div>`,
+    foot: `<span class="sp"></span><button class="btn" data-act="close">취소</button><button class="btn pri" data-act="save">저장</button>`,
+    onSave: async () => {
+      const k = key || $('#sK').value.trim();
+      if (!k) return toast('항목 이름을 적어 주세요', true);
+      const values = { '값': $('#sV').value.trim() };
+      if (!r && def[1]) values['설명'] = def[1];
+      if (await write('upsert', { sheet: '설정', keyCol: '항목', keyVal: k, values }, '저장했어요')) closeModal();
+    },
+  });
+}
 function viewSettings() {
   return head('설정', '') +
-    `<div class="${st.admin ? 'grid2' : ''}">${st.admin ? `<div>${listCard('설정', '', ['항목', '값', '설명'])}</div>` : ''}
+    `<div class="${st.admin ? 'grid2' : ''}">${st.admin ? `<div>${settingsCard()}</div>` : ''}
     <div>
       <div class="card"><h2>연결</h2>
         ${st.demo ? '<button class="btn pri" data-act="exitDemo">둘러보기 끝내고 연결하기</button>' : useGoogle() && store.tok ? `<div class="me">${avatar(store.tok.name, store.tok.pic)}<div><b>${esc(store.tok.name)}</b><div class="hint">${esc(store.tok.email)}</div></div></div><div class="acts" style="margin-top:14px"><button class="btn danger" data-act="signOut">로그아웃</button></div>` : connectForm()}</div>
@@ -1440,6 +1491,7 @@ document.addEventListener('click', async e => {
   if (act === 'edRename') { closeEdMenu(); return edModal(true); }
   if (act === 'newOrder') return newOrderModal();
   if (act === 'orderCols') return orderColsModal();
+  if (act === 'setting') return settingModal(el.dataset.key);
   if (act === 'mergeAsk') { e.stopPropagation(); return mergeModal(el.dataset.id); }
   if (act === 'unmerge') return unmerge(el.dataset.id);
   if (act === 'orderColsReset') return modalSave && modalSave('orderColsReset');
