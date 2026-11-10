@@ -18,14 +18,15 @@ self.DEMO_TABS = function () {
       sub === '제출 완료' ? '이번에도 함께해서 즐거웠어요!' : '', sub === '제출 완료' ? '今回もご一緒できて楽しかったです！' : '', '', '', '', '', i === 4 ? '연장' : '']);
   });
 
-  const head = ['번호', '작성시간', '엽서북', '족자봉', '배송방법', '배송비', '총 주문금액', '주문자명', '닉네임', '주문자연락처', '결제날짜', '수령자명', '수령자연락처', '우편번호', '주소', '배송메모', '환불은행', '환불계좌', '환불예금주', '총 주문금액', '이메일', '족자봉', '트위터계정', '인스타계정', '택배사', '운송장번호', '진행상태', '메모', '주문번호'];
+  // 올해 위치폼 양식 (A 순번 … V 족자봉 선택 … AA 진행 상태)
+  const head = ['순번', '작성 시간', '엽서북 수량', '족자봉 수량', '배송방법', '배송비', '총 주문금액', '이름', '입금자명', '닉네임', '연락처', '결제날짜', '수령자명', '수령자 연락처', '우편번호', '주소', '배송메모', '환불 은행', '환불 계좌', '환불 예금주', '이메일', '족자봉 선택', '트위터 계정', '인스타 계정', '택배사', '운송장번호', '진행 상태', '메모'];
   const orders = { header: head, rows: [] };
   const bank = { header: ['거래 일시', '적요', '거래 유형', '거래 기관', '계좌번호', '거래 금액', '거래 후 잔액', '메모'], rows: [] };
   const deps = [];
   const fmt = n => n.toLocaleString('en-US');
   for (let i = 0; i < 90; i++) {
     const name = fam[rnd(fam.length)] + pick(given), nick = pick(nicks) + (i % 4 ? '' : i);
-    const books = rnd(5) ? 1 : 2, nj = [0, 0, 1, 1, 1, 2, 2, 3, 5][rnd(9)];
+    const books = i === 50 ? 0 : rnd(5) ? 1 : 2, nj = [0, 0, 1, 1, 1, 2, 2, 3, 5][rnd(9)];
     const nums = []; for (let k = 0; k < nj; k++) nums.push(1 + rnd(no));
     let text = '';
     const style = rnd(6);
@@ -33,13 +34,15 @@ self.DEMO_TABS = function () {
     let qty = nj;
     if (i === 7) qty = nj + 1; // 개수가 안 맞는 주문
     if (i === 12 && nj) text = '시로 작가님 거 하나 주세요';
+    if (i === 51 && nj) text = ''; // 넘버를 안 적은 주문
     const total = books * 20000 + qty * 25000;
     const paidForm = rnd(2) === 0;
     const phone = '010-' + (1000 + rnd(9000)) + '-' + (1000 + rnd(9000));
     const at = new Date(2026, 9, 20 + Math.floor(i / 12), 10 + (i % 12), rnd(60)).toISOString().replace('T', ' ').slice(0, 19);
     const payer = i === 21 ? name + '(엽서북)' : name;
-    orders.rows.push([String(i + 1), at, String(books), String(qty), '현장', '', String(total), name, nick, phone, paidForm ? at : '', name, phone, '0' + (1000 + rnd(9000)),
-      '서울 어딘가 ' + (i + 1) + '번지', '', pick(['국민', '카카오뱅크', '토스뱅크', '신한']), '1002' + (100000000 + rnd(900000000)), name, String(total), '', text, '@' + nick, '', '', '', paidForm ? '결제완료' : '입금확인전', '', 'D' + (500000 + i)]);
+    const ph = i === 53 ? orders.rows[52][10] : phone; // 같은 연락처로 두 번 넣은 주문
+    orders.rows.push([String(i + 1), at, String(books), String(qty), i === 52 ? '국내 창고' : '현장수령', '', String(total), name, payer, nick, ph, paidForm ? at : '', name, ph, '', '', '',
+      pick(['국민', '카카오뱅크', '토스뱅크', '신한']), '1002' + (100000000 + rnd(900000000)), name, '', text, '@' + nick, '', '', '', paidForm ? '결제완료' : '입금확인전', '']);
     if (!paidForm && i % 11 !== 5) {
       const amt = i === 30 ? total - 5000 : total;
       deps.push([at.replace(/-/g, '.'), i === 44 ? name.slice(0, 2) : payer, '입금', pick(['국민은행', '카카오뱅크', '토스뱅크']), '', amt]);

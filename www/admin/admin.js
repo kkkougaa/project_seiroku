@@ -146,6 +146,33 @@ function colIdx(header, name) {
   return -1;
 }
 
+// 선입금 리스트 열 찾기. 위치폼 양식이 회차마다 조금씩 달라서 열 이름 후보를 여러 개 받아요.
+//  띄어쓰기는 무시하고("작성 시간" = "작성시간"), 딱 맞는 이름이 없으면 그 이름으로 시작하는 열을 찾아요.
+const normCol = s => String(s ?? '').replace(/\s+/g, '');
+function findCol(header, names, nth = 1) {
+  const h = header.map(normCol);
+  for (const test of [(x, n) => x === n, (x, n) => x.startsWith(n)]) for (const n of names) {
+    let seen = 0;
+    for (let i = 0; i < h.length; i++) if (test(h[i], n) && ++seen === nth) return i;
+  }
+  return -1;
+}
+// 새 양식: 순번, 엽서북 수량, 족자봉 수량, 이름, 입금자명, 연락처, 족자봉 선택 …
+// 예전 양식: 번호, 엽서북, 족자봉(개수), 주문자명, 주문자연락처, 족자봉(넘버) …
+function orderCols(header) {
+  const f = (...names) => findCol(header, names);
+  const jSel = f('족자봉선택'), jQty = f('족자봉수량');
+  return {
+    id: f('주문번호'), num: f('순번', '번호'), at: f('작성시간'), books: f('엽서북수량', '엽서북'),
+    qty: jQty >= 0 ? jQty : findCol(header, ['족자봉'], 1),
+    text: jSel >= 0 ? jSel : findCol(header, ['족자봉'], jQty >= 0 ? 1 : 2),
+    ship: f('배송비'), total: f('총주문금액'), name: f('이름', '주문자명'), payer: f('입금자명'), refundName: f('환불예금주'),
+    nick: f('닉네임'), phone: f('연락처', '주문자연락처'), recv: f('수령자명'), recvPhone: f('수령자연락처'),
+    method: f('배송방법'), status: f('진행상태'),
+  };
+}
+const isOrderHeader = row => { const c = orderCols(row); return c.status >= 0 && (c.id >= 0 || c.num >= 0); };
+
 // 시트에 쓴 내용을 화면 데이터에도 똑같이 반영해요 (새로 다 불러오지 않아도 되게)
 function applyOp(tabs, req) {
   const t = tabs[req.sheet] || (tabs[req.sheet] = { header: [], rows: [] });
@@ -300,11 +327,14 @@ function build() {
   withdrawals.forEach(d => { d.wp = wdProc[d.key] || null; });
 
   // 주문
-  const orders = T('선입금 리스트').rows.filter(r => r.get('주문번호') || r.get('번호')).map(r => {
-    const id = r.get('주문번호') || ('#' + r.get('번호'));
+  const oT = T('선입금 리스트'), oc = orderCols(oT.header);
+  const oGet = (r, k) => oc[k] >= 0 ? String(r.raw[oc[k]] ?? '').trim() : '';
+  const orders = oT.rows.filter(r => oGet(r, 'id') || oGet(r, 'num')).map(r => {
+    const g = k => oGet(r, k);
+    const id = g('id') || ('#' + g('num'));
     const p = proc[id] || {};
-    const text = r.get('족자봉#2');
-    const qty = toNum(r.get('족자봉#1'));
+    const text = g('text');
+    const qty = toNum(g('qty'));
     const parsed = parseJokja(text);
     const fixed = p.j ? parseJokja(p.j) : null;
     const jk = fixed || parsed;
@@ -313,12 +343,12 @@ function build() {
     if (fixed) jState = 'fixed';
     else if (sumObj(parsed) !== qty || bad.length) jState = 'check';
     if (!qty && !text && !fixed) jState = 'none';
-    const books = toNum(r.get('엽서북')), ship = toNum(r.get('배송비')), total = toNum(r.get('총 주문금액#1'));
+    const books = toNum(g('books')), ship = toNum(g('ship')), total = toNum(g('total'));
     const expect = books * priceBook + sumObj(jk) * priceJ + ship; // 실제 적힌 넘버 개수로 계산
     return {
-      row: r.row, r, id, num: r.get('번호'), nick: r.get('닉네임'), name: r.get('주문자명'), payer: r.get('환불예금주'), recv: r.get('수령자명'),
-      phone: r.get('수령자연락처') || r.get('주문자연락처'), books, qty, text, parsed, fixed, jk, jCount: sumObj(jk), jState, bad,
-      total, expect, ship, method: r.get('배송방법'), formStatus: r.get('진행상태'), proc: p, pay: null, dep: null, deps: [], depSum: 0, cand: null,
+      row: r.row, r, id, num: g('num'), nick: g('nick'), name: g('name'), payer: g('payer') || g('refundName'), recv: g('recv'),
+      phone: g('recvPhone') || g('phone'), books, qty, text, parsed, fixed, jk, jCount: sumObj(jk), jState, bad,
+      total, expect, ship, method: g('method'), formStatus: normCol(g('status')), proc: p, pay: null, dep: null, deps: [], depSum: 0, cand: null,
     };
   });
   // 위치폼 밖에서 받은 주문 (수동 주문 탭). 족자봉 개수는 적은 넘버로 세요.
@@ -383,6 +413,23 @@ function build() {
 
   const PAID = ['form', 'linked', 'manual', 'auto'];
   const live = orders.filter(o => o.pay !== 'cancel');
+  // 신청서만 보고 잡는 문제 (입금 내역이 없어도 잡아요)
+  const digits = o => String(o.phone).replace(/\D/g, '').replace(/^82/, '0');
+  const byPhone = {}; live.forEach(o => { const d = digits(o); if (d.length >= 8) (byPhone[d] = byPhone[d] || []).push(o); });
+  for (const o of orders) {
+    const is = o.issues = [];
+    if (o.pay === 'cancel') continue;
+    const hasJ = o.qty > 0 || o.jCount > 0;
+    if (!o.books && !hasJ) is.push(['empty', '수량 없음', '엽서북도 족자봉도 0개예요']);
+    if (!o.books && hasJ) is.push(['onlyJ', '족자봉만 주문', '엽서북을 1권 이상 사야 족자봉을 살 수 있어요']);
+    if (o.qty > 0 && !o.fixed && !sumObj(o.parsed)) is.push(['noNum', '넘버 안 적음', `족자봉 ${o.qty}개를 주문했는데 넘버가 없어요`]);
+    if (/국내\s*창고/.test(o.method)) is.push(['ship', '국내 창고 선택', `배송이 안 되는데 "${o.method}"을 골랐어요`]);
+    else if (o.ship > 0) is.push(['ship', '배송비 있음', `배송이 안 되는데 배송비 ${won(o.ship)}이 붙었어요`]);
+    const d = digits(o);
+    if (!o.manualOrder && !/^01\d{8,9}$/.test(d)) is.push(['phone', '연락처 확인', d ? '휴대폰 번호 모양이 아니에요' : '연락처가 비어 있어요']);
+    const same = (byPhone[d] || []).filter(x => x !== o);
+    if (same.length) is.push(['dup', '중복 의심', `같은 연락처 주문: ${same.map(x => x.num + '번').join(', ')}`]);
+  }
   const paid = live.filter(o => PAID.includes(o.pay));
 
   // 제작 수량
@@ -448,6 +495,8 @@ const PAY = {
   diff: ['확인 필요', 'orange'], none: ['미입금', 'red'], unpaid: ['미입금', 'red'], cancel: ['취소', ''],
 };
 const payBadge = o => { const [t, c] = PAY[o.pay] || ['?', '']; return `<span class="badge ${c}">${t}</span>`; };
+const ISSUES = [['onlyJ', '족자봉만 주문'], ['noNum', '족자봉 넘버를 안 적은 주문'], ['ship', '배송이 안 되는데 국내 창고·배송비가 있는 주문'], ['empty', '수량이 0인 주문'], ['dup', '같은 연락처로 여러 번 넣은 주문'], ['phone', '연락처를 확인할 주문']];
+const issueBadges = o => (o.issues || []).map(([, t, d]) => `<span class="badge red" title="${esc(d)}">${t}</span>`).join(' ');
 const jBadge = o => o.jState === 'check' ? '<span class="badge orange">족자봉 확인</span>' : o.jState === 'fixed' ? '<span class="badge">고침</span>' : '';
 
 // ---------------------------------------------------------------------
@@ -465,6 +514,7 @@ function checks() {
   if (wdNew.length) add('warn', `분류 안 된 출금 ${wdNew.length}건`, '환불인지, 비용인지 입금 대조에서 표시해 주세요.', 'match');
   const jc = m.live.filter(o => o.jState === 'check');
   if (jc.length) add('warn', `족자봉 넘버를 확인할 주문 ${jc.length}건`, '적은 넘버 개수가 주문 개수와 다르거나 없는 넘버가 있어요.', 'orders:jokja');
+  for (const [k, t] of ISSUES) { const n = m.live.filter(o => o.issues.some(i => i[0] === k)).length; if (n) add(k === 'dup' || k === 'phone' ? 'warn' : 'bad', `${t} ${n}건`, '', 'orders:issue'); }
   const money = m.live.filter(o => o.amtWarn);
   if (money.length) add('warn', `금액이 맞지 않는 주문 ${money.length}건`, `실제 개수로 계산한 금액(엽서북 ${won(m.priceBook)}, 족자봉 ${won(m.priceJ)})과 받은·신청 금액이 달라요.`, 'orders:money');
   const qSum = m.live.reduce((a, o) => a + o.qty, 0), jSum = m.live.reduce((a, o) => a + o.jCount, 0);
@@ -636,7 +686,7 @@ function viewAuthors() {
 // ---------- 주문 ----------
 const ORDER_FILTERS = [
   ['all', '전체', o => o.pay !== 'cancel'], ['check', '입금 확인 필요', o => ['diff', 'none', 'unpaid'].includes(o.pay)],
-  ['jokja', '족자봉 확인', o => o.jState === 'check'], ['money', '금액 다름', o => o.amtWarn],
+  ['issue', '문제 있음', o => o.issues.length > 0], ['jokja', '족자봉 확인', o => o.jState === 'check'], ['money', '금액 다름', o => o.amtWarn],
   ['paid', '입금 완료', o => ['form', 'auto', 'linked', 'manual'].includes(o.pay)], ['cancel', '취소', o => o.pay === 'cancel'],
 ];
 function viewOrders() {
@@ -646,7 +696,7 @@ function viewOrders() {
   let list = m.orders.filter(fn);
   if (q) list = list.filter(o => normName([o.nick, o.name, o.payer, o.recv, o.id, o.phone].join(' ')).includes(q) || String(o.phone).replace(/\D/g, '').endsWith(q));
   const rows = list.map(o => `<tr data-open="order:${esc(o.id)}">
-      <td class="num muted">${o.manualOrder ? '<span class="badge">직접</span>' : esc(o.num)}</td><td><b>${esc(o.nick || o.name)}</b><div class="muted" style="font-size:13px">${esc(o.name)}${o.payer && o.payer !== o.name ? ' · 입금 ' + esc(o.payer) : ''}</div></td>
+      <td class="num muted">${o.manualOrder ? '<span class="badge">직접</span>' : esc(o.num)}</td><td><b>${esc(o.nick || o.name)}</b><div class="muted" style="font-size:13px">${esc(o.name)}${o.payer && o.payer !== o.name ? ' · 입금 ' + esc(o.payer) : ''}</div>${o.issues.length ? `<div style="margin-top:4px">${issueBadges(o)}</div>` : ''}</td>
       <td class="r num">${o.books || '-'}</td><td>${jokjaChips(o.jk)} ${jBadge(o)}</td>
       <td class="r num">${won(o.cmpAmt)}${o.amtWarn ? `<div style="font-size:12px;color:var(--orange)">계산 ${won(o.expect)}</div>` : ''}</td><td>${payBadge(o)}</td>
     </tr>`).join('');
@@ -885,11 +935,11 @@ function orderModal(id) {
   const pool = [...o.deps, ...m.unusedDeps.filter(d => !o.deps.includes(d)).sort((a, b) => (like(b) - like(a)) || (Math.abs(a.amt - left) - Math.abs(b.amt - left)))];
   const depItems = pool.map(d => `<label class="depi" data-q="${esc(normName(d.who))}"><input type="checkbox" value="${esc(d.key)}" data-amt="${d.amt}" ${o.deps.includes(d) ? 'checked' : ''}>
       <span class="t"><b>${esc(d.who)}</b>${like(d) ? ' <span class="badge blue">이름 비슷</span>' : ''}<small>${esc(d.at)}</small></span><b class="num">${won(d.amt)}</b></label>`).join('');
-  const info = [['닉네임', o.nick], ['주문자', o.name], ['입금자(환불예금주)', o.payer], ['수령자', o.recv], ['연락처', o.phone], ['수령 방법', o.method], ['주문번호', o.id], ['폼 진행상태', o.formStatus]]
+  const info = [['닉네임', o.nick], ['주문자', o.name], ['입금자', o.payer], ['수령자', o.recv], ['연락처', o.phone], ['수령 방법', o.method], ['주문번호', o.id], ['폼 진행상태', o.formStatus]]
     .map(([k, v]) => `<div class="kv"><span>${k}</span><b>${esc(v || '-')}</b></div>`).join('');
   openModal({
     title: esc(o.nick || o.name), sub: `${esc(o.num)}번 주문 · 엽서북 ${o.books} · 족자봉 ${o.qty} · ${won(o.total)}`, wide: true,
-    body: `<div class="grid2"><div>
+    body: `${o.issues.length ? `<div style="margin-bottom:10px">${o.issues.map(([, t, d]) => `<div class="kv sub"><span><span class="badge red">${t}</span></span><b>${esc(d)}</b></div>`).join('')}</div>` : ''}<div class="grid2"><div>
         <h4 style="margin:4px 0 6px">족자봉</h4>
         <div class="raw">${esc(o.text || '(적은 내용 없음)')}</div>
         <div class="kv"><span>자동으로 읽은 넘버</span><b>${jokjaChips(o.parsed)}</b></div>
@@ -1066,7 +1116,8 @@ function linkDep(id, key, add = null) {
 // ---------------------------------------------------------------------
 // 원본 붙여넣기 (위치폼 / 통장)
 // ---------------------------------------------------------------------
-const NEED = { '선입금 리스트': ['주문번호', '진행상태'], '입금기록': ['적요', '거래 금액'] };
+const NEED = { '선입금 리스트': ['순번(또는 주문번호)', '진행 상태'], '입금기록': ['적요', '거래 금액'] };
+const headerRow = (tab, rows) => rows.findIndex(r => tab === '선입금 리스트' ? isOrderHeader(r) : NEED[tab].every(n => r.map(x => String(x).trim()).includes(n)));
 function parseTable(text) {
   text = String(text).replace(/^﻿/, '');
   const firstLine = text.split(/\r?\n/)[0] || '';
@@ -1094,16 +1145,16 @@ function pasteModal(tab) {
     foot: `<span class="sp"></span><button class="btn" data-act="close">취소</button><button class="btn pri" data-act="save">시트에 저장</button>`,
     onSave: async () => {
       const rows = parseTable($('#pTxt').value);
-      const hi = rows.findIndex(r => need.every(n => r.map(x => String(x).trim()).includes(n)));
+      const hi = headerRow(tab, rows);
       if (hi < 0) return toast(`${need.join(', ')} 열이 있는 줄을 못 찾았어요`, true);
       let data = rows.slice(hi);
-      if (tab === '선입금 리스트') data = [data[0], ...data.slice(1).filter(r => r[colIdx(data[0], '주문번호')] || r[colIdx(data[0], '번호')])];
+      if (tab === '선입금 리스트') { const c = orderCols(data[0]); data = [data[0], ...data.slice(1).filter(r => String(r[c.id] ?? '').trim() || String(r[c.num] ?? '').trim())]; }
       if (!confirm(`${tab}에 ${data.length - 1}줄을 저장할까요? 지금 탭 내용은 지워져요.`)) return;
       if (await write('replace', { sheet: tab, rows: data }, `${data.length - 1}줄을 저장했어요`)) closeModal();
     },
   });
   $('#pTxt').addEventListener('input', () => {
-    const rows = parseTable($('#pTxt').value), hi = rows.findIndex(r => need.every(n => r.map(x => String(x).trim()).includes(n)));
+    const rows = parseTable($('#pTxt').value), hi = headerRow(tab, rows);
     $('#pInfo').textContent = rows.length ? (hi < 0 ? `${rows.length}줄 · 필요한 열을 못 찾았어요` : `${rows.length - hi - 1}줄을 찾았어요`) : '';
   });
 }
