@@ -316,9 +316,11 @@ function build() {
   // 입금기록
   const deposits = T('입금기록').rows.filter(r => r.get('거래 일시') || r.get('적요')).map(r => {
     const amt = toNum(r.get('거래 금액'));
-    const type = r.get('거래 유형') || (amt < 0 ? '출금' : '입금');
+    // 은행마다 유형이 달라요 ("입금이체", "타행입금", "출금", "체크카드" …). 금액이 마이너스면 출금, 아니면 단어로 봐요.
+    const raw = r.get('거래 유형');
+    const type = amt < 0 ? '출금' : /출금|지급|송금|결제|카드|인출|이체출|자동이체/.test(raw) ? '출금' : /입금|받|이체입/.test(raw) || !raw ? '입금' : '출금';
     const key = [r.get('거래 일시'), r.get('적요'), Math.abs(amt)].join('|');
-    return { row: r.row, key, at: r.get('거래 일시'), who: r.get('적요'), type, amt: Math.abs(amt), bal: r.get('거래 후 잔액'), balN: toNum(r.get('거래 후 잔액')), memo: r.get('메모'), bank: r.get('거래 기관'), order: null };
+    return { row: r.row, key, at: r.get('거래 일시'), who: r.get('적요'), type, typeRaw: raw, amt: Math.abs(amt), bal: r.get('거래 후 잔액'), balN: toNum(r.get('거래 후 잔액')), memo: r.get('메모'), bank: r.get('거래 기관'), order: null };
   });
   const depByKey = {}; deposits.forEach(d => { depByKey[d.key] = d; });
   // 출금 처리: 출금마다 환불 / 비용 / 기타 로 분류하고, 환불이면 어느 주문인지 적어요
@@ -606,7 +608,7 @@ function checks() {
   if (m.bankCheck && m.bankCheck.checked) {
     const bad = m.bankCheck.bad;
     if (!bad.length) add('ok', `통장 잔액이 거래마다 맞아요 (${cnt(m.bankCheck.checked)}건)`, '직전 잔액 ± 거래 금액 = 다음 잔액', null);
-    else add('bad', `잔액이 안 맞는 거래 ${bad.length}건`, bad.slice(0, 3).map(x => `${x.d.at} ${x.d.who} ${x.d.type} ${won(x.d.amt)}: 직전 ${won(x.prev)} → 계산 ${won(x.want)}, 통장 ${won(x.d.balN)}`).join(' / ') + (bad.length > 3 ? ` 외 ${bad.length - 3}건` : ''), 'match');
+    else add('bad', `잔액이 안 맞는 거래 ${bad.length}건`, bad.slice(0, 3).map(x => `${x.d.at} ${x.d.who} ${x.d.type}${x.d.typeRaw && x.d.typeRaw !== x.d.type ? `(${x.d.typeRaw})` : ''} ${won(x.d.amt)}: 직전 ${won(x.prev)} → 계산 ${won(x.want)}, 통장 ${won(x.d.balN)}`).join(' / ') + (bad.length > 3 ? ` 외 ${bad.length - 3}건` : ''), 'match');
   }
   const noSub = m.confirmed.filter(a => a.submit !== '제출 완료');
   if (m.confirmed.length) add(noSub.length ? 'warn' : 'ok', noSub.length ? `원고 제출 안 된 작가 ${noSub.length}명` : '확정 작가 원고가 모두 제출됐어요', noSub.slice(0, 6).map(a => a.nick).join(', ') + (noSub.length > 6 ? ' 외' : ''), noSub.length ? 'authors' : null);
