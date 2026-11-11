@@ -350,15 +350,18 @@ function build() {
       }
       types.set(d, t); prev = d; gap = [];
     }
-    return { types, bad, checked, last: prev, carry: gap.reduce((a, x) => a + sg(x.type, x.amt), 0) };
+    return { types, bad, checked, last: prev, first: chain.find(x => x.bal), carry: gap.reduce((a, x) => a + sg(x.type, x.amt), 0) };
   };
   const stmtRows = deposits.filter(d => d.bank !== MANUAL_BANK);
-  const bySheet = stmtRows.slice(); if (bySheet.length > 1 && bySheet[0].at > bySheet[bySheet.length - 1].at) bySheet.reverse();
-  const rev = bySheet.length > 1 && bySheet[0] !== stmtRows[0]; // 시트가 최신순이면 같은 시각끼리도 거꾸로
-  const byTime = stmtRows.map((d, i) => [d, i]).sort((a, b) => (a[0].at < b[0].at ? -1 : a[0].at > b[0].at ? 1 : 0) || (rev ? b[1] - a[1] : a[1] - b[1])).map(x => x[0]);
-  const walks = [walkBank(bySheet), walkBank(byTime)];
-  const bankWalk = walks[1].bad.length < walks[0].bad.length ? walks[1] : walks[0];
-  bankWalk.types.forEach((t, d) => { d.type = t; });
+  // 순서는 날짜 글자로 추측하지 않아요 ("2026.11.5" 처럼 0이 없으면 글자 비교가 틀려요).
+  //  시트 순서 그대로 / 거꾸로 / 날짜를 숫자로 읽은 순서를 다 잔액으로 맞춰보고, 실제로 맞는 순서를 써요.
+  const asc = stmtRows.slice().reverse(); // 통장 내역은 보통 최신이 위 → 거꾸로 하면 오래된 것부터
+  const tkey = d => { const n = String(d.at).match(/\d+/g) || []; let [y, mo, da, h, mi, se] = n.map(Number); if (/오후|PM/i.test(d.at) && h < 12) h += 12; return ((((y || 0) * 13 + (mo || 0)) * 32 + (da || 0)) * 24 + (h || 0)) * 3600 + (mi || 0) * 60 + (se || 0); };
+  const byTime = asc.map((d, i) => [d, i]).sort((a, b) => (tkey(a[0]) - tkey(b[0])) || (a[1] - b[1])).map(x => x[0]);
+  const walks = [walkBank(asc), walkBank(stmtRows.slice()), walkBank(byTime)];
+  const bankWalk = walks.reduce((best, w) => (w.bad.length < best.bad.length ? w : best));
+  // 맞는 순서를 못 찾았으면(절반 넘게 틀림) 입금/출금은 글자 그대로 둬요
+  if (bankWalk.checked && bankWalk.bad.length * 2 < bankWalk.checked) bankWalk.types.forEach((t, d) => { d.type = t; });
   const depByKey = {}; deposits.forEach(d => { depByKey[d.key] = d; });
   // 출금 처리: 출금마다 환불 / 비용 / 기타 로 분류하고, 환불이면 어느 주문인지 적어요
   const wdProc = {};
@@ -567,7 +570,7 @@ function build() {
   const sgn = d => d.type === '입금' ? d.amt : -d.amt;
   const manNet = man.reduce((a, d) => a + sgn(d), 0);
   if (withBal.length) {
-    const firstB = withBal.reduce((a, d) => (a && a.at <= d.at ? a : d), null);
+    const firstB = bankWalk.first;
     const start = firstB.balN - sgn(firstB);
     bankCheck = { start, end: bankWalk.last.balN + bankWalk.carry + manNet, bad: bankWalk.bad, checked: bankWalk.checked, manNet, manCount: man.length };
   } else if (man.length) {
