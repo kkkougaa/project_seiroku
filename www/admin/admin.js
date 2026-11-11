@@ -330,9 +330,12 @@ function build() {
   // 주문
   const oT = T('선입금 리스트'), oc = orderCols();
   const oGet = (r, k) => oc[k] >= 0 ? String(r.raw[oc[k]] ?? '').trim() : '';
+  // 순번이 겹치면(같은 순번이 두 번) 두 번째부터 "#3-2" 처럼 따로 구분해요. 안 그러면 입금 연결이 섞여요.
+  const seenId = {}; let dupIds = 0;
   const orders = oT.rows.filter(r => oGet(r, 'id') || oGet(r, 'num')).map(r => {
     const g = k => oGet(r, k);
-    const id = g('id') || ('#' + g('num'));
+    let id = g('id') || ('#' + g('num'));
+    if (seenId[id]) { dupIds++; id = id + '-' + (++seenId[id]); } else seenId[id] = 1;
     const p = proc[id] || {};
     const text = g('text');
     const qty = toNum(g('qty'));
@@ -401,6 +404,7 @@ function build() {
   // 입금 대조
   //  1) 폼에서 결제완료 → 폼 결제   2) 사이트에서 손으로 연결/확인   3) 이름 + 금액이 같은 입금 자동 연결
   const used = new Set();
+  const refundOf = o => withdrawals.filter(d => d.wp && d.wp.kind === '환불' && d.wp.order === o.id).reduce((a, d) => a + d.amt, 0);
   for (const o of orders) {
     const pay = o.proc.pay;
     if (pay === '취소' || formCancel(o)) { o.pay = 'cancel'; continue; }
@@ -409,7 +413,9 @@ function build() {
       o.deps = keys.map(k => depByKey[k]); o.deps.forEach(d => { d.order = o; used.add(d.key); });
       o.dep = o.deps[0]; o.depSum = o.deps.reduce((a, d) => a + d.amt, 0);
       if (o.formStatus === '결제완료' && pay !== '미입금') { o.pay = 'form'; continue; } // 폼 결제 + 추가 입금(추가 구매)
-      o.pay = o.depSum + o.formPaid === o.total || o.depSum + o.formPaid === o.expect ? 'linked' : 'diff'; continue;
+      // 환불한 돈은 빼고 맞춰봐요 (더 받아서 돌려준 경우)
+      const net = o.depSum + o.formPaid - refundOf(o);
+      o.pay = net === o.total || net === o.expect ? 'linked' : 'diff'; continue;
     }
     if (pay === '확인') { o.pay = 'manual'; continue; }
     if (pay === '미입금') { o.pay = 'unpaid'; continue; }
@@ -512,12 +518,20 @@ function build() {
   // 통장 흐름 (입금기록이 최신순이든 오래된순이든 상관없게 잔액으로 확인)
   const dIn = deposits.filter(d => d.type === '입금').reduce((a, d) => a + d.amt, 0);
   const dOut = deposits.filter(d => d.type !== '입금').reduce((a, d) => a + d.amt, 0);
+  // 직접 추가한 입금·출금은 잔액이 없어요. 통장 내역 마지막 잔액에 더하고 빼요.
   let bankCheck = null;
-  if (deposits.length >= 1 && deposits.some(d => d.bal)) {
-    const sorted = deposits.slice().sort((a, b) => a.at < b.at ? -1 : a.at > b.at ? 1 : 0);
+  const man = deposits.filter(d => d.bank === MANUAL_BANK), stmt = deposits.filter(d => d.bank !== MANUAL_BANK);
+  const withBal = stmt.filter(d => d.bal);
+  const sgn = d => d.type === '입금' ? d.amt : -d.amt;
+  const manNet = man.reduce((a, d) => a + sgn(d), 0);
+  if (withBal.length) {
+    const sorted = withBal.slice().sort((a, b) => a.at < b.at ? -1 : a.at > b.at ? 1 : 0);
     const first = sorted[0], last = sorted[sorted.length - 1];
-    const start = first.balN - (first.type === '입금' ? first.amt : -first.amt);
-    bankCheck = { start, end: last.balN, calc: start + dIn - dOut };
+    const start = first.balN - sgn(first);
+    bankCheck = { start, end: last.balN + manNet, calc: start + stmt.reduce((a, d) => a + sgn(d), 0) + manNet, manNet, manCount: man.length };
+  } else if (man.length) {
+    const start = cfg['통장 시작 금액'] ? toNum(cfg['통장 시작 금액']) : 0;
+    bankCheck = { start, end: start + manNet, calc: start + manNet, manNet, manCount: man.length };
   }
   // 정산할 돈 = 통장 마지막 잔액 − 통장 시작 금액(행사 전부터 있던 개인 돈) + 보유 현금
   //  통장 시작 금액을 비워두면 입금기록 첫 거래 직전 잔액을 써요.
@@ -537,7 +551,7 @@ function build() {
 
 
   return {
-    cfg, priceBook, priceJ, spareJ, bookPerAuthor, ratios, authors, confirmed, authorByNo, maxNo, orders, posAlpha, live, paid, deposits, unusedDeps, withdrawals, refundSum,
+    cfg, priceBook, priceJ, spareJ, bookPerAuthor, ratios, authors, confirmed, authorByNo, maxNo, orders, dupIds, posAlpha, live, paid, deposits, unusedDeps, withdrawals, refundSum,
     extra, make, bookOrder, bookAuthor, bookExtra, cardOrder, cardExtra, income, costs, preForm, preBank, incomeSum, costShared, personal, personalSum, reserve, reserveAuto,
     balanceIn, bankStart, bankStartAuto, cash, pool, people, wsum, dIn, dOut, bankCheck,
   };
@@ -566,6 +580,7 @@ function checks() {
   if (diff.length) add('warn', `입금 확인이 필요한 주문 ${diff.length}건`, '이름은 비슷한데 금액이 다르거나, 이름이 일부만 같아요.', 'match');
   if (none.length) add('bad', `입금이 안 보이는 주문 ${none.length}건`, '통장 내역에 같은 이름의 입금이 없어요.', 'match');
   if (m.unusedDeps.length) add('warn', `주문과 연결 안 된 입금 ${m.unusedDeps.length}건`, '입금자명이 신청서 이름과 다를 수 있어요.', 'match');
+  if (m.dupIds) add('bad', `순번이 겹치는 주문 ${m.dupIds}건`, '같은 순번이 두 번 나와서 "#3-2"처럼 따로 구분했어요. 순서가 바뀌면 입금 연결이 어긋날 수 있으니, 설정의 선입금 열에서 겹치지 않는 주문번호 열을 골라 주세요.', 'settings');
   const wdNew = m.withdrawals.filter(d => !d.wp || !d.wp.kind);
   if (wdNew.length) add('warn', `분류 안 된 출금 ${wdNew.length}건`, '환불인지, 비용인지 입금 대조에서 표시해 주세요.', 'match');
   const jc = m.live.filter(o => o.jState === 'check');
@@ -577,7 +592,7 @@ function checks() {
   if (m.orders.length) add(qSum === jSum ? 'ok' : 'warn', `족자봉 주문 수 ${cnt(qSum)}개 / 넘버로 센 수 ${cnt(jSum)}개`, qSum === jSum ? '신청서 개수와 넘버 개수가 같아요.' : '차이 나는 주문을 주문 탭에서 확인해 주세요.', qSum === jSum ? null : 'orders:jokja');
   if (m.bankCheck) {
     const ok = Math.round(m.bankCheck.calc) === Math.round(m.bankCheck.end);
-    add(ok ? 'ok' : 'bad', ok ? '통장 잔액 흐름이 맞아요' : '통장 잔액 흐름이 안 맞아요', `시작 ${won(m.bankCheck.start)} + 입금 ${won(m.dIn)} − 출금 ${won(m.dOut)} = ${won(m.bankCheck.calc)} (통장 마지막 잔액 ${won(m.bankCheck.end)})`, ok ? null : 'match');
+    add(ok ? 'ok' : 'bad', ok ? '통장 잔액 흐름이 맞아요' : '통장 잔액 흐름이 안 맞아요', `시작 ${won(m.bankCheck.start)} + 입금 ${won(m.dIn)} − 출금 ${won(m.dOut)} = ${won(m.bankCheck.calc)} (통장 마지막 잔액${m.bankCheck.manCount ? ` + 직접 추가 ${m.bankCheck.manCount}건` : ''} ${won(m.bankCheck.end)})`, ok ? null : 'match');
   }
   const bankPaid = m.paid.filter(o => o.deps.length).reduce((a, o) => a + o.depSum, 0), bankWant = m.paid.filter(o => o.deps.length).reduce((a, o) => a + o.total, 0);
   if (bankPaid || bankWant) add(bankPaid === bankWant ? 'ok' : 'warn', `연결된 입금 ${won(bankPaid)} / 신청서 기준 ${won(bankWant)}`, bankPaid === bankWant ? '입금액과 신청 금액이 같아요.' : '손으로 연결한 주문 중 금액이 다른 게 있어요.', bankPaid === bankWant ? null : 'match');
@@ -770,7 +785,7 @@ function viewMatch() {
   const need = m.live.filter(o => ['diff', 'none', 'unpaid'].includes(o.pay));
   const auto = m.live.filter(o => ['auto', 'linked'].includes(o.pay));
   const bankOrders = m.live.filter(o => o.pay !== 'form');
-  return head('입금 대조', '', `<button class="btn pri" data-act="paste" data-tab="입금기록">통장 내역 넣기</button>`) +
+  return head('입금 대조', '', `<button class="btn" data-act="paste" data-tab="입금기록">통장 내역 넣기</button><button class="btn pri" data-act="newDep">입금·출금 직접 추가</button>`) +
     `<div class="stats">
       ${stat('통장 입금 주문', cnt(bankOrders.length) + '<small>건</small>', '폼 결제 제외')}
       ${stat('자동·수동 연결', cnt(auto.length + m.live.filter(o => o.pay === 'manual').length) + '<small>건</small>', '', 'good')}
@@ -1092,6 +1107,52 @@ function orderModal(id) {
   });
 }
 
+// 입금·출금 직접 추가 (입금기록 탭에 '직접 입력'으로 들어가요. 잔액 칸은 비워요)
+const MANUAL_BANK = '직접 입력';
+function newDepModal() {
+  const m = M();
+  const now = new Date(), pad = n => String(n).padStart(2, '0');
+  const local = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  const orderOpts = () => {
+    const w = normName($('#ndWho') ? $('#ndWho').value : '');
+    const like = o => w.length >= 2 && [o.payer, o.name, o.recv, o.nick].map(normName).filter(x => x.length >= 2).some(n => w.includes(n) || n.includes(w));
+    const unpaid = o => !['form', 'auto', 'linked', 'manual'].includes(o.pay);
+    return '<option value="">연결 안 함</option>' + m.live.slice().sort((a, b) => (like(b) - like(a)) || (unpaid(b) - unpaid(a))).map(o => `<option value="${esc(o.id)}">${like(o) ? '★ ' : ''}${esc(o.payer || o.name)} (${esc(o.nick)}) · ${won(o.total)} · ${(PAY[o.pay] || [''])[0]}</option>`).join('');
+  };
+  openModal({
+    title: '입금·출금 직접 추가',
+    body: `<div class="fields">
+      <div class="field"><label>구분</label><input type="hidden" id="ndType" value="입금"><div class="seg segf">${['입금', '출금'].map(x => `<button type="button" aria-selected="${x === '입금'}" data-segf="ndType" data-val="${x}">${x}</button>`).join('')}</div></div>
+      <div class="field"><label for="ndAt">일시</label><input class="inp" id="ndAt" type="datetime-local" value="${local}"></div>
+      <div class="field"><label for="ndWho" id="ndWhoL">입금자명</label><input class="inp" id="ndWho" autocomplete="off"></div>
+      <div class="field"><label for="ndAmt">금액</label><input class="inp" id="ndAmt" inputmode="numeric" autocomplete="off"></div>
+      <div class="field full" id="ndOBox"><label for="ndO">연결할 주문</label><select class="inp" id="ndO">${orderOpts()}</select><span class="hint">★ 이름 비슷한 주문이 위에 있어요</span></div>
+      <div class="field full"><label for="ndMemo">메모</label><input class="inp" id="ndMemo" autocomplete="off"></div>
+    </div>`,
+    foot: `<span class="sp"></span><button class="btn" data-act="close">취소</button><button class="btn pri" data-act="save">추가</button>`,
+    onSave: async () => {
+      const type = $('#ndType').value, who = $('#ndWho').value.trim(), amt = toNum($('#ndAmt').value), raw = $('#ndAt').value;
+      if (!who) return toast(type === '입금' ? '입금자명을 넣어 주세요' : '받는 분을 넣어 주세요', true);
+      if (!(amt > 0)) return toast('금액을 넣어 주세요', true);
+      const at = (raw || local).replace('T', ' ').replace(/-/g, '.') + ':00';
+      if (m.deposits.some(d => d.at === at && d.who === who && d.amt === amt)) return toast('같은 입금이 이미 있어요', true);
+      const ok = await write('append', { sheet: '입금기록', values: { '거래 일시': at, '적요': who, '거래 유형': type, '거래 기관': MANUAL_BANK, '거래 금액': amt.toLocaleString('en-US'), '메모': $('#ndMemo').value.trim() } }, `${type}을 추가했어요`);
+      const oid = type === '입금' ? $('#ndO').value : '';
+      if (ok && oid) await linkDep(oid, [at, who, amt].join('|'));
+      if (ok) closeModal();
+    },
+  });
+  $('#ndWho').addEventListener('input', () => { const v = $('#ndO').value; $('#ndO').innerHTML = orderOpts(); $('#ndO').value = v; });
+  $('#ndType').addEventListener('change', () => { const out = $('#ndType').value === '출금'; $('#ndOBox').hidden = out; $('#ndWhoL').textContent = out ? '받는 분' : '입금자명'; });
+}
+// 직접 추가한 입금·출금 지우기
+async function delManualDep(key) {
+  const d = M().deposits.find(x => x.key === key);
+  if (!d || d.bank !== MANUAL_BANK) return;
+  if (!confirm(`${d.who} ${won(d.amt)} 기록을 지울까요?`)) return;
+  if (await write('remove', { sheet: '입금기록', row: d.row, match: { '적요': d.who } }, '지웠어요')) closeModal();
+}
+
 function depModal(key) {
   const m = M(), d = m.deposits.find(x => x.key === key);
   if (!d) return;
@@ -1105,7 +1166,7 @@ function depModal(key) {
     body: `<div class="field"><label for="dO">연결할 주문</label><select class="inp" id="dO"><option value="">골라 주세요</option>${near.map(o => `<option value="${esc(o.id)}">${like(o) ? '★ ' : ''}${esc(o.payer || o.name)} (${esc(o.nick)}) · ${won(o.total)} · ${(PAY[o.pay] || [''])[0]}${o.depSum && unpaid(o) ? ' · 남은 ' + won(left(o)) : ''}</option>`).join('')}</select>
       <span class="hint">★ 이름 비슷한 주문이 위에 있어요. 이미 입금된 주문에도 연결할 수 있어요.</span></div>
       <div class="field" style="margin-top:12px"><label for="dAdd">추가로 산 족자봉 (추가 구매일 때만)</label><input class="inp" id="dAdd" placeholder="${jAlpha ? '예: F' : '예: 6'}" autocomplete="off"><span class="hint" id="dAddH"></span></div>`,
-    foot: `<button class="btn soft" data-act="newOrderFromDep" data-dep="${esc(d.key)}">이 입금으로 새 주문</button><span class="sp"></span><button class="btn" data-act="close">취소</button><button class="btn pri" data-act="save">연결</button>`,
+    foot: `<button class="btn soft" data-act="newOrderFromDep" data-dep="${esc(d.key)}">이 입금으로 새 주문</button>${d.bank === MANUAL_BANK ? `<button class="btn danger" data-act="delDep" data-dep="${esc(d.key)}">기록 지우기</button>` : ''}<span class="sp"></span><button class="btn" data-act="close">취소</button><button class="btn pri" data-act="save">연결</button>`,
     onSave: async () => {
       const id = $('#dO').value; if (!id) return toast('주문을 골라 주세요', true);
       const add = parseJokja($('#dAdd').value);
@@ -1257,7 +1318,14 @@ function pasteModal(tab) {
       if (hi < 0) return toast(NEED[tab] ? `${need.join(', ')} 열이 있는 줄을 못 찾았어요` : `${need[0]}에 숫자가 있는 줄을 못 찾았어요. 열 설정을 확인해 주세요`, true);
       let data = rows.slice(hi);
       if (tab === '선입금 리스트') { const c = orderCols(); data = [data[0], ...data.slice(1).filter(r => String(r[c.id] ?? '').trim() || String(r[c.num] ?? '').trim())]; }
-      if (!confirm(`${tab}에 ${data.length - 1}줄을 저장할까요? 지금 탭 내용은 지워져요.`)) return;
+      // 직접 추가한 입금·출금은 통장 내역을 다시 넣어도 남겨요
+      let keep = 0;
+      if (tab === '입금기록') {
+        const h = data[0].map(x => String(x).trim()), mine = T('입금기록').rows.filter(r => r.get('거래 기관') === MANUAL_BANK);
+        mine.forEach(r => data.push(h.map(c => r.get(c))));
+        keep = mine.length;
+      }
+      if (!confirm(`${tab}에 ${data.length - 1 - keep}줄을 저장할까요? 지금 탭 내용은 지워져요.${keep ? ` (직접 추가한 ${keep}건은 남겨요)` : ''}`)) return;
       if (await write('replace', { sheet: tab, rows: data }, `${data.length - 1}줄을 저장했어요`)) closeModal();
     },
   });
@@ -1486,6 +1554,8 @@ document.addEventListener('click', async e => {
     return;
   }
   if (act === 'signOut') return signOut();
+  if (act === 'newDep') return newDepModal();
+  if (act === 'delDep') return delManualDep(el.dataset.dep);
   if (act === 'edMenu') { e.stopPropagation(); return $('#edmenu') ? closeEdMenu() : edMenu(); }
   if (act === 'edNew') { closeEdMenu(); return edModal(false); }
   if (act === 'edRename') { closeEdMenu(); return edModal(true); }
