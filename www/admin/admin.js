@@ -374,6 +374,7 @@ function build() {
   const orders = oT.rows.filter(r => oGet(r, 'id') || oGet(r, 'num')).map(r => {
     const g = k => oGet(r, k);
     let id = g('id') || ('#' + g('num'));
+    const baseId = id;
     if (seenId[id]) { dupIds++; id = id + '-' + (++seenId[id]); } else seenId[id] = 1;
     const p = proc[id] || {};
     const text = g('text');
@@ -391,11 +392,13 @@ function build() {
     const books = toNum(g('books')), ship = toNum(g('ship')), total = toNum(g('total'));
     const expect = books * priceBook + (fixed ? sumObj(fixed) : qty) * priceJ + ship; // 수량 열 개수로 계산
     return {
-      row: r.row, r, id, num: g('num'), nick: g('nick'), name: g('name'), payer: g('payer') || g('refundName'), recv: g('recv'),
+      row: r.row, r, id, baseId, num: g('num'), nick: g('nick'), name: g('name'), payer: g('payer') || g('refundName'), recv: g('recv'),
       phone: g('recvPhone') || g('phone'), books, qty, text, parsed, fixed, jk, jCount: fixed ? sumObj(fixed) : qty, jState, bad, // 개수는 수량 열 그대로 (사이트에서 넘버를 고쳤으면 고친 개수)
       total, expect, ship, method: g('method'), formStatus: g('status').replace(/\s+/g, ''), proc: p, pay: null, dep: null, deps: [], depSum: 0, cand: null,
     };
   });
+  // 순번이 겹치는 주문 (같은 순번끼리 묶어서 표시)
+  { const cntBase = {}; orders.forEach(o => { cntBase[o.baseId] = (cntBase[o.baseId] || 0) + 1; }); orders.forEach(o => { o.dupNum = cntBase[o.baseId] > 1; }); }
   // 위치폼 밖에서 받은 주문 (수동 주문 탭). 족자봉 개수는 적은 넘버로 세요.
   T('수동 주문').rows.filter(r => r.get('주문번호')).forEach(r => {
     const id = r.get('주문번호'), p = proc[id] || {};
@@ -618,7 +621,7 @@ function checks() {
   if (diff.length) add('warn', `입금 확인이 필요한 주문 ${diff.length}건`, '이름은 비슷한데 금액이 다르거나, 이름이 일부만 같아요.', 'match');
   if (none.length) add('bad', `입금이 안 보이는 주문 ${none.length}건`, '통장 내역에 같은 이름의 입금이 없어요.', 'match');
   if (m.unusedDeps.length) add('warn', `주문과 연결 안 된 입금 ${m.unusedDeps.length}건`, '입금자명이 신청서 이름과 다를 수 있어요.', 'match');
-  if (m.dupIds) add('bad', `순번이 겹치는 주문 ${m.dupIds}건`, '같은 순번이 두 번 나와서 "#3-2"처럼 따로 구분했어요. 순서가 바뀌면 입금 연결이 어긋날 수 있으니, 설정의 선입금 열에서 겹치지 않는 주문번호 열을 골라 주세요.', 'settings');
+  if (m.dupIds) add('bad', `순번이 겹치는 주문 ${m.dupIds}건`, '같은 순번이 두 번 나와서 "#3-2"처럼 따로 구분했어요. 순서가 바뀌면 입금 연결이 어긋날 수 있으니, 설정의 선입금 열에서 겹치지 않는 주문번호 열을 골라 주세요.', 'orders:dupnum');
   const wdNew = m.withdrawals.filter(d => !d.wp || !d.wp.kind);
   if (wdNew.length) add('warn', `분류 안 된 출금 ${wdNew.length}건`, '환불인지, 비용인지 입금 대조에서 표시해 주세요.', 'match');
   const jc = m.live.filter(o => o.jState === 'check');
@@ -798,6 +801,7 @@ const ORDER_FILTERS = [
   ['all', '전체', o => o.pay !== 'cancel'], ['check', '입금 확인 필요', o => ['diff', 'none', 'unpaid'].includes(o.pay)],
   ['issue', '문제 있음', o => o.issues.length > 0], ['jokja', '족자봉 확인', o => o.jState === 'check'], ['money', '금액 다름', o => o.amtWarn],
   ['paid', '입금 완료', o => ['form', 'auto', 'linked', 'manual'].includes(o.pay)], ['cancel', '취소', o => o.pay === 'cancel'],
+  ['dupnum', '순번 겹침', o => o.dupNum],
 ];
 function viewOrders() {
   const m = M();
@@ -806,12 +810,12 @@ function viewOrders() {
   let list = m.orders.filter(fn);
   if (q) list = list.filter(o => normName([o.nick, o.name, o.payer, o.recv, o.id, o.phone].join(' ')).includes(q) || String(o.phone).replace(/\D/g, '').endsWith(q));
   const rows = list.map(o => `<tr data-open="order:${esc(o.id)}"${o.pay === 'cancel' ? ' style="opacity:.45"' : ''}>
-      <td class="num muted">${o.manualOrder ? '<span class="badge">직접</span>' : esc(o.num)}</td><td><b>${esc(o.nick || o.name)}</b>${partsBadge(o)}<div class="muted" style="font-size:13px">${esc(o.name)}${o.payer && o.payer !== o.name ? ' · 입금 ' + esc(o.payer) : ''}</div>${o.issues.length ? `<div style="margin-top:4px">${issueBadges(o)}</div>` : ''}</td>
+      <td class="num muted">${o.manualOrder ? '<span class="badge">직접</span>' : esc(o.num)}${o.dupNum ? `<div><span class="badge orange" title="순번이 겹쳐요">${esc(o.id)}</span></div>` : ''}</td><td><b>${esc(o.nick || o.name)}</b>${partsBadge(o)}<div class="muted" style="font-size:13px">${esc(o.name)}${o.payer && o.payer !== o.name ? ' · 입금 ' + esc(o.payer) : ''}</div>${o.issues.length ? `<div style="margin-top:4px">${issueBadges(o)}</div>` : ''}</td>
       <td class="r num">${o.books || '-'}</td><td>${o.jCount ? `<b class="num">${o.jCount}개</b> ` : ''}${o.jCount || sumObj(o.jk) ? jokjaChips(o.jk) : '<span class="muted">-</span>'} ${jBadge(o)}</td>
       <td class="r num">${won(o.cmpAmt)}${o.amtWarn ? `<div style="font-size:12px;color:var(--orange)">계산 ${won(o.expect)}</div>` : ''}</td><td>${payBadge(o)}</td>
     </tr>`).join('');
   return head('주문', '', `<button class="btn" data-act="exportPos">포스로 내보내기</button><button class="btn" data-act="orderCols">열 설정</button><button class="btn" data-act="newOrder">주문 직접 추가</button><button class="btn pri" data-act="paste" data-tab="선입금 리스트">선입금 데이터 넣기</button>`) +
-    `<div class="chips">${ORDER_FILTERS.map(([k, t, f]) => `<button class="chip" aria-pressed="${st.orderFilter === k}" data-seg="orderFilter:${k}">${t} <b>${m.orders.filter(f).length}</b></button>`).join('')}</div>
+    `<div class="chips">${ORDER_FILTERS.filter(([k, , f]) => k !== 'dupnum' || m.orders.some(f) || st.orderFilter === k).map(([k, t, f]) => `<button class="chip" aria-pressed="${st.orderFilter === k}" data-seg="orderFilter:${k}">${t} <b>${m.orders.filter(f).length}</b></button>`).join('')}</div>
     <div class="tools"><input class="search" id="orderQ" placeholder="이름, 닉네임, 입금자명, 전화번호 뒷자리, 주문번호" value="${esc(st.orderQ)}"></div>
     <div class="tbl-wrap">${list.length ? `<table class="tbl"><thead><tr><th>번호</th><th>주문자</th><th class="r">엽서북</th><th>족자봉</th><th class="r">금액</th><th>입금</th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty">${m.orders.length ? '조건에 맞는 주문이 없어요' : '아직 선입금 데이터가 없어요. 오른쪽 위 버튼으로 넣어 주세요.'}</div>`}</div>`;
 }
