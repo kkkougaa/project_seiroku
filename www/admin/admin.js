@@ -608,8 +608,6 @@ function checks() {
     if (!bad.length) add('ok', `통장 잔액이 거래마다 맞아요 (${cnt(m.bankCheck.checked)}건)`, '직전 잔액 ± 거래 금액 = 다음 잔액', null);
     else add('bad', `잔액이 안 맞는 거래 ${bad.length}건`, bad.slice(0, 3).map(x => `${x.d.at} ${x.d.who} ${x.d.type} ${won(x.d.amt)}: 직전 ${won(x.prev)} → 계산 ${won(x.want)}, 통장 ${won(x.d.balN)}`).join(' / ') + (bad.length > 3 ? ` 외 ${bad.length - 3}건` : ''), 'match');
   }
-  const bankPaid = m.paid.filter(o => o.deps.length).reduce((a, o) => a + o.depSum, 0), bankWant = m.paid.filter(o => o.deps.length).reduce((a, o) => a + o.total, 0);
-  if (bankPaid || bankWant) add(bankPaid === bankWant ? 'ok' : 'warn', `연결된 입금 ${won(bankPaid)} / 신청서 기준 ${won(bankWant)}`, bankPaid === bankWant ? '입금액과 신청 금액이 같아요.' : '손으로 연결한 주문 중 금액이 다른 게 있어요.', bankPaid === bankWant ? null : 'match');
   const noSub = m.confirmed.filter(a => a.submit !== '제출 완료');
   if (m.confirmed.length) add(noSub.length ? 'warn' : 'ok', noSub.length ? `원고 제출 안 된 작가 ${noSub.length}명` : '확정 작가 원고가 모두 제출됐어요', noSub.slice(0, 6).map(a => a.nick).join(', ') + (noSub.length > 6 ? ' 외' : ''), noSub.length ? 'authors' : null);
   if (m.ratios.length && m.wsum && m.balanceIn === null) add('warn', '정산할 돈을 아직 계산할 수 없어요', '입금 대조에서 통장 내역을 넣으면 분배 금액이 계산돼요.', 'match');
