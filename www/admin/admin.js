@@ -318,10 +318,47 @@ function build() {
     const amt = toNum(r.get('거래 금액'));
     // 은행마다 유형이 달라요 ("입금이체", "타행입금", "출금", "체크카드" …). 금액이 마이너스면 출금, 아니면 단어로 봐요.
     const raw = r.get('거래 유형');
-    const type = amt < 0 ? '출금' : /출금|지급|송금|결제|카드|인출|이체출|자동이체/.test(raw) ? '출금' : /입금|받|이체입/.test(raw) || !raw ? '입금' : '출금';
+    const type = amt < 0 ? '출금' : /입금/.test(raw) && !/출금/.test(raw) ? '입금' : /출금/.test(raw) ? '출금' : !raw ? '입금' : raw === '입금' ? '입금' : '출금';
     const key = [r.get('거래 일시'), r.get('적요'), Math.abs(amt)].join('|');
     return { row: r.row, key, at: r.get('거래 일시'), who: r.get('적요'), type, typeRaw: raw, amt: Math.abs(amt), bal: r.get('거래 후 잔액'), balN: toNum(r.get('거래 후 잔액')), memo: r.get('메모'), bank: r.get('거래 기관'), order: null };
   });
+  // 입금/출금은 통장 잔액으로 정해요: 직전 잔액 + 금액 = 이번 잔액이면 입금, − 금액이면 출금.
+  //  유형 글자는 은행마다 달라서, 잔액으로 알 수 없을 때(첫 거래, 잔액 빈칸)만 글자를 써요.
+  //  순서는 시트 순서(최신순이면 뒤집기)와 시간순 둘 다 해보고 덜 틀리는 쪽을 써요.
+  const walkBank = chain => {
+    const types = new Map(), bad = []; let prev = null, gap = [], checked = 0;
+    const sg = (t, a) => t === '입금' ? a : -a;
+    for (const d of chain) {
+      if (!d.bal) { gap.push(d); continue; } // 잔액 빈칸 거래는 다음 잔액 있는 거래와 같이 맞춰봐요
+      let t = d.type;
+      if (prev !== null) {
+        checked++;
+        const diff = Math.round(d.balN - prev.balN);
+        // 사이에 낀 잔액 빈칸 거래(최대 6건)까지 입금/출금 조합을 다 해보고 맞는 걸 골라요
+        let hit = null;
+        if (gap.length <= 6) {
+          for (let mask = 0; mask < (1 << (gap.length + 1)) && !hit; mask++) {
+            const ts = [...gap, d].map((x, i) => (mask >> i) & 1 ? '출금' : '입금');
+            if ([...gap, d].reduce((a, x, i) => a + sg(ts[i], x.amt), 0) === diff) hit = ts;
+          }
+          // 글자 그대로가 맞으면 그걸 먼저 써요
+          const own = [...gap, d].map(x => x.type);
+          if ([...gap, d].reduce((a, x, i) => a + sg(own[i], x.amt), 0) === diff) hit = own;
+        }
+        if (hit) { gap.forEach((x, i) => types.set(x, hit[i])); t = hit[gap.length]; }
+        else bad.push({ d, prev: prev.balN + gap.reduce((a, x) => a + sg(x.type, x.amt), 0), want: prev.balN + gap.reduce((a, x) => a + sg(x.type, x.amt), 0) + sg(d.type, d.amt) });
+      }
+      types.set(d, t); prev = d; gap = [];
+    }
+    return { types, bad, checked, last: prev, carry: gap.reduce((a, x) => a + sg(x.type, x.amt), 0) };
+  };
+  const stmtRows = deposits.filter(d => d.bank !== MANUAL_BANK);
+  const bySheet = stmtRows.slice(); if (bySheet.length > 1 && bySheet[0].at > bySheet[bySheet.length - 1].at) bySheet.reverse();
+  const rev = bySheet.length > 1 && bySheet[0] !== stmtRows[0]; // 시트가 최신순이면 같은 시각끼리도 거꾸로
+  const byTime = stmtRows.map((d, i) => [d, i]).sort((a, b) => (a[0].at < b[0].at ? -1 : a[0].at > b[0].at ? 1 : 0) || (rev ? b[1] - a[1] : a[1] - b[1])).map(x => x[0]);
+  const walks = [walkBank(bySheet), walkBank(byTime)];
+  const bankWalk = walks[1].bad.length < walks[0].bad.length ? walks[1] : walks[0];
+  bankWalk.types.forEach((t, d) => { d.type = t; });
   const depByKey = {}; deposits.forEach(d => { depByKey[d.key] = d; });
   // 출금 처리: 출금마다 환불 / 비용 / 기타 로 분류하고, 환불이면 어느 주문인지 적어요
   const wdProc = {};
@@ -527,23 +564,9 @@ function build() {
   const sgn = d => d.type === '입금' ? d.amt : -d.amt;
   const manNet = man.reduce((a, d) => a + sgn(d), 0);
   if (withBal.length) {
-    // 통장 내역 순서 그대로 (최신순이면 뒤집어서) 오래된 것부터. 같은 시각 거래 순서가 안 꼬이게 시트 순서를 써요.
-    const chain = stmt.slice();
-    if (chain.length > 1 && chain[0].at > chain[chain.length - 1].at) chain.reverse();
-    // 거래마다: 직전 잔액 ± 이번 금액 = 이번 잔액 인지 봐요. 잔액 칸이 빈 거래는 다음 거래에 같이 더해요.
-    const bad = []; let prev = null, carry = 0, checked = 0;
-    for (const d of chain) {
-      if (!d.bal) { carry += sgn(d); continue; }
-      if (prev) {
-        const want = prev.balN + carry + sgn(d);
-        checked++;
-        if (Math.round(want) !== Math.round(d.balN)) bad.push({ d, prev: prev.balN + carry, want });
-      }
-      prev = d; carry = 0;
-    }
-    const firstB = chain.find(d => d.bal), lastB = prev;
+    const firstB = withBal.reduce((a, d) => (a && a.at <= d.at ? a : d), null);
     const start = firstB.balN - sgn(firstB);
-    bankCheck = { start, end: lastB.balN + carry + manNet, bad, checked, manNet, manCount: man.length };
+    bankCheck = { start, end: bankWalk.last.balN + bankWalk.carry + manNet, bad: bankWalk.bad, checked: bankWalk.checked, manNet, manCount: man.length };
   } else if (man.length) {
     const start = cfg['통장 시작 금액'] ? toNum(cfg['통장 시작 금액']) : 0;
     bankCheck = { start, end: start + manNet, bad: [], checked: 0, manNet, manCount: man.length };
