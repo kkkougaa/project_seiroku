@@ -525,13 +525,26 @@ function build() {
   const sgn = d => d.type === '입금' ? d.amt : -d.amt;
   const manNet = man.reduce((a, d) => a + sgn(d), 0);
   if (withBal.length) {
-    const sorted = withBal.slice().sort((a, b) => a.at < b.at ? -1 : a.at > b.at ? 1 : 0);
-    const first = sorted[0], last = sorted[sorted.length - 1];
-    const start = first.balN - sgn(first);
-    bankCheck = { start, end: last.balN + manNet, calc: start + stmt.reduce((a, d) => a + sgn(d), 0) + manNet, manNet, manCount: man.length };
+    // 통장 내역 순서 그대로 (최신순이면 뒤집어서) 오래된 것부터. 같은 시각 거래 순서가 안 꼬이게 시트 순서를 써요.
+    const chain = stmt.slice();
+    if (chain.length > 1 && chain[0].at > chain[chain.length - 1].at) chain.reverse();
+    // 거래마다: 직전 잔액 ± 이번 금액 = 이번 잔액 인지 봐요. 잔액 칸이 빈 거래는 다음 거래에 같이 더해요.
+    const bad = []; let prev = null, carry = 0, checked = 0;
+    for (const d of chain) {
+      if (!d.bal) { carry += sgn(d); continue; }
+      if (prev) {
+        const want = prev.balN + carry + sgn(d);
+        checked++;
+        if (Math.round(want) !== Math.round(d.balN)) bad.push({ d, prev: prev.balN + carry, want });
+      }
+      prev = d; carry = 0;
+    }
+    const firstB = chain.find(d => d.bal), lastB = prev;
+    const start = firstB.balN - sgn(firstB);
+    bankCheck = { start, end: lastB.balN + carry + manNet, bad, checked, manNet, manCount: man.length };
   } else if (man.length) {
     const start = cfg['통장 시작 금액'] ? toNum(cfg['통장 시작 금액']) : 0;
-    bankCheck = { start, end: start + manNet, calc: start + manNet, manNet, manCount: man.length };
+    bankCheck = { start, end: start + manNet, bad: [], checked: 0, manNet, manCount: man.length };
   }
   // 정산할 돈 = 통장 마지막 잔액 − 통장 시작 금액(행사 전부터 있던 개인 돈) + 보유 현금
   //  통장 시작 금액을 비워두면 입금기록 첫 거래 직전 잔액을 써요.
@@ -590,9 +603,10 @@ function checks() {
   if (money.length) add('warn', `금액이 맞지 않는 주문 ${money.length}건`, `실제 개수로 계산한 금액(엽서북 ${won(m.priceBook)}, 족자봉 ${won(m.priceJ)})과 받은·신청 금액이 달라요.`, 'orders:money');
   const qSum = m.live.reduce((a, o) => a + o.qty, 0), jSum = m.live.reduce((a, o) => a + sumObj(o.jk), 0);
   if (m.orders.length) add(qSum === jSum ? 'ok' : 'warn', `족자봉 주문 수 ${cnt(qSum)}개 / 넘버로 센 수 ${cnt(jSum)}개`, qSum === jSum ? '신청서 개수와 넘버 개수가 같아요.' : '차이 나는 주문을 주문 탭에서 확인해 주세요.', qSum === jSum ? null : 'orders:jokja');
-  if (m.bankCheck) {
-    const ok = Math.round(m.bankCheck.calc) === Math.round(m.bankCheck.end);
-    add(ok ? 'ok' : 'bad', ok ? '통장 잔액 흐름이 맞아요' : '통장 잔액 흐름이 안 맞아요', `시작 ${won(m.bankCheck.start)} + 입금 ${won(m.dIn)} − 출금 ${won(m.dOut)} = ${won(m.bankCheck.calc)} (통장 마지막 잔액${m.bankCheck.manCount ? ` + 직접 추가 ${m.bankCheck.manCount}건` : ''} ${won(m.bankCheck.end)})`, ok ? null : 'match');
+  if (m.bankCheck && m.bankCheck.checked) {
+    const bad = m.bankCheck.bad;
+    if (!bad.length) add('ok', `통장 잔액이 거래마다 맞아요 (${cnt(m.bankCheck.checked)}건)`, '직전 잔액 ± 거래 금액 = 다음 잔액', null);
+    else add('bad', `잔액이 안 맞는 거래 ${bad.length}건`, bad.slice(0, 3).map(x => `${x.d.at} ${x.d.who} ${x.d.type} ${won(x.d.amt)}: 직전 ${won(x.prev)} → 계산 ${won(x.want)}, 통장 ${won(x.d.balN)}`).join(' / ') + (bad.length > 3 ? ` 외 ${bad.length - 3}건` : ''), 'match');
   }
   const bankPaid = m.paid.filter(o => o.deps.length).reduce((a, o) => a + o.depSum, 0), bankWant = m.paid.filter(o => o.deps.length).reduce((a, o) => a + o.total, 0);
   if (bankPaid || bankWant) add(bankPaid === bankWant ? 'ok' : 'warn', `연결된 입금 ${won(bankPaid)} / 신청서 기준 ${won(bankWant)}`, bankPaid === bankWant ? '입금액과 신청 금액이 같아요.' : '손으로 연결한 주문 중 금액이 다른 게 있어요.', bankPaid === bankWant ? null : 'match');
