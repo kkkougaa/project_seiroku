@@ -54,7 +54,9 @@ function ensureCatalog() {
   return D.catalog;
 }
 const ov = () => { D.ov = D.ov || { price: {}, stock: {} }; D.ov.r18 = D.ov.r18 || {}; return D.ov; };
-const products = () => { const o = ov(); return B().products.map(p => ({ ...p, price: o.price[p.id] ?? p.price, stock: o.stock[p.id] ?? p.stock, r18: o.r18[p.id] ?? !!p.r18 })); };
+// 족자봉처럼 숫자 종류(1, 2, 3 …)는 관리 사이트가 알려준 확정 작가 수(D.jokjaN)만큼 늘리거나 줄여요
+const numVariants = v => v && D && D.jokjaN && v.every(x => /^\d+$/.test(x)) ? Array.from({ length: D.jokjaN }, (_, i) => String(i + 1)) : v;
+const products = () => { const o = ov(); return B().products.map(p => ({ ...p, price: o.price[p.id] ?? p.price, stock: o.stock[p.id] ?? p.stock, r18: o.r18[p.id] ?? !!p.r18, variants: numVariants(p.variants) })); };
 const sellable = () => products().filter(p => !p.preorderOnly);
 const prod = id => products().find(p => p.id === id);
 // 수익 받는 사람: 상품의 owner → 부스의 owner → 없으면 공동 수익('')
@@ -897,6 +899,7 @@ function analyzeCSV(rows, file) {
 function handoff() { try { const h = JSON.parse(localStorage.getItem('booth-pos-handoff')); return h && h.csv ? h : null; } catch { return null; } }
 
 function applyImport(r) {
+  if (r.jokjaN) D.jokjaN = r.jokjaN; // 관리 사이트의 확정 작가 수 = 족자봉 종류 수
   const old = new Map(D.preorders.map(p => [p.key, p]));
   const next = r.list.map(p => { const o = old.get(p.key); return o ? { ...p, at: o.at } : p; });
   for (const p of D.preorders) if (!r.keyset.has(p.key) && (p.at || p.manual)) next.push(p);
@@ -952,7 +955,7 @@ function testCSV() {
 }
 
 function settlementCSV() {
-  const rows = [['시각', '구분', '결제수단', '이름', '상품', '수량', '단가', '금액', '상태', '종류', '메모', '수익']];
+  const rows = [['시각', '구분', '결제수단', '이름', '상품', '수량', '단가', '금액', '상태', '종류', '메모', '수익', '부스']];
   const who = k => ownerOf(k) || '공동';
   for (const s of D.sales) for (const [k, q] of Object.entries(s.items)) {
     const p = prod(k); rows.push([mdhm(s.ts), '현장 판매', mLabel(s), '', p?.name || k, q, p?.price || 0, (p?.price || 0) * q, s.canceled ? '취소' : '완료', '', '', who(k)]);
@@ -963,6 +966,7 @@ function settlementCSV() {
   }
   for (const f of fails()) for (const [k, q] of Object.entries(f.items)) rows.push([mdhm(f.ts), '선입금 미전달', '', f.name, prod(k)?.name || k, q, '', '', f.canceled ? '취소' : '반영', f.vars && f.vars[k] ? varPlain(f.vars[k]) : '', f.reason + (f.memo ? ' / ' + f.memo : '')]);
   for (const a of D.adj) rows.push([mdhm(a.ts), '재고 조정', '', '', keyInfo(a.id).name, -a.q, '', '', a.canceled ? '취소' : '반영', '', a.reason + (a.memo ? ' / ' + a.memo : '')]);
+  rows.slice(1).forEach(r => { while (r.length < 12) r.push(''); r.push(booth); }); // 관리 사이트 정산에 넣을 때 어느 부스인지
   return toCSV(rows);
 }
 
@@ -1171,7 +1175,7 @@ app.addEventListener('click', e => {
     case 'peBack': sheet = 'prod'; break;
     case 'peDelGo': { const cat = ensureCatalog(); cat.products = cat.products.filter(x => x.id !== pe.id); for (const id of Object.keys(cat.pools)) if (!cat.products.some(x => x.pool === id)) delete cat.pools[id]; ls.del(IMG_KEY(pe.id)); delete cart[pe.id]; save(); toast(`${pe.name} 상품을 삭제했어요`); pe = null; sheet = null; break; }
     case 'catReset': D.catalog = null; save(); toast('config.js 기본 상품으로 되돌렸어요'); break;
-    case 'importHandoff': { const h = handoff(); if (!h) return; const rows = parseCSV(h.csv.replace(/^\uFEFF/, '')); importDraft = analyzeCSV(rows, `관리 사이트 (${mdhm(h.ts)})`); sheet = 'import'; break; }
+    case 'importHandoff': { const h = handoff(); if (!h) return; const rows = parseCSV(h.csv.replace(/^\uFEFF/, '')); importDraft = analyzeCSV(rows, `관리 사이트 (${mdhm(h.ts)})`); if (h.variants > 0) importDraft.jokjaN = h.variants; sheet = 'import'; break; }
     case 'loadTest': { const rows = parseCSV(testCSV().replace(/^\uFEFF/, '')); importDraft = analyzeCSV(rows, '테스트 데이터 (가짜 40명)'); sheet = 'import'; break; }
     case 'sampleCsv': doSave('선입금_양식_예시.csv', sampleCSV(), 'text/csv'); return;
     case 'backup': {

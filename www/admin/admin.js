@@ -604,6 +604,9 @@ function build() {
   // 포토카드: 족자봉 1개를 살 때마다 1개씩 같이 나가요 (넘버를 안 적은 주문도 개수대로 세요)
   const cardOrder = live.reduce((a, o) => a + o.jCount, 0);
   const cardExtra = extra.filter(e => e.kind === '포토카드').reduce((a, e) => a + e.n, 0);
+  // 설정 '포토카드 제작 수량'을 적으면 계산 대신 그 수량을 써요
+  const cardSet = cfg['포토카드 제작 수량'] !== undefined && cfg['포토카드 제작 수량'] !== '' ? toNum(cfg['포토카드 제작 수량']) : null;
+  const cardTotal = cardSet !== null ? cardSet : cardOrder + cardExtra;
 
   // 정산
   // 받는 사람: 비우면 공동. 보관: 그 돈이 공동 통장·현금에 있는지(공동), 받는 사람이 따로 갖고 있는지(본인)
@@ -673,7 +676,7 @@ function build() {
 
   return {
     cfg, priceBook, priceJ, ppppPrice, ppppOwner, spareJ, bookPerAuthor, ratios, authors, confirmed, authorByNo, maxNo, orders, dupIds, posAlpha, live, paid, deposits, unusedDeps, withdrawals, refundSum, recon,
-    extra, make, bookOrder, bookAuthor, bookExtra, cardOrder, cardExtra, income, costs, preForm, preBank, incomeSum, costShared, own, ownSum, personal, personalSum, reserve, reserveAuto,
+    extra, make, bookOrder, bookAuthor, bookExtra, cardOrder, cardExtra, cardSet, cardTotal, income, costs, preForm, preBank, incomeSum, costShared, own, ownSum, personal, personalSum, reserve, reserveAuto,
     balanceIn, bankStart, bankStartAuto, cash, pool, people, wsum, dIn, dOut, bankCheck,
   };
 }
@@ -844,8 +847,8 @@ function viewHome() {
         <div class="card"><div class="card-h"><div><h2>제작 수량</h2></div><button class="btn sm" data-go="make">자세히</button></div>
           <div class="kv"><span>엽서북</span><b class="num">${cnt(bTotal)}권</b></div>
           <div class="kv sub"><span>주문 ${cnt(m.bookOrder)} + 작가 ${cnt(m.bookAuthor)} + 추가 ${cnt(m.bookExtra)}</span><b></b></div>
-          <div class="kv"><span>포토카드</span><b class="num">${cnt(m.cardOrder + m.cardExtra)}개</b></div>
-          <div class="kv sub"><span>족자봉 주문 ${cnt(m.cardOrder)} + 추가 ${cnt(m.cardExtra)}</span><b></b></div>
+          <div class="kv"><span>포토카드</span><b class="num">${cnt(m.cardTotal)}개</b></div>
+          <div class="kv sub"><span>${m.cardSet !== null ? `직접 적은 수량 (계산하면 ${cnt(m.cardOrder + m.cardExtra)})` : `족자봉 주문 ${cnt(m.cardOrder)} + 추가 ${cnt(m.cardExtra)}`}</span><b></b></div>
           <div class="kv"><span>족자봉 (${m.make.length}종)</span><b class="num">${cnt(jTotal)}개</b></div>
           <div class="kv sub"><span>주문 ${cnt(m.make.reduce((a, x) => a + x.order, 0))} + 작가 여분 ${cnt(m.make.reduce((a, x) => a + x.spare, 0))} + 추가 ${cnt(m.make.reduce((a, x) => a + x.add, 0))}</span><b></b></div>
         </div>
@@ -941,7 +944,7 @@ function viewMake() {
     `<div class="stats">
       ${stat('족자봉 전체', cnt(sum('total')) + '<small>개</small>', `${m.make.length}종 · 주문 ${cnt(sum('order'))}`)}
       ${stat('엽서북 전체', cnt(bTotal) + '<small>권</small>', `주문 ${cnt(m.bookOrder)} + 작가 ${cnt(m.bookAuthor)} + 추가 ${cnt(m.bookExtra)}`)}
-      ${stat('포토카드 전체', cnt(m.cardOrder + m.cardExtra) + '<small>개</small>', `족자봉 주문 ${cnt(m.cardOrder)} + 추가 ${cnt(m.cardExtra)}`)}
+      <button class="stat" data-act="setting" data-key="포토카드 제작 수량" title="눌러서 직접 적기"><div class="k">포토카드 전체 ✎</div><div class="v num">${cnt(m.cardTotal)}<small>개</small></div><div class="d">${m.cardSet !== null ? `직접 적음 · 계산하면 ${cnt(m.cardOrder + m.cardExtra)}` : `족자봉 주문 ${cnt(m.cardOrder)} + 추가 ${cnt(m.cardExtra)}`}</div></button>
       ${stat('확정 작가', cnt(m.confirmed.length) + '<small>명</small>', `작가 1명당 엽서북 ${m.bookPerAuthor}권`)}
     </div>
     <div class="grid2">
@@ -976,7 +979,7 @@ function viewMoney() {
     <h4 style="margin:22px 0 2px">사람별 받을 돈</h4><p class="hint" style="margin:0 0 6px">분배 금액 + 개인 선정산 + 개인 몫</p>
     ${m.people.length ? m.people.map(p => `<div class="kv"><span>${esc(p.name)}${p.w ? ` <span class="muted">(${p.w})</span>` : ''}</span><b class="num">${won(p.total)}</b></div><div class="kv sub"><span>분배 ${won(p.share)} · 선정산 ${won(p.pre)}${p.own ? ` · 개인 몫 ${won(p.own)}` : ''}${p.held ? ` · 따로 보관 ${won(p.held)}` : ''}</span><b></b></div>`).join('') : '<div class="empty">아직 없어요</div>'}`;
   const nPre = Object.keys(m.personal).length;
-  return head('정산', '', `${st.admin ? '<button class="btn soft" data-act="dist">분배 · 받을 돈 보기</button>' : ''}<button class="btn" data-act="newRow" data-tab="수입">수입 추가</button><button class="btn pri" data-act="newRow" data-tab="비용">비용 추가</button>`) +
+  return head('정산', '', `${st.admin ? '<button class="btn soft" data-act="dist">분배 · 받을 돈 보기</button>' : ''}<button class="btn" data-act="posSettle">포스 정산 넣기</button><button class="btn" data-act="newRow" data-tab="수입">수입 추가</button><button class="btn pri" data-act="newRow" data-tab="비용">비용 추가</button>`) +
     `<div class="grid2">
       <div class="card"><h2>수입</h2>${incomeList}${ownList ? `<div style="margin-top:16px;padding-top:4px;border-top:1px solid var(--line)">${ownList}</div>` : ''}</div>
       <div class="card"><h2>비용</h2>
@@ -1010,6 +1013,7 @@ const SETTINGS = [
   ['통장 시작 금액', '행사 전부터 통장에 있던 개인 돈. 정산할 때 빼요. 비워두면 통장 내역 첫 거래 직전 잔액'],
   ['남겨둘 금액', '분배하지 않고 남겨둘 돈. 비워두면 공금 미처리 비용 합계'],
   [ORDER_COLS_KEY, '선입금 리스트의 어느 열을 읽을지. 주문 탭 → 열 설정'],
+  ['포토카드 제작 수량', '비워두면 족자봉 주문 수 + 추가 수량으로 계산해요. 적으면 그 수량을 써요'],
   ['PPPP2 가격', 'PPPP2 선입금 1권 가격. 비워두면 12000'],
   ['PPPP2 수익', 'PPPP2 선입금·현장 판매 수익을 다 가져가는 사람. 비워두면 잏엫'],
   [PPPP_COLS_KEY, 'PPPP 선입금(구글폼)의 어느 열을 읽을지. 비워두면 열 제목으로 알아서 찾아요. 예: 수량=E, 입금자명=D'],
@@ -1317,6 +1321,53 @@ function depModal(key) {
   });
   $('#dAdd').addEventListener('input', () => { const a = parseJokja($('#dAdd').value); $('#dAddH').textContent = sumObj(a) ? `족자봉 ${jokjaText(a)} (${sumObj(a)}개 · ${won(sumObj(a) * m.priceJ)})를 그 주문에 더해요` : ''; });
 }
+// ---------- 포스 정산 CSV → 수입 ----------
+//  포스 '정산 CSV 내보내기' 파일을 넣으면 현장 판매를 부스·수익자별로 모아 수입 탭에 적어요. (다시 넣으면 같은 줄을 고쳐요)
+function posSettleParse(text, pickBooth) {
+  const rows = parseTable(text), hi = rows.findIndex(r => r.includes('구분') && r.includes('금액'));
+  if (hi < 0) return null;
+  const h = rows[hi].map(x => String(x).trim()), ix = k => h.indexOf(k);
+  const booths = (self.BOOTH_CONFIG && self.BOOTH_CONFIG.booths) || {};
+  const groups = {};
+  for (const r of rows.slice(hi + 1)) {
+    const v = k => ix(k) >= 0 ? String(r[ix(k)] ?? '').trim() : '';
+    if (v('구분') !== '현장 판매' || v('상태') !== '완료') continue;
+    const bk = v('부스') || pickBooth, bc = booths[bk] || {};
+    let owner = v('수익');
+    if (!owner) { const pr = (bc.products || []).find(p => p.name === v('상품')); owner = (pr && pr.owner) || bc.owner || ''; }
+    if (owner === '공동') owner = '';
+    const key = bk + '|' + owner, g = groups[key] = groups[key] || { booth: bk, boothName: bc.name || ('부스 ' + bk), owner, held: !!owner && owner === bc.owner, amt: 0, cash: 0, tr: 0, n: 0 };
+    const a = toNum(v('금액')); g.amt += a; g.n++;
+    if (/현금/.test(v('결제수단'))) g.cash += a; else if (/이체|계좌/.test(v('결제수단'))) g.tr += a;
+  }
+  return { groups: Object.values(groups), hasBooth: ix('부스') >= 0 };
+}
+function posSettleModal() {
+  const booths = (self.BOOTH_CONFIG && self.BOOTH_CONFIG.booths) || {};
+  openModal({
+    title: '포스 정산 넣기', wide: true, sub: '포스 설정 → 정산 CSV 내보내기 파일을 골라요. 부스마다 한 번씩 넣어요.',
+    body: `<div class="acts"><button class="btn sm" data-act="pickFile">CSV 파일 고르기</button><span class="hint">또는 아래에 붙여넣기</span></div>
+      <textarea class="inp" id="pTxt" style="min-height:120px;font-size:13px;margin-top:10px" placeholder="여기에 붙여넣기"></textarea>
+      <div class="field" id="psBoothBox" style="margin-top:12px" hidden><label>어느 부스 파일이에요? (예전 포스 파일이라 부스 칸이 없어요)</label><input type="hidden" id="psBooth" value="A"><div class="seg segf">${Object.entries(booths).map(([k, b]) => `<button type="button" aria-selected="${k === 'A'}" data-segf="psBooth" data-val="${esc(k)}">${esc(b.name)}</button>`).join('')}</div></div>
+      <div id="psPrev" style="margin-top:12px"></div>`,
+    foot: `<span class="sp"></span><button class="btn" data-act="close">취소</button><button class="btn pri" data-act="save">수입에 적기</button>`,
+    onSave: async () => {
+      const r = posSettleParse($('#pTxt').value, $('#psBooth').value);
+      if (!r || !r.groups.length) return toast('현장 판매 기록을 못 찾았어요', true);
+      let ok = true;
+      for (const g of r.groups) ok = await write('upsert', { sheet: '수입', keyCol: '항목', keyVal: `포스 현장 판매 · ${g.boothName}${g.owner ? ' · ' + g.owner + ' 몫' : ''}`,
+        values: { '금액': String(g.amt), '받는 사람': g.owner || '공동', '보관': g.owner ? (g.held ? '본인' : '공동') : '', '메모': `현금 ${won(g.cash)} · 계좌이체 ${won(g.tr)} · ${g.n}건 (포스 정산 CSV)` } }) && ok;
+      if (ok) { closeModal(); toast('수입에 적었어요'); }
+    },
+  });
+  const prev = () => {
+    const r = posSettleParse($('#pTxt').value, $('#psBooth').value);
+    $('#psBoothBox').hidden = !r || r.hasBooth;
+    $('#psPrev').innerHTML = !r ? '' : r.groups.length ? r.groups.map(g => `<div class="kv"><span><b>${esc(g.boothName)}</b> · ${g.owner ? `${esc(g.owner)} 몫${g.held ? ' (본인 보관)' : ' (공동 통장·현금)'}` : '공동'}</span><b class="num">${won(g.amt)}</b></div><div class="kv sub"><span>현금 ${won(g.cash)} · 계좌이체 ${won(g.tr)} · ${g.n}건</span><b></b></div>`).join('') : '<div class="note warn">현장 판매 기록이 없어요</div>';
+  };
+  $('#pTxt').addEventListener('input', prev); $('#psBooth').addEventListener('change', prev);
+}
+
 // ---------- 직접 추가한 기록 ↔ 통장 내역 ----------
 function reconCard(m) {
   const { matched, pending } = m.recon;
@@ -1599,7 +1650,7 @@ function exportMake() {
   const m = M();
   download('제작_수량.csv', [['넘버', '작가', '주문', '작가 여분', '추가', '최종'], ...m.make.map(x => [jName(x.no), x.author ? x.author.nick : '', x.order, x.spare, x.add, x.total]),
     [], ['엽서북', '', m.bookOrder, m.bookAuthor, m.bookExtra, m.bookOrder + m.bookAuthor + m.bookExtra],
-    ['포토카드', '', m.cardOrder, 0, m.cardExtra, m.cardOrder + m.cardExtra]]);
+    ['포토카드', '', m.cardOrder, 0, m.cardExtra, m.cardTotal]]);
 }
 
 // ---------------------------------------------------------------------
@@ -1705,7 +1756,7 @@ document.addEventListener('click', async e => {
   if (act === 'posCsv') { download('포스용_선입금_명단.csv', posRows().rows); return toast('CSV를 받았어요. 포스 설정 → CSV 파일 불러오기에 넣어 주세요'); }
   if (act === 'posSend') {
     const x = posRows();
-    try { localStorage.setItem(POS_HANDOFF, JSON.stringify({ csv: posCsvText(x.rows), ts: Date.now(), count: x.rows.length - 1 })); }
+    try { localStorage.setItem(POS_HANDOFF, JSON.stringify({ csv: posCsvText(x.rows), ts: Date.now(), count: x.rows.length - 1, variants: M().maxNo || 0 })); } // variants: 포스 족자봉 종류 수 = 확정 작가 수
     catch { return toast('이 브라우저에 저장하지 못했어요. CSV 받기를 써 주세요', true); }
     closeModal();
     openModal({ title: '포스로 보냈어요', sub: `${cnt(x.rows.length - 1)}명`, body: '<p style="margin:0">포스를 열고 <b>설정 → 선입금 명단 → 관리 사이트에서 받기</b>를 눌러 주세요.</p>',
@@ -1713,6 +1764,7 @@ document.addEventListener('click', async e => {
     return;
   }
   if (act === 'signOut') return signOut();
+  if (act === 'posSettle') return posSettleModal();
   if (act === 'newDep') return newDepModal();
   if (act === 'delDep') return delManualDep(el.dataset.dep);
   if (act === 'edMenu') { e.stopPropagation(); return $('#edmenu') ? closeEdMenu() : edMenu(); }

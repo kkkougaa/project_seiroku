@@ -39,8 +39,8 @@ self.BOOTH_CONFIG = {
           pool: 'photocard', units: 5, badge: '5', image: 'images/photocard.jpg' },
         { id: 'pc10', name: '랜덤 포토카드 10세트', price: 20000, // 임시: 1세트 가격 × 10
           pool: 'photocard', units: 10, badge: '10', image: 'images/photocard.jpg' },
-        // 족자봉 넘버는 숫자(1~25, 작가 No와 같아요). 목록에 없는 넘버(26, 27 …)도 그대로 읽어요
-        { id: 'jokja', name: '족자봉', price: 20000, preorderOnly: true, variants: Array.from({ length: 25 }, (_, i) => String(i + 1)) },
+        // 족자봉 넘버는 숫자(1~25, 작가 No와 같아요). 관리 사이트에서 명단을 받으면 확정 작가 수에 맞춰 바뀌어요. 목록에 없는 넘버도 그대로 읽어요
+        { id: 'jokja', name: '족자봉', price: 25000, preorderOnly: true, variants: Array.from({ length: 25 }, (_, i) => String(i + 1)) },
         // 하치 님 책: 현장 판매만, 수익은 전부 하치 몫. 이름은 가제, 가격·수량은 기본값(바뀔 수 있어요). id는 이름이 바뀌어도 그대로 둬요.
         { id: 'hachibook', name: '녹스책', sub: '가제', price: 5000, stock: 200, noPreorder: true, owner: '하치' },
       ],
