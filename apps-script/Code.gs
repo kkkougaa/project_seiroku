@@ -31,19 +31,20 @@ const TABS = {
   '선입금 리스트': ['번호', '작성시간', '엽서북', '족자봉', '배송방법', '배송비', '총 주문금액', '주문자명', '닉네임',
     '주문자연락처', '결제날짜', '수령자명', '수령자연락처', '우편번호', '주소', '배송메모', '환불은행', '환불계좌',
     '환불예금주', '총 주문금액', '이메일', '족자봉', '트위터계정', '인스타계정', '택배사', '운송장번호', '진행상태', '메모', '주문번호'],
+  'PPPP 선입금': ['타임스탬프', '닉네임', '이름', '입금자명', '연락처', '수량', '메모'],
   '입금기록': ['거래 일시', '적요', '거래 유형', '거래 기관', '계좌번호', '거래 금액', '거래 후 잔액', '메모'],
   '수동 주문': ['주문번호', '작성시간', '닉네임', '이름', '입금자명', '연락처', '엽서북', '족자봉', '총 주문금액', '수령 방법', '메모'],
   '출금 처리': ['출금 키', '구분', '주문번호', '메모', '수정 시각', '수정한 사람'],
   '주문 처리': ['주문번호', '족자봉 확정', '입금 처리', '입금 키', '메모', '수정 시각', '수정한 사람'],
   '추가 수량': ['구분', '넘버', '개수', '대상', '메모'],
-  '수입': ['항목', '금액', '메모'],
-  '비용': ['내용', '단가', '개수', '사용 출처', '처리', '메모'],
+  '수입': ['항목', '금액', '받는 사람', '보관', '메모'],
+  '비용': ['내용', '단가', '개수', '사용 출처', '부담', '처리', '메모'],
   '예외기록': ['날짜', '대상', '내용', '상태'],
   '설정': ['항목', '값', '설명'],
 };
 
 // 붙여넣는 원본 데이터 탭은 전부 '글자'로 저장해요. (환불계좌가 3.33E+12 처럼 깨지는 것 방지)
-const TEXT_TABS = ['선입금 리스트', '입금기록'];
+const TEXT_TABS = ['선입금 리스트', '입금기록', 'PPPP 선입금'];
 
 const DEFAULT_SETTINGS = [
   ['엽서북 가격', 20000, '선입금 1권 가격'],
@@ -131,7 +132,7 @@ function renameEdition_(id, name) {
 
 // 탭이 없으면 만들어요. 사이트에서 처음 부를 때도 알아서 해요.
 function ensureTabs_() {
-  const cache = CacheService.getScriptCache(), ck = 'tabs-ok4:' + book_().getId();
+  const cache = CacheService.getScriptCache(), ck = 'tabs-ok5:' + book_().getId();
   if (cache.get(ck)) return;
   const ss = book_();
   // 비용 탭 열 이름 바꾸기: 항목 → 내용, 출금자 → 사용 출처
@@ -148,6 +149,12 @@ function ensureTabs_() {
       sh.setFrozenRows(1);
     }
     if (TEXT_TABS.includes(name)) sh.getRange('A:AZ').setNumberFormat('@');
+    // 나중에 생긴 열은 끝에 붙여요 (붙여넣는 원본 탭은 빼고)
+    if (!TEXT_TABS.includes(name) && sh.getLastRow() > 0) {
+      const h = sh.getRange(1, 1, 1, Math.max(1, sh.getLastColumn())).getDisplayValues()[0];
+      const miss = header.filter(c => !h.includes(c) && !(c === '내용' && h.includes('항목')) && !(c === '사용 출처' && h.includes('출금자')));
+      if (miss.length) { sh.getRange(1, h.length + 1, 1, miss.length).setValues([miss]).setFontWeight('bold'); clearReadCache_(); }
+    }
   });
   const st = ss.getSheetByName('설정');
   if (st.getLastRow() <= 1) st.getRange(2, 1, DEFAULT_SETTINGS.length, 3).setValues(DEFAULT_SETTINGS);
@@ -203,7 +210,7 @@ function sample_(which) {
 
 // orders: 선입금 리스트 + 수동 주문 + 주문 처리 를 비워요 / deposits: 입금기록을 비워요 (첫 줄 제목은 남겨요)
 function reset_(which) {
-  const names = which === 'orders' ? ['선입금 리스트', '수동 주문', '주문 처리'] : which === 'deposits' ? ['입금기록', '출금 처리'] : null;
+  const names = which === 'orders' ? ['선입금 리스트', 'PPPP 선입금', '수동 주문', '주문 처리'] : which === 'deposits' ? ['입금기록', '출금 처리'] : null;
   if (!names) throw new Error('모르는 초기화예요: ' + which);
   names.forEach(n => { const sh = sheet_(n); if (sh.getLastRow() > 1) sh.deleteRows(2, sh.getLastRow() - 1); });
 }

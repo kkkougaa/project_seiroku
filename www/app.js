@@ -57,6 +57,13 @@ const ov = () => { D.ov = D.ov || { price: {}, stock: {} }; D.ov.r18 = D.ov.r18 
 const products = () => { const o = ov(); return B().products.map(p => ({ ...p, price: o.price[p.id] ?? p.price, stock: o.stock[p.id] ?? p.stock, r18: o.r18[p.id] ?? !!p.r18 })); };
 const sellable = () => products().filter(p => !p.preorderOnly);
 const prod = id => products().find(p => p.id === id);
+// 수익 받는 사람: 상품의 owner → 부스의 owner → 없으면 공동 수익('')
+const ownerOf = id => { const p = prod(id); return (p && p.owner) || CFG.booths[booth].owner || ''; };
+function ownerTotals(sales) {
+  const t = {};
+  for (const s of sales) for (const [k, q] of Object.entries(s.items)) { const o = ownerOf(k); t[o] = (t[o] || 0) + (prod(k)?.price || 0) * q; }
+  return t;
+}
 const units = p => (p && p.pool ? p.units || 1 : 1);
 const skey = p => (p.pool ? 'pool:' + p.pool : p.id);
 
@@ -511,7 +518,8 @@ function stockView() {
       <div class="box"><h2>현장 판매 기록</h2>${saleLog || '<p class="cap">없음</p>'}</div></div>
     <div class="side">
       <div class="box"><p class="cap">현장 매출</p><p class="money num">${won(cash + tr)}</p>
-        <div class="kv"><span>현금</span><b class="num">${won(cash)}</b></div><div class="kv"><span>계좌이체</span><b class="num">${won(tr)}</b></div><div class="kv"><span>판매 건수</span><b class="num">${live.length}건</b></div></div>
+        <div class="kv"><span>현금</span><b class="num">${won(cash)}</b></div><div class="kv"><span>계좌이체</span><b class="num">${won(tr)}</b></div><div class="kv"><span>판매 건수</span><b class="num">${live.length}건</b></div>
+        ${(() => { const t = ownerTotals(live), ks = Object.keys(t); return ks.some(Boolean) ? `<div class="kv" style="margin-top:8px;border-top:1px solid var(--line);padding-top:12px"><span>수익 나누기</span><b></b></div>${ks.sort().map(k => `<div class="kv"><span>${k ? esc(k) + ' 몫' : '공동'}</span><b class="num">${won(t[k])}</b></div>`).join('')}` : ''; })()}</div>
       <div class="box"><h2>현금 시재</h2>
         <div class="kv"><span>시작 현금</span><b class="num">${won(D.cashStart || 0)}</b></div>
         <div class="kv"><span>현금 매출</span><b class="num">+ ${won(cash)}</b></div>
@@ -932,13 +940,14 @@ function testCSV() {
 }
 
 function settlementCSV() {
-  const rows = [['시각', '구분', '결제수단', '이름', '상품', '수량', '단가', '금액', '상태', '종류', '메모']];
+  const rows = [['시각', '구분', '결제수단', '이름', '상품', '수량', '단가', '금액', '상태', '종류', '메모', '수익']];
+  const who = k => ownerOf(k) || '공동';
   for (const s of D.sales) for (const [k, q] of Object.entries(s.items)) {
-    const p = prod(k); rows.push([mdhm(s.ts), '현장 판매', mLabel(s), '', p?.name || k, q, p?.price || 0, (p?.price || 0) * q, s.canceled ? '취소' : '완료', '', '']);
+    const p = prod(k); rows.push([mdhm(s.ts), '현장 판매', mLabel(s), '', p?.name || k, q, p?.price || 0, (p?.price || 0) * q, s.canceled ? '취소' : '완료', '', '', who(k)]);
   }
   for (const pr of D.preorders) for (const [k, q] of Object.entries(giftOf(pr))) rows.push([pr.at ? mdhm(pr.at) : '', '선입금 사은품', '', pr.name, prod(k)?.name || k, q, 0, 0, pr.at ? '전달' : '미수령', '', pr.no || '']);
   for (const pr of D.preorders) for (const [k, q] of Object.entries(pr.items)) {
-    const p = prod(k); rows.push([pr.at ? mdhm(pr.at) : '', '선입금', '선입금', pr.name, p?.name || k, q, p?.price || 0, (p?.price || 0) * q, pr.at ? '전달' : '미수령', pr.vars && pr.vars[k] ? varPlain(pr.vars[k]) : '', pr.no || '']);
+    const p = prod(k); rows.push([pr.at ? mdhm(pr.at) : '', '선입금', '선입금', pr.name, p?.name || k, q, p?.price || 0, (p?.price || 0) * q, pr.at ? '전달' : '미수령', pr.vars && pr.vars[k] ? varPlain(pr.vars[k]) : '', pr.no || '', who(k)]);
   }
   for (const f of fails()) for (const [k, q] of Object.entries(f.items)) rows.push([mdhm(f.ts), '선입금 미전달', '', f.name, prod(k)?.name || k, q, '', '', f.canceled ? '취소' : '반영', f.vars && f.vars[k] ? varPlain(f.vars[k]) : '', f.reason + (f.memo ? ' / ' + f.memo : '')]);
   for (const a of D.adj) rows.push([mdhm(a.ts), '재고 조정', '', '', keyInfo(a.id).name, -a.q, '', '', a.canceled ? '취소' : '반영', '', a.reason + (a.memo ? ' / ' + a.memo : '')]);

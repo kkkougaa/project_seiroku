@@ -14,6 +14,7 @@
 //    preorderOnly  선입금 전용 (판매 화면에 안 보여요)
 //    noPreorder    선입금이 없는 상품 (상품 카드에 선입금 잔여 칸을 안 보여줘요)
 //    variants  종류 목록 (족자봉 A~Y)
+//    owner     수익을 전부 가져가는 사람 (없으면 부스의 owner, 그것도 없으면 공동 수익)
 //    r18       true면 받기를 누를 때 '성인 인증 팔찌 확인' 경고가 떠요
 //
 //  파일을 고친 뒤에는 sw.js의 VERSION 숫자를 하나 올려 주세요.
@@ -42,10 +43,10 @@ self.BOOTH_CONFIG = {
     },
     B: {
       name: 'PPPP2',
+      owner: '잏엫', // 이 부스 수익(선입금 + 현장 판매)은 전부 잏엫 몫
       account: { bank: '은행 이름', number: '계좌번호를 넣어 주세요', owner: '예금주' },
       products: [
-        { id: 'pppp2', name: 'PPPP2', r18: true, price: 15000, stock: 300, image: 'images/pppp2.jpg' },
-        { id: 'dakimakura', name: '쿠로쿠모 다키마쿠라', price: 100000, stock: 50, image: 'images/dakimakura.jpg' },
+        { id: 'pppp2', name: 'PPPP2', r18: true, price: 12000, stock: TODO, image: 'images/pppp2.jpg' }, // 수량 미정
       ],
     },
   },

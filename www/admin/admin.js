@@ -155,6 +155,22 @@ const ORDER_FIELDS = [
   ['method', '배송방법', 'E'], ['ship', '배송비', 'F'], ['status', '진행 상태', 'AA'], ['id', '주문번호', ''],
 ];
 const ORDER_COLS_KEY = '선입금 열';
+// ---------- PPPP 선입금 (구글폼, 'PPPP 선입금' 탭) ----------
+//  구글폼 응답을 그대로 붙여넣어요. 열 제목으로 알아서 찾고, 설정 'PPPP 열'(예: 수량=E)이 있으면 그걸 따라요.
+const PPPP_TAB = 'PPPP 선입금';
+const PPPP_COLS_KEY = 'PPPP 열';
+const PPPP_FIELDS = [
+  ['ts', '타임스탬프', /타임스탬프|timestamp|제출/i], ['nick', '닉네임', /닉네임|트위터|트윗|x\s*아이디|계정/i],
+  ['name', '이름', /^(?!.*(입금|예금|수령)).*(성함|이름|성명)/], ['payer', '입금자명', /입금자|예금주/], ['phone', '연락처', /연락처|전화|휴대폰|핸드폰/],
+  ['qty', '수량', /수량|권수|부수|몇\s*권|구매.*수|pppp/i], ['total', '금액', /금액|입금액|합계/], ['method', '수령 방법', /수령|배송/], ['memo', '메모', /메모|요청|문의|하고\s*싶은/],
+];
+function ppppCols(header) {
+  const row = T('설정').rows.find(r => r.get('항목') === PPPP_COLS_KEY), saved = {};
+  if (row) row.get('값').split(',').forEach(x => { const [k, v = ''] = x.split('='); saved[k.trim()] = v.trim(); });
+  const h = (header || []).map(x => String(x).trim()), out = {};
+  for (const [k, label, re] of PPPP_FIELDS) out[k] = label in saved ? colNo(saved[label]) : h.findIndex(x => re.test(x));
+  return out;
+}
 const colNo = s => { s = String(s ?? '').trim().toUpperCase(); if (!/^[A-Z]{1,2}$/.test(s)) return -1; let n = 0; for (const ch of s) n = n * 26 + ch.charCodeAt(0) - 64; return n - 1; };
 const colName = i => i < 0 ? '' : (i >= 26 ? String.fromCharCode(64 + Math.floor(i / 26)) : '') + String.fromCharCode(65 + i % 26);
 function orderCols() {
@@ -362,11 +378,31 @@ function build() {
   const bankWalk = walks.reduce((best, w) => (w.bad.length < best.bad.length ? w : best));
   // 맞는 순서를 못 찾았으면(절반 넘게 틀림) 입금/출금은 글자 그대로 둬요
   if (bankWalk.checked && bankWalk.bad.length * 2 < bankWalk.checked) bankWalk.types.forEach((t, d) => { d.type = t; });
+  // 직접 추가한 입금·출금을 통장 내역과 대조해요: 같은 입금/출금, 같은 금액, 이름이 같거나 비슷하고, 날짜가 3일 안이면 같은 거래예요.
+  //  찾으면 직접 추가한 기록은 빼고 통장 쪽 거래를 써요 (두 번 세지 않게). 그 기록에 걸었던 주문 연결·출금 분류는 통장 거래로 옮겨가요.
+  const recon = { matched: [], pending: [] };
+  {
+    const dayOf = d => Math.floor(tkey(d) / 86400);
+    const lastStmtDay = Math.max(-Infinity, ...stmtRows.map(dayOf));
+    const takenS = new Set();
+    deposits.filter(d => d.bank === MANUAL_BANK).forEach(mr => {
+      const w = normName(mr.who), md = dayOf(mr);
+      const near = stmtRows.filter(x => !takenS.has(x) && x.type === mr.type && x.amt === mr.amt && Math.abs(dayOf(x) - md) <= 3);
+      const nm = x => { const v = normName(x.who); return v === w ? 2 : (w.length >= 2 && v.length >= 2 && (v.includes(w) || w.includes(v))) ? 1 : 0; };
+      const hit = near.filter(x => nm(x) > 0).sort((a, b) => (nm(b) - nm(a)) || (Math.abs(dayOf(a) - md) - Math.abs(dayOf(b) - md)))[0];
+      if (hit) { takenS.add(hit); recon.matched.push({ m: mr, s: hit }); }
+      else recon.pending.push({ m: mr, covered: md <= lastStmtDay, cands: near });
+    });
+    const gone = new Set(recon.matched.map(x => x.m));
+    for (let i = deposits.length - 1; i >= 0; i--) if (gone.has(deposits[i])) deposits.splice(i, 1);
+  }
   const depByKey = {}; deposits.forEach(d => { depByKey[d.key] = d; });
+  recon.matched.forEach(({ m: mr, s: sr }) => { depByKey[mr.key] = sr; }); // 예전 연결이 통장 거래를 가리키게
   // 출금 처리: 출금마다 환불 / 비용 / 기타 로 분류하고, 환불이면 어느 주문인지 적어요
   const wdProc = {};
   for (const r of T('출금 처리').rows) if (r.get('출금 키')) wdProc[r.get('출금 키')] = { row: r.row, kind: r.get('구분'), order: r.get('주문번호'), memo: r.get('메모') };
   const withdrawals = deposits.filter(d => d.type !== '입금');
+  recon.matched.forEach(({ m: mr, s: sr }) => { if (!wdProc[sr.key] && wdProc[mr.key]) wdProc[sr.key] = wdProc[mr.key]; });
   withdrawals.forEach(d => { d.wp = wdProc[d.key] || null; });
 
   // 주문
@@ -415,6 +451,29 @@ function build() {
     });
   });
 
+  // PPPP 선입금 (구글폼). 수익은 전부 'PPPP2 수익' 사람 몫이에요.
+  const ppppPrice = toNum(cfg['PPPP2 가격']) || 12000, ppppOwner = (cfg['PPPP2 수익'] || '잏엫').trim();
+  { const t = T(PPPP_TAB), pc = ppppCols(t.header), seenP = {};
+    t.rows.forEach(r => {
+      const g = k => pc[k] >= 0 ? String(r.raw[pc[k]] ?? '').trim() : '';
+      if (!g('ts') && !g('name') && !g('nick') && !g('payer')) return;
+      // 번호: 제출 시각을 숫자로 (오후 4:11 / 16:11 / 4:11 PM 어떻게 적혀도 같은 번호)
+      const tn = (g('ts').match(/\d+/g) || []).map(Number);
+      if (tn.length >= 5 && /오후|PM/i.test(g('ts')) && tn[3] < 12) tn[3] += 12;
+      if (tn.length >= 5 && /오전|AM/i.test(g('ts')) && tn[3] === 12) tn[3] = 0;
+      let id = tn.length >= 5 ? 'P' + tn.slice(0, 6).map((x, i) => i ? String(x).padStart(2, '0') : String(x)).join('') : 'P#' + r.row;
+      if (seenP[id]) id += '-' + (++seenP[id]); else seenP[id] = 1;
+      const p = proc[id] || {};
+      const n = pc.qty >= 0 ? toNum(g('qty')) : 1;
+      const expect = n * ppppPrice;
+      orders.push({
+        row: r.row, r, id, baseId: id, num: 'P', kind: 'pppp', owner: ppppOwner, pppp: n, nick: g('nick'), name: g('name') || g('nick'), payer: g('payer') || g('name'), recv: g('name'),
+        phone: g('phone'), books: 0, qty: 0, text: '', parsed: {}, fixed: null, jk: {}, jCount: 0, jState: 'none', bad: [],
+        total: pc.total >= 0 && toNum(g('total')) ? toNum(g('total')) : expect, expect, ship: 0, method: g('method'), formStatus: '', proc: p, pay: null, dep: null, deps: [], depSum: 0, cand: null, at: g('ts'),
+      });
+    });
+  }
+
   // 폼 진행 상태가 '자동주문취소', '환불완료'면 취소한 주문이에요. (사이트에서 입금 처리를 따로 골랐으면 그쪽을 따라요)
   const formCancel = o => !o.proc.pay && (o.formStatus.includes('취소') || o.formStatus.includes('환불완료'));
   // 합친 주문: 주문 처리의 '합침'에 적힌 주문으로 수량·금액을 더하고, 목록에서는 빼요 (원본 시트는 그대로예요)
@@ -455,7 +514,7 @@ function build() {
     if (pay === '취소' || formCancel(o)) { o.pay = 'cancel'; continue; }
     const keys = String(o.proc.dep || '').split('\n').filter(k => depByKey[k]);
     if (keys.length) {
-      o.deps = keys.map(k => depByKey[k]); o.deps.forEach(d => { d.order = o; used.add(d.key); });
+      o.deps = [...new Set(keys.map(k => depByKey[k]))]; o.deps.forEach(d => { d.order = o; used.add(d.key); });
       o.dep = o.deps[0]; o.depSum = o.deps.reduce((a, d) => a + d.amt, 0);
       if (o.formStatus === '결제완료' && pay !== '미입금') { o.pay = 'form'; continue; } // 폼 결제 + 추가 입금(추가 구매)
       // 환불한 돈은 빼고 맞춰봐요 (더 받아서 돌려준 경우)
@@ -509,19 +568,21 @@ function build() {
   const live = orders.filter(o => o.pay !== 'cancel');
   // 신청서만 보고 잡는 문제 (입금 내역이 없어도 잡아요)
   const digits = o => String(o.phone).replace(/\D/g, '').replace(/^82/, '0');
-  const byPhone = {}; live.forEach(o => { const d = digits(o); if (d.length >= 8) (byPhone[d] = byPhone[d] || []).push(o); });
+  const byPhone = {}; live.forEach(o => { const d = digits(o); if (d.length >= 8) (byPhone[(o.kind || '') + d] = byPhone[(o.kind || '') + d] || []).push(o); });
   for (const o of orders) {
     const is = o.issues = [];
     if (o.pay === 'cancel') continue;
     const hasJ = o.qty > 0 || o.jCount > 0;
-    if (!o.books && !hasJ) is.push(['empty', '수량 없음', '엽서북도 족자봉도 0개예요']);
+    if (o.kind === 'pppp') {
+      if (!o.pppp) is.push(['empty', '수량 없음', 'PPPP2 수량이 0이에요']);
+    } else if (!o.books && !hasJ) is.push(['empty', '수량 없음', '엽서북도 족자봉도 0개예요']);
     if (!o.books && hasJ) is.push(['onlyJ', '족자봉만 주문', '엽서북을 1권 이상 사야 족자봉을 살 수 있어요']);
     if (o.qty > 0 && !o.fixed && !sumObj(o.parsed)) is.push(['noNum', '넘버 안 적음', `족자봉 ${o.qty}개를 주문했는데 넘버가 없어요`]);
     if (/국내\s*창고/.test(o.method)) is.push(['ship', '국내 창고 선택', `배송이 안 되는데 "${o.method}"을 골랐어요`]);
     else if (o.ship > 0) is.push(['ship', '배송비 있음', `배송이 안 되는데 배송비 ${won(o.ship)}이 붙었어요`]);
     const d = digits(o);
     if (!o.manualOrder && !/^01\d{8,9}$/.test(d)) is.push(['phone', '연락처 확인', d ? '휴대폰 번호 모양이 아니에요' : '연락처가 비어 있어요']);
-    const same = (byPhone[d] || []).filter(x => x !== o);
+    const same = (byPhone[(o.kind || '') + d] || []).filter(x => x !== o);
     if (same.length) is.push(['dup', '중복 의심', `같은 연락처 주문: ${same.map(x => x.num + '번').join(', ')}`]);
     o.dupIds = same.map(x => x.id);
   }
@@ -545,19 +606,34 @@ function build() {
   const cardExtra = extra.filter(e => e.kind === '포토카드').reduce((a, e) => a + e.n, 0);
 
   // 정산
-  const income = T('수입').rows.filter(r => r.get('항목') || r.get('금액')).map(r => ({ row: r.row, r, name: r.get('항목'), amt: toNum(r.get('금액')), memo: r.get('메모') }));
+  // 받는 사람: 비우면 공동. 보관: 그 돈이 공동 통장·현금에 있는지(공동), 받는 사람이 따로 갖고 있는지(본인)
+  const SHARED = v => !v || v === '공동';
+  const income = T('수입').rows.filter(r => r.get('항목') || r.get('금액')).map(r => {
+    const owner = SHARED(r.get('받는 사람')) ? '' : r.get('받는 사람');
+    return { row: r.row, r, name: r.get('항목'), amt: toNum(r.get('금액')), memo: r.get('메모'), owner, held: owner && r.get('보관') !== '공동' };
+  });
   const costs = T('비용').rows.filter(r => r.get('내용') || r.get('항목') || r.get('단가')).map(r => {
     const unit = toNum(r.get('단가')), n = r.get('개수') === '' ? 1 : toNum(r.get('개수'));
-    return { row: r.row, r, name: r.get('내용') || r.get('항목'), unit, n, amt: unit * n, who: r.get('사용 출처') || r.get('출금자') || '공금', done: r.get('처리') === '완료', memo: r.get('메모') };
+    return { row: r.row, r, name: r.get('내용') || r.get('항목'), unit, n, amt: unit * n, who: r.get('사용 출처') || r.get('출금자') || '공금', done: r.get('처리') === '완료', memo: r.get('메모'), burden: SHARED(r.get('부담')) ? '' : r.get('부담') };
   });
-  const preForm = paid.filter(o => o.pay === 'form').reduce((a, o) => a + o.total, 0);
-  const preBank = paid.reduce((a, o) => a + (o.pay === 'form' ? o.depSum : o.deps.length ? o.depSum : o.total), 0);
-  const refundSum = live.reduce((a, o) => a + o.refundSum, 0);
-  const incomeSum = preForm + preBank - refundSum + income.reduce((a, x) => a + x.amt, 0);
-  const costShared = costs.filter(c => c.amt > 0).reduce((a, c) => a + c.amt, 0);
-  // 개인 선정산: 개인이 낸 비용(+)과 개인이 공금에서 가져간 돈(-) 중 아직 처리 안 된 것
+  const sharedPaid = paid.filter(o => !o.owner);
+  const preForm = sharedPaid.filter(o => o.pay === 'form').reduce((a, o) => a + o.total, 0);
+  const preBank = sharedPaid.reduce((a, o) => a + (o.pay === 'form' ? o.depSum : o.deps.length ? o.depSum : o.total), 0);
+  const refundSum = live.filter(o => !o.owner).reduce((a, o) => a + o.refundSum, 0);
+  const incomeSum = preForm + preBank - refundSum + income.filter(x => !x.owner).reduce((a, x) => a + x.amt, 0);
+  const costShared = costs.filter(c => c.amt > 0 && !c.burden).reduce((a, c) => a + c.amt, 0);
+  // 개인 몫: PPPP2처럼 한 사람이 다 가져가는 수익. 공동 통장·현금에 들어온 건 분배 전에 떼서 그 사람에게 줘요.
+  //  그 사람이 부담할 비용을 공금이나 다른 사람이 냈으면 개인 몫에서 빼요. 본인이 따로 보관한 돈은 표시만 해요.
+  const own = {};
+  const ownOf = n => (own[n] = own[n] || { pre: 0, preCount: 0, inc: 0, cost: 0, held: 0, items: [] });
+  paid.filter(o => o.owner).forEach(o => { const x = ownOf(o.owner); x.pre += o.paidAmt; x.preCount++; });
+  income.filter(i => i.owner).forEach(i => { const x = ownOf(i.owner); if (i.held) x.held += i.amt; else x.inc += i.amt; x.items.push(i); });
+  costs.filter(c => c.burden && c.who !== c.burden).forEach(c => { ownOf(c.burden).cost += c.amt; });
+  Object.values(own).forEach(x => { x.net = x.pre + x.inc - x.cost; });
+  const ownSum = Object.values(own).reduce((a, x) => a + x.net, 0);
+  // 개인 선정산: 개인이 낸 비용(+)과 개인이 공금에서 가져간 돈(-) 중 아직 처리 안 된 것 (자기가 부담할 비용을 자기가 낸 건 빼요)
   const personal = {};
-  costs.filter(c => c.who !== '공금' && !c.done).forEach(c => { personal[c.who] = (personal[c.who] || 0) + c.amt; });
+  costs.filter(c => c.who !== '공금' && !c.done && c.burden !== c.who).forEach(c => { personal[c.who] = (personal[c.who] || 0) + c.amt; });
   const personalSum = Object.values(personal).reduce((a, b) => a + b, 0);
   const reserveAuto = costs.filter(c => c.who === '공금' && !c.done && c.amt > 0).reduce((a, c) => a + c.amt, 0);
   // 통장 흐름 (입금기록이 최신순이든 오래된순이든 상관없게 잔액으로 확인)
@@ -585,18 +661,19 @@ function build() {
   const cash = toNum(cfg['보유 현금']);
   const balanceIn = bankCheck && bankStart !== null ? bankCheck.end - bankStart + cash : null;
   const reserve = has('남겨둘 금액') ? toNum(cfg['남겨둘 금액']) : reserveAuto;
-  const pool = balanceIn === null ? null : balanceIn - reserve - personalSum;
+  const pool = balanceIn === null ? null : balanceIn - reserve - personalSum - ownSum;
   const wsum = ratios.reduce((a, x) => a + x.w, 0);
-  const people = [...new Set([...ratios.map(x => x.name), ...Object.keys(personal)])].map(name => {
+  const people = [...new Set([...ratios.map(x => x.name), ...Object.keys(personal), ...Object.keys(own)])].map(name => {
     const w = (ratios.find(x => x.name === name) || {}).w || 0;
     const share = pool === null || !wsum ? 0 : pool * w / wsum;
-    return { name, w, share, pre: personal[name] || 0, total: share + (personal[name] || 0) };
+    const mine = own[name] ? own[name].net : 0;
+    return { name, w, share, pre: personal[name] || 0, own: mine, held: own[name] ? own[name].held : 0, total: share + (personal[name] || 0) + mine };
   });
 
 
   return {
-    cfg, priceBook, priceJ, spareJ, bookPerAuthor, ratios, authors, confirmed, authorByNo, maxNo, orders, dupIds, posAlpha, live, paid, deposits, unusedDeps, withdrawals, refundSum,
-    extra, make, bookOrder, bookAuthor, bookExtra, cardOrder, cardExtra, income, costs, preForm, preBank, incomeSum, costShared, personal, personalSum, reserve, reserveAuto,
+    cfg, priceBook, priceJ, ppppPrice, ppppOwner, spareJ, bookPerAuthor, ratios, authors, confirmed, authorByNo, maxNo, orders, dupIds, posAlpha, live, paid, deposits, unusedDeps, withdrawals, refundSum, recon,
+    extra, make, bookOrder, bookAuthor, bookExtra, cardOrder, cardExtra, income, costs, preForm, preBank, incomeSum, costShared, own, ownSum, personal, personalSum, reserve, reserveAuto,
     balanceIn, bankStart, bankStartAuto, cash, pool, people, wsum, dIn, dOut, bankCheck,
   };
 }
@@ -625,6 +702,8 @@ function checks() {
   if (none.length) add('bad', `입금이 안 보이는 주문 ${none.length}건`, '통장 내역에 같은 이름의 입금이 없어요.', 'match');
   if (m.unusedDeps.length) add('warn', `주문과 연결 안 된 입금 ${m.unusedDeps.length}건`, '입금자명이 신청서 이름과 다를 수 있어요.', 'match');
   if (m.dupIds) add('bad', `순번이 겹치는 주문 ${m.dupIds}건`, '같은 순번이 두 번 나와서 "#3-2"처럼 따로 구분했어요. 순서가 바뀌면 입금 연결이 어긋날 수 있으니, 설정의 선입금 열에서 겹치지 않는 주문번호 열을 골라 주세요.', 'orders:dupnum');
+  const reconMiss = m.recon.pending.filter(x => x.covered);
+  if (reconMiss.length) add('warn', `통장 내역에서 못 찾은 직접 추가 기록 ${reconMiss.length}건`, '통장 내역 기간 안인데 같은 거래가 없어요. 이름·금액·날짜를 확인해 주세요. 이대로면 두 번 셀 수 있어요.', 'match');
   const wdNew = m.withdrawals.filter(d => !d.wp || !d.wp.kind);
   if (wdNew.length) add('warn', `분류 안 된 출금 ${wdNew.length}건`, '환불인지, 비용인지 입금 대조에서 표시해 주세요.', 'match');
   const jc = m.live.filter(o => o.jState === 'check');
@@ -804,7 +883,7 @@ const ORDER_FILTERS = [
   ['all', '전체', o => o.pay !== 'cancel'], ['check', '입금 확인 필요', o => ['diff', 'none', 'unpaid'].includes(o.pay)],
   ['issue', '문제 있음', o => o.issues.length > 0], ['jokja', '족자봉 확인', o => o.jState === 'check'], ['money', '금액 다름', o => o.amtWarn],
   ['paid', '입금 완료', o => ['form', 'auto', 'linked', 'manual'].includes(o.pay)], ['cancel', '취소', o => o.pay === 'cancel'],
-  ['dupnum', '순번 겹침', o => o.dupNum],
+  ['dupnum', '순번 겹침', o => o.dupNum], ['pppp', 'PPPP2', o => o.kind === 'pppp' && o.pay !== 'cancel'],
 ];
 function viewOrders() {
   const m = M();
@@ -814,11 +893,11 @@ function viewOrders() {
   if (q) list = list.filter(o => normName([o.nick, o.name, o.payer, o.recv, o.id, o.phone].join(' ')).includes(q) || String(o.phone).replace(/\D/g, '').endsWith(q));
   const rows = list.map(o => `<tr data-open="order:${esc(o.id)}"${o.pay === 'cancel' ? ' style="opacity:.45"' : ''}>
       <td class="num muted">${o.manualOrder ? '<span class="badge">직접</span>' : esc(o.num)}${o.dupNum ? `<div><span class="badge orange" title="순번이 겹쳐요">${esc(o.id)}</span></div>` : ''}</td><td><b>${esc(o.nick || o.name)}</b>${partsBadge(o)}<div class="muted" style="font-size:13px">${esc(o.name)}${o.payer && o.payer !== o.name ? ' · 입금 ' + esc(o.payer) : ''}</div>${o.issues.length ? `<div style="margin-top:4px">${issueBadges(o)}</div>` : ''}</td>
-      <td class="r num">${o.books || '-'}</td><td>${o.jCount ? `<b class="num">${o.jCount}개</b> ` : ''}${o.jCount || sumObj(o.jk) ? jokjaChips(o.jk) : '<span class="muted">-</span>'} ${jBadge(o)}</td>
+      <td class="r num">${o.books || '-'}</td><td>${o.kind === 'pppp' ? `<span class="badge blue">PPPP2 ${o.pppp}권</span> <span class="muted" style="font-size:13px">${esc(o.owner)} 몫</span>` : `${o.jCount ? `<b class="num">${o.jCount}개</b> ` : ''}${o.jCount || sumObj(o.jk) ? jokjaChips(o.jk) : '<span class="muted">-</span>'} ${jBadge(o)}`}</td>
       <td class="r num">${won(o.cmpAmt)}${o.amtWarn ? `<div style="font-size:12px;color:var(--orange)">계산 ${won(o.expect)}</div>` : ''}</td><td>${payBadge(o)}</td>
     </tr>`).join('');
-  return head('주문', '', `<button class="btn" data-act="exportPos">포스로 내보내기</button><button class="btn" data-act="orderCols">열 설정</button><button class="btn" data-act="newOrder">주문 직접 추가</button><button class="btn pri" data-act="paste" data-tab="선입금 리스트">선입금 데이터 넣기</button>`) +
-    `<div class="chips">${ORDER_FILTERS.filter(([k, , f]) => k !== 'dupnum' || m.orders.some(f) || st.orderFilter === k).map(([k, t, f]) => `<button class="chip" aria-pressed="${st.orderFilter === k}" data-seg="orderFilter:${k}">${t} <b>${m.orders.filter(f).length}</b></button>`).join('')}</div>
+  return head('주문', '', `<button class="btn" data-act="exportPos">포스로 내보내기</button><button class="btn" data-act="orderCols">열 설정</button><button class="btn" data-act="newOrder">주문 직접 추가</button><button class="btn" data-act="paste" data-tab="${PPPP_TAB}">PPPP 선입금 넣기</button><button class="btn pri" data-act="paste" data-tab="선입금 리스트">선입금 데이터 넣기</button>`) +
+    `<div class="chips">${ORDER_FILTERS.filter(([k, , f]) => !['dupnum', 'pppp'].includes(k) || m.orders.some(f) || st.orderFilter === k).map(([k, t, f]) => `<button class="chip" aria-pressed="${st.orderFilter === k}" data-seg="orderFilter:${k}">${t} <b>${m.orders.filter(f).length}</b></button>`).join('')}</div>
     <div class="tools"><input class="search" id="orderQ" placeholder="이름, 닉네임, 입금자명, 전화번호 뒷자리, 주문번호" value="${esc(st.orderQ)}"></div>
     <div class="tbl-wrap">${list.length ? `<table class="tbl"><thead><tr><th>번호</th><th>주문자</th><th class="r">엽서북</th><th>족자봉</th><th class="r">금액</th><th>입금</th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty">${m.orders.length ? '조건에 맞는 주문이 없어요' : '아직 선입금 데이터가 없어요. 오른쪽 위 버튼으로 넣어 주세요.'}</div>`}</div>`;
 }
@@ -846,6 +925,7 @@ function viewMatch() {
     <div class="card"><div class="card-h"><div><h2>주문과 연결 안 된 입금</h2></div></div>
       ${m.unusedDeps.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>입금 일시</th><th>입금자명</th><th class="r">금액</th><th>메모</th></tr></thead><tbody>${m.unusedDeps.map(d => `<tr data-open="dep:${esc(d.key)}"><td class="num muted">${esc(d.at)}</td><td><b>${esc(d.who)}</b></td><td class="r num">${won(d.amt)}</td><td class="muted">${esc(d.memo)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">남은 입금이 없어요</div>'}
     </div>
+    ${reconCard(m)}
     ${wdCard(m)}
     <div class="card"><div class="card-h"><div><h2>자동으로 연결된 입금</h2></div></div>
       ${auto.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>주문자</th><th>입금자명</th><th class="r">금액</th><th>방법</th></tr></thead><tbody>${auto.map(o => `<tr data-open="order:${esc(o.id)}"><td><b>${esc(o.payer || o.name)}</b> <span class="muted">${esc(o.nick)}</span></td><td>${o.deps.map(d => esc(d.who)).join(' + ')}</td><td class="r num">${won(o.depSum)}</td><td class="muted">${o.pay === 'linked' ? '손으로 연결' : esc(o.how)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">아직 없어요</div>'}
@@ -876,7 +956,12 @@ function viewMake() {
 function viewMoney() {
   const m = M();
   const incomeList = `<div class="kv"><span>선입금 · 폼 결제</span><b class="num">${won(m.preForm)}</b></div><div class="kv"><span>선입금 · 통장 입금 확인</span><b class="num">${won(m.preBank)}</b></div>${m.refundSum ? `<div class="kv minus"><span>환불</span><b class="num">${won(-m.refundSum)}</b></div>` : ''}` +
-    m.income.map(x => `<div class="kv"><span>${esc(x.name)}</span><b class="num">${won(x.amt)}</b></div>`).join('') + `<div class="kv total"><span>수입 합계</span><b class="num">${won(m.incomeSum)}</b></div>`;
+    m.income.filter(x => !x.owner).map(x => `<div class="kv"><span>${esc(x.name)}</span><b class="num">${won(x.amt)}</b></div>`).join('') + `<div class="kv total"><span>공동 수입 합계</span><b class="num">${won(m.incomeSum)}</b></div>`;
+  const ownList = Object.entries(m.own).map(([n, x]) => `<div class="kv"><span><b>${esc(n)} 몫</b></span><b class="num">${won(x.net)}</b></div>
+      ${x.preCount ? `<div class="kv sub"><span>PPPP2 선입금 ${x.preCount}건 (통장)</span><b class="num">${won(x.pre)}</b></div>` : ''}
+      ${x.items.map(i => `<div class="kv sub"><span>${esc(i.name)}${i.held ? ' · 본인 보관' : ''}</span><b class="num">${won(i.amt)}</b></div>`).join('')}
+      ${x.cost ? `<div class="kv sub minus"><span>${esc(n)} 부담 비용</span><b class="num">${won(-x.cost)}</b></div>` : ''}
+      ${x.held ? `<div class="kv sub"><span>그중 본인이 따로 보관한 돈은 분배에서 빼지 않아요</span><b></b></div>` : ''}`).join('');
   const dist = m.balanceIn === null
     ? `<div class="note warn"><b>통장 내역</b>을 넣으면 분배 금액을 계산해요.</div><button class="btn soft" data-go="match">입금 대조에서 넣기</button>`
     : `<div class="kv"><span>통장 마지막 잔액</span><b class="num">${won(m.bankCheck.end)}</b></div>
@@ -885,24 +970,26 @@ function viewMoney() {
        <div class="kv total"><span>정산할 돈</span><b class="num">${won(m.balanceIn)}</b></div>
        <div class="kv minus"><span>남겨둘 금액 ${m.cfg['남겨둘 금액'] ? '' : '(공금 미처리 비용)'}</span><b class="num">${won(-m.reserve)}</b></div>
        <div class="kv minus"><span>개인 선정산 합계</span><b class="num">${won(-m.personalSum)}</b></div>
+       ${m.ownSum ? `<div class="kv minus"><span>개인 몫 (${esc(Object.keys(m.own).join(', '))})</span><b class="num">${won(-m.ownSum)}</b></div>` : ''}
        <div class="kv total"><span>분배할 금액</span><b class="num">${won(m.pool)}</b></div>`;
   st.distHtml = `<h4 style="margin:4px 0 2px">분배</h4><p class="hint" style="margin:0 0 6px">${esc(m.ratios.map(r => r.name + ' ' + r.w).join(' : ') || '설정에서 분배 비율을 넣어 주세요')}</p>${dist}
-    <h4 style="margin:22px 0 2px">사람별 받을 돈</h4><p class="hint" style="margin:0 0 6px">분배 금액 + 개인 선정산</p>
-    ${m.people.length ? m.people.map(p => `<div class="kv"><span>${esc(p.name)}${p.w ? ` <span class="muted">(${p.w})</span>` : ''}</span><b class="num">${won(p.total)}</b></div><div class="kv sub"><span>분배 ${won(p.share)} · 선정산 ${won(p.pre)}</span><b></b></div>`).join('') : '<div class="empty">아직 없어요</div>'}`;
+    <h4 style="margin:22px 0 2px">사람별 받을 돈</h4><p class="hint" style="margin:0 0 6px">분배 금액 + 개인 선정산 + 개인 몫</p>
+    ${m.people.length ? m.people.map(p => `<div class="kv"><span>${esc(p.name)}${p.w ? ` <span class="muted">(${p.w})</span>` : ''}</span><b class="num">${won(p.total)}</b></div><div class="kv sub"><span>분배 ${won(p.share)} · 선정산 ${won(p.pre)}${p.own ? ` · 개인 몫 ${won(p.own)}` : ''}${p.held ? ` · 따로 보관 ${won(p.held)}` : ''}</span><b></b></div>`).join('') : '<div class="empty">아직 없어요</div>'}`;
   const nPre = Object.keys(m.personal).length;
   return head('정산', '', `${st.admin ? '<button class="btn soft" data-act="dist">분배 · 받을 돈 보기</button>' : ''}<button class="btn" data-act="newRow" data-tab="수입">수입 추가</button><button class="btn pri" data-act="newRow" data-tab="비용">비용 추가</button>`) +
     `<div class="grid2">
-      <div class="card"><h2>수입</h2>${incomeList}</div>
+      <div class="card"><h2>수입</h2>${incomeList}${ownList ? `<div style="margin-top:16px;padding-top:4px;border-top:1px solid var(--line)">${ownList}</div>` : ''}</div>
       <div class="card"><h2>비용</h2>
         <div class="kv"><span>공동 비용 합계</span><b class="num">${won(m.costShared)}</b></div>
+        ${Object.entries(m.own).filter(([, x]) => x.cost).map(([n, x]) => `<div class="kv"><span>${esc(n)} 부담 비용</span><b class="num">${won(x.cost)}</b></div>`).join('')}
         <div class="kv"><span>공금 미처리 비용</span><b class="num">${won(m.reserveAuto)}</b></div>
         <div class="kv"><span>개인 선정산 대상</span><b class="num">${nPre}명</b></div>
         <div class="kv" style="align-items:center"><span>보유 현금</span><b class="num">${m.cash ? won(m.cash) + ' ' : ''}<button class="btn sm" data-act="setting" data-key="${CASH[0]}">${m.cash ? '고치기' : '적기'}</button></b></div>
         ${st.admin ? '<button class="btn soft" data-act="dist" style="margin-top:12px">분배 · 받을 돈 보기</button>' : ''}
       </div>
     </div>
-    ${listCard('비용', '', [costCol('내용', '항목'), '단가', '개수', '금액', costCol('사용 출처', '출금자'), '처리', '메모'], { amount: true })}
-    ${listCard('수입', '', ['항목', '금액', '메모'])}
+    ${listCard('비용', '', [costCol('내용', '항목'), '단가', '개수', '금액', costCol('사용 출처', '출금자'), '부담', '처리', '메모'], { amount: true })}
+    ${listCard('수입', '', ['항목', '금액', '받는 사람', '보관', '메모'])}
     <div class="card"><h2>검증</h2>${checkList(checks())}</div>`;
 }
 
@@ -923,6 +1010,9 @@ const SETTINGS = [
   ['통장 시작 금액', '행사 전부터 통장에 있던 개인 돈. 정산할 때 빼요. 비워두면 통장 내역 첫 거래 직전 잔액'],
   ['남겨둘 금액', '분배하지 않고 남겨둘 돈. 비워두면 공금 미처리 비용 합계'],
   [ORDER_COLS_KEY, '선입금 리스트의 어느 열을 읽을지. 주문 탭 → 열 설정'],
+  ['PPPP2 가격', 'PPPP2 선입금 1권 가격. 비워두면 12000'],
+  ['PPPP2 수익', 'PPPP2 선입금·현장 판매 수익을 다 가져가는 사람. 비워두면 잏엫'],
+  [PPPP_COLS_KEY, 'PPPP 선입금(구글폼)의 어느 열을 읽을지. 비워두면 열 제목으로 알아서 찾아요. 예: 수량=E, 입금자명=D'],
 ];
 const CASH = ['보유 현금', '통장에 안 넣은 행사 현금. 정산할 돈에 더해요']; // 행사가 끝난 뒤 정산 탭에서 적어요
 const SETTINGS_OLD = ['현재 잔고 + 현금', CASH[0]]; // 안 쓰는 항목, 다른 화면에서 적는 항목은 설정 목록에서 숨겨요
@@ -969,7 +1059,7 @@ function viewSettings() {
       ${st.demo || useGoogle() ? '' : `<div class="card"><h2>동료에게 주기</h2><p class="sub">시트 메뉴 <b>관리 사이트 → 동료 추가</b>를 누르면 그 사람 전용 링크가 나와요. 링크를 한 번 열면 자동으로 연결되고, 누가 고쳤는지도 남아요. 한 명만 끊을 수도 있어요.</p>
         <div class="acts"><button class="btn soft" data-act="copyLink">내 연결 링크 복사</button></div><p class="hint" style="margin:8px 0 0">내 다른 기기(아이패드, 폰)에서 열 때 쓰세요. 이 링크는 내 키라서 남에게 주면 안 돼요.</p></div>`}
       <div class="card"><h2>원본 데이터 넣기</h2>
-        <div class="acts"><button class="btn soft" data-act="paste" data-tab="선입금 리스트">선입금 리스트</button><button class="btn soft" data-act="paste" data-tab="입금기록">입금기록</button></div></div>
+        <div class="acts"><button class="btn soft" data-act="paste" data-tab="선입금 리스트">선입금 리스트</button><button class="btn soft" data-act="paste" data-tab="입금기록">입금기록</button><button class="btn soft" data-act="paste" data-tab="${PPPP_TAB}">PPPP 선입금</button></div></div>
       <div class="card"><h2>테마</h2><div class="seg">${[['', '자동'], ['light', '밝게'], ['dark', '어둡게']].map(([k, t]) => `<button aria-selected="${(store.theme || '') === k}" data-theme-set="${k}">${t}</button>`).join('')}</div></div>
     </div></div>`;
 }
@@ -1009,6 +1099,8 @@ function listCard(tab, sub, cols, opt = {}) {
   const cell = (r, c) => {
     if (c === '금액' && opt.amount) { const u = toNum(r.get('단가')), n = r.get('개수') === '' ? 1 : toNum(r.get('개수')); return `<td class="r num">${won(u * n)}</td>`; }
     const v = r.get(c);
+    if (['부담', '받는 사람'].includes(c)) return `<td>${v && v !== '공동' ? `<span class="badge blue">${esc(v)}</span>` : '<span class="muted">공동</span>'}</td>`;
+    if (c === '보관') return `<td class="muted">${r.get('받는 사람') && r.get('받는 사람') !== '공동' ? esc(v || '본인') : ''}</td>`;
     if (c === '처리') return `<td><span class="badge ${v === '완료' ? 'green' : 'orange'}">${esc(v || '미완료')}</span></td>`;
     if (money(c)) return `<td class="r num">${v === '' ? '' : won(toNum(v))}</td>`;
     if (['개수', '넘버'].includes(c)) return `<td class="r num">${esc(v)}</td>`;
@@ -1040,14 +1132,19 @@ const SUGGEST = {
   '출금자': ['공금'], '처리': ['미완료', '완료'], '구분': ['족자봉', '엽서북', '포토카드'], '상태': ['확인 필요', '처리 완료'],
 };
 // 비용의 사용 출처: 공금 + 운영진 (분배 비율에 있는 이름도 자동으로 붙어요)
+// 예전 시트에 없을 수 있는 새 열
+const EXTRA_COLS = { '비용': ['부담'], '수입': ['받는 사람', '보관'] };
 function sources() { return [...new Set(['공금', '라굴', '하치', '잏엫', ...M().ratios.map(x => x.name)])]; }
 function rowForm(tab, rowNo) {
   const t = T(tab);
   const r = rowNo ? t.rows.find(x => x.row === rowNo) : null;
-  const cols = t.header.length ? t.header.filter(Boolean) : [];
+  const base = t.header.length ? t.header.filter(Boolean) : [];
+  const cols = [...base, ...(EXTRA_COLS[tab] || []).filter(c => !base.includes(c))]; // 예전 시트에 없는 새 열도 보여줘요
+  const people = sources().filter(x => x !== '공금');
   const fields = cols.map((c, i) => {
-    const v = r ? String(r.raw[i] ?? '') : (c === 'No' && tab === '작가' ? '' : c === '처리' ? '미완료' : ['출금자', '사용 출처'].includes(c) ? '공금' : c === '개수' ? '1' : '');
-    const segOpts = tab === '비용' && ['사용 출처', '출금자'].includes(c) ? sources() : tab === '비용' && c === '처리' ? ['미완료', '완료'] : null;
+    const v = r ? String(r.raw[i] ?? '') : (c === 'No' && tab === '작가' ? '' : c === '처리' ? '미완료' : ['출금자', '사용 출처'].includes(c) ? '공금' : c === '개수' ? '1' : c === '보관' ? '본인' : ['부담', '받는 사람'].includes(c) ? '공동' : '');
+    const segOpts = tab === '비용' && ['사용 출처', '출금자'].includes(c) ? sources() : tab === '비용' && c === '처리' ? ['미완료', '완료']
+      : (tab === '비용' && c === '부담') || (tab === '수입' && c === '받는 사람') ? ['공동', ...people] : tab === '수입' && c === '보관' ? ['본인', '공동'] : null;
     if (segOpts) {
       const all = v && !segOpts.includes(v) ? [...segOpts, v] : segOpts;
       return `<div class="field"><label>${esc(c)}</label><input type="hidden" data-col="${esc(c)}" id="f${i}" value="${esc(v)}"><div class="seg segf">${all.map(o => `<button type="button" aria-selected="${o === v}" data-segf="f${i}" data-val="${esc(o)}">${esc(o)}</button>`).join('')}</div></div>`;
@@ -1059,7 +1156,8 @@ function rowForm(tab, rowNo) {
     return `<div class="field ${LONG.includes(c) ? 'full' : ''}"><label for="${id}">${esc(c)}</label>${input}</div>`;
   }).join('');
   const hint = tab === '작가' ? '<p class="hint">수락 여부를 "수락"으로 바꾸면 확정 작가에 들어가요. No는 족자봉 넘버예요. (1 = A, 2 = B …)</p>' :
-    tab === '비용' ? '<p class="hint">공금에서 개인 용도로 쓴 돈은 단가를 마이너스(-)로 적어요.</p>' :
+    tab === '비용' ? '<p class="hint">공금에서 개인 용도로 쓴 돈은 단가를 마이너스(-)로 적어요. PPPP2처럼 한 사람 몫 상품의 비용은 부담을 그 사람으로 골라요.</p>' :
+    tab === '수입' ? '<p class="hint">받는 사람이 공동이 아니면 그 사람 몫이에요. 보관: 그 돈을 본인이 따로 갖고 있으면 "본인", 공동 통장·현금에 넣었으면 "공동".</p>' :
     tab === '설정' ? '<p class="hint">분배 비율은 "이름 비율, 이름 비율" 형식이에요. 예: 잏엫 5, 하치 4, 라굴 1</p>' : '';
   const match = r ? { [cols[0]]: String(r.raw[0] ?? '') } : null;
   openModal({
@@ -1113,8 +1211,8 @@ function orderModal(id) {
         <h4 style="margin:4px 0 6px">입금</h4>
         <div class="kv"><span>지금 상태</span><b>${payBadge(o)}</b></div>
         <h4 style="margin:14px 0 4px">금액 확인</h4>
-        <div class="kv sub"><span>엽서북 ${o.books}권 × ${won(m.priceBook)}</span><b class="num">${won(o.books * m.priceBook)}</b></div>
-        <div class="kv sub"><span>족자봉 ${o.jCount}개 × ${won(m.priceJ)}</span><b class="num">${won(o.jCount * m.priceJ)}</b></div>
+        ${o.kind === 'pppp' ? `<div class="kv sub"><span>PPPP2 ${o.pppp}권 × ${won(m.ppppPrice)} · ${esc(o.owner)} 몫</span><b class="num">${won(o.pppp * m.ppppPrice)}</b></div>` : `<div class="kv sub"><span>엽서북 ${o.books}권 × ${won(m.priceBook)}</span><b class="num">${won(o.books * m.priceBook)}</b></div>
+        <div class="kv sub"><span>족자봉 ${o.jCount}개 × ${won(m.priceJ)}</span><b class="num">${won(o.jCount * m.priceJ)}</b></div>`}
         ${o.ship ? `<div class="kv sub"><span>배송비</span><b class="num">${won(o.ship)}</b></div>` : ''}
         <div class="kv"><span>실제 개수로 계산</span><b class="num">${won(o.expect)}</b></div>
         <div class="kv"><span>신청 금액</span><b class="num">${won(o.total)}</b></div>
@@ -1219,6 +1317,21 @@ function depModal(key) {
   });
   $('#dAdd').addEventListener('input', () => { const a = parseJokja($('#dAdd').value); $('#dAddH').textContent = sumObj(a) ? `족자봉 ${jokjaText(a)} (${sumObj(a)}개 · ${won(sumObj(a) * m.priceJ)})를 그 주문에 더해요` : ''; });
 }
+// ---------- 직접 추가한 기록 ↔ 통장 내역 ----------
+function reconCard(m) {
+  const { matched, pending } = m.recon;
+  if (!matched.length && !pending.length) return '';
+  const line = d => `${esc(d.at)} · <b>${esc(d.who)}</b> · ${d.type} ${won(d.amt)}`;
+  return `<div class="card"><div class="card-h"><div><h2>직접 추가한 기록 대조</h2><p class="sub" style="margin:2px 0 0">통장 내역에서 같은 거래를 찾으면 통장 쪽으로 합쳐요</p></div></div>
+    ${pending.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>직접 추가</th><th>상태</th><th>비슷한 통장 거래</th><th></th></tr></thead><tbody>${pending.map(({ m: d, covered, cands }) => `<tr>
+      <td>${line(d)}${d.memo ? `<div class="muted" style="font-size:13px">${esc(d.memo)}</div>` : ''}</td>
+      <td>${covered ? '<span class="badge orange">통장에 없음</span>' : '<span class="badge">통장 내역 기다리는 중</span>'}</td>
+      <td class="muted" style="font-size:13px">${cands.length ? cands.slice(0, 2).map(c => `${esc(c.who)} ${esc(c.at)}`).join('<br>') : '-'}</td>
+      <td class="r">${d.type === '입금' ? `<button class="btn sm" data-open="dep:${esc(d.key)}">보기</button>` : `<button class="btn sm" data-open="wd:${esc(d.key)}">보기</button>`}</td></tr>`).join('')}</tbody></table></div>` : ''}
+    ${matched.length ? `<details class="more" style="margin-top:10px"><summary>통장 거래와 합친 기록 ${matched.length}건</summary><div style="margin-top:8px">${matched.map(({ m: a, s: b }) => `<div class="kv sub"><span>${line(a)}<br>→ 통장 ${line(b)}</span><b><span class="badge green">합침</span></b></div>`).join('')}</div></details>` : ''}
+  </div>`;
+}
+
 // ---------- 출금 (환불 / 비용 / 기타) ----------
 const WD_KIND = { '환불': 'red', '비용': 'blue', '기타': '' };
 function wdCard(m) {
@@ -1327,6 +1440,7 @@ function linkDep(id, key, add = null) {
 const NEED = { '입금기록': ['적요', '거래 금액'] };
 // 선입금 리스트: 순번 열에 숫자가 처음 나오는 줄의 바로 윗줄이 제목 줄이에요. (열 제목 글자는 안 봐요)
 const headerRow = (tab, rows) => {
+  if (tab === PPPP_TAB) { const i = rows.findIndex(r => r.some(x => /타임스탬프|timestamp/i.test(String(x)))); return i >= 0 ? i : (rows.length ? 0 : -1); }
   if (tab !== '선입금 리스트') return rows.findIndex(r => NEED[tab].every(n => r.map(x => String(x).trim()).includes(n)));
   const c = orderCols().num, first = rows.findIndex(r => /^\d+$/.test(String(r[c] ?? '').trim()));
   return first > 0 ? first - 1 : -1;
@@ -1348,10 +1462,10 @@ function parseTable(text) {
   return rows.filter(r => r.some(x => String(x).trim() !== ''));
 }
 function pasteModal(tab) {
-  const need = NEED[tab] || [`${colName(orderCols().num)}열 순번`];
+  const need = tab === PPPP_TAB ? ['타임스탬프(첫 줄 제목)'] : NEED[tab] || [`${colName(orderCols().num)}열 순번`];
   openModal({
     title: `${tab} 넣기`, wide: true,
-    sub: tab === '입금기록' ? '은행 앱에서 받은 거래내역(엑셀)을 통째로 복사해서 붙여넣어요.' : '위치폼에서 받은 엑셀을 열고 전체 선택(⌘A) → 복사해서 붙여넣어요.',
+    sub: tab === PPPP_TAB ? '구글폼 응답 시트를 전체 선택(⌘A) → 복사해서 붙여넣어요. 다시 넣어도 입금 연결은 남아요.' : tab === '입금기록' ? '은행 앱에서 받은 거래내역(엑셀)을 통째로 복사해서 붙여넣어요.' : '위치폼에서 받은 엑셀을 열고 전체 선택(⌘A) → 복사해서 붙여넣어요.',
     body: `<div class="note"><b>${tab}</b> 탭 내용이 통째로 바뀌어요. 첫 줄 위에 제목 줄이 있어도 괜찮아요. 꼭 있어야 하는 열: ${need.map(n => `<code>${n}</code>`).join(' ')}</div>
       <textarea class="inp" id="pTxt" style="min-height:220px;font-size:13px" placeholder="여기에 붙여넣기"></textarea>
       <div class="acts" style="margin-top:10px"><button class="btn sm" data-act="pickFile">CSV 파일 고르기</button><span class="hint" id="pInfo"></span></div>`,
@@ -1448,7 +1562,7 @@ function posRows() {
   const letters = jp ? jp.variants : 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
   const useLetters = m.posAlpha;
   const over = [];
-  const rows = [['주문번호', '이름', '전화번호', '입금확인', '엽서북', '족자봉']];
+  const rows = [['주문번호', '이름', '전화번호', '입금확인', '엽서북', '족자봉', 'PPPP2']];
   for (const o of m.live) {
     const paid = ['form', 'auto', 'linked', 'manual'].includes(o.pay);
     const j = Object.keys(o.jk).map(Number).sort((a, b) => a - b).map(n => {
@@ -1456,7 +1570,7 @@ function posRows() {
       if (!L) over.push(n);
       return (L || String(n)) + (o.jk[n] > 1 ? '×' + o.jk[n] : '');
     }).join(', ');
-    rows.push([o.id, o.nick || o.name, o.phone, paid ? 'O' : '', o.books || '', j]);
+    rows.push([o.id, o.nick || o.name, o.phone, paid ? 'O' : '', o.books || '', j, o.pppp || '']);
   }
   return { rows, over: [...new Set(over)], letters, useLetters, paid: rows.filter(r => r[3] === 'O').length };
 }
