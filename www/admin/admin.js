@@ -1563,7 +1563,7 @@ function posRows() {
   // 포스의 족자봉 종류가 숫자(1, 2, 3 …)면 숫자로, 알파벳이면 설정 '포스 족자봉 표기'를 따라요
   const useLetters = m.posAlpha && letters.every(x => /^[A-Za-z]$/.test(x));
   const over = [];
-  const rows = [['주문번호', '이름', '전화번호', '입금확인', '엽서북', '족자봉', 'PPPP2']];
+  const rows = [['주문번호', '이름', '본명', '입금자명', '전화번호', '입금확인', '엽서북', '족자봉', 'PPPP2']];
   for (const o of m.live) {
     const paid = ['form', 'auto', 'linked', 'manual'].includes(o.pay);
     const j = Object.keys(o.jk).map(Number).sort((a, b) => a - b).map(n => {
@@ -1571,20 +1571,20 @@ function posRows() {
       if (!L) over.push(n);
       return (L || String(n)) + (o.jk[n] > 1 ? '×' + o.jk[n] : '');
     }).join(', ');
-    rows.push([o.id, o.nick || o.name, o.phone, paid ? 'O' : '', o.books || '', j, o.pppp || '']);
+    rows.push([o.id, o.nick || o.name, o.name, o.payer, o.phone, paid ? 'O' : '', o.books || '', j, o.pppp || '']);
   }
-  return { rows, over: [...new Set(over)], letters, useLetters, paid: rows.filter(r => r[3] === 'O').length };
+  return { rows, over: [...new Set(over)], letters, useLetters, paid: rows.filter(r => r[5] === 'O').length };
 }
 const POS_HANDOFF = 'booth-pos-handoff';
 function posModal() {
   const x = posRows(), n = x.rows.length - 1;
-  const sample = x.rows.slice(1).find(r => r[5]);
+  const sample = x.rows.slice(1).find(r => r[7]);
   openModal({
     title: '포스로 내보내기', sub: '입금 확인된 사람만 포스에서 수령할 수 있어요. 미입금은 명단에는 들어가지만 포스가 걸러내요.',
     body: `<div class="kv"><span>명단</span><b class="num">${cnt(n)}명</b></div>
       <div class="kv"><span>입금 확인</span><b class="num">${cnt(x.paid)}명</b></div>
       <div class="kv"><span>족자봉 표기</span><b>${x.useLetters ? `알파벳 (1→A … ${x.letters.length}→${x.letters[x.letters.length - 1]})` : '숫자'}</b></div>
-      ${sample ? `<div class="kv sub"><span>예: ${esc(sample[1])} → ${esc(sample[5])}</span><b></b></div>` : ''}
+      ${sample ? `<div class="kv sub"><span>예: ${esc(sample[1])} → ${esc(sample[7])}</span><b></b></div>` : ''}
       ${x.over.length ? `<div class="note warn"><b>넘버 ${x.over.join(', ')}번</b>은 포스 족자봉 종류(${x.letters.length}개, A~${x.letters[x.letters.length - 1]})에 없어서 포스가 개수를 잘못 셀 수 있어요. 포스 config.js의 족자봉 종류를 늘리거나, 해당 주문의 족자봉 넘버를 고친 뒤 보내 주세요.</div>` : ''}
       <div class="note" style="margin-top:12px"><b>이 기기 포스로 보내기</b>: 이 브라우저(같은 홈 화면 앱)에 열린 포스가 바로 받아요. 포스 설정 → 선입금 명단 → <b>관리 사이트에서 받기</b>를 누르면 돼요.<br><b>CSV 받기</b>: 다른 기기 포스는 파일을 옮겨서 CSV 파일 불러오기로 넣어요.</div>`,
     foot: `<span class="sp"></span><button class="btn" data-act="posCsv">CSV 받기</button><button class="btn pri" data-act="posSend">이 기기 포스로 보내기</button>`,

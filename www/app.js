@@ -430,9 +430,12 @@ function lastRecv() {
 function nameRows() {
   const q = nq.trim(); if (!q) return '';
   const qc = cho(q);
-  const rows = D.preorders.filter(p => p.name.includes(q) || cho(p.name).includes(qc)).slice(0, 12);
+  // 닉네임에 더해 본명·입금자명(p.alt)으로도 찾아요. 초성 검색도 돼요
+  const names = p => [p.name, ...(p.alt || [])];
+  const onlyCho = /^[ㄱ-ㅎ]+$/.test(q.replace(/\s/g, '')); // "ㅎㅈㅅ" 처럼 초성만 쳤을 때만 초성으로 찾아요
+  const rows = D.preorders.filter(p => names(p).some(n => n.includes(q) || (onlyCho && cho(n).includes(qc)))).slice(0, 12);
   if (!rows.length) return '<div class="empty"><b>검색 결과 없음</b></div>';
-  return rows.map(p => `<button class="row pick-row" data-pickname="${esc(p.key)}"><div class="l"><div class="t">${esc(p.name)} <span class="num l4">${esc(p.last4)}</span></div><div class="s">${p.at ? hhmm(p.at) + ' 수령' : '상품 ' + cnt(p.items) + '개'}</div></div><span class="chev">›</span></button>`).join('');
+  return rows.map(p => `<button class="row pick-row" data-pickname="${esc(p.key)}"><div class="l"><div class="t">${esc(p.name)} <span class="num l4">${esc(p.last4)}</span>${p.alt ? ` <span class="s" style="display:inline">${esc(p.alt.join(' · '))}</span>` : ''}</div><div class="s">${p.at ? hhmm(p.at) + ' 수령' : '상품 ' + cnt(p.items) + '개'}</div></div><span class="chev">›</span></button>`).join('');
 }
 function preDetail(p) {
   // 족자봉처럼 종류를 골라 챙겨야 하는 상품을 맨 위에 보여줘요
@@ -457,10 +460,10 @@ function preDetail(p) {
 function listRows() {
   const s = qs.trim().toLowerCase();
   const rows = D.preorders.filter(p => (lf === 'all' || (lf === 'wait' ? !p.at : !!p.at)) &&
-    (!s || p.name.toLowerCase().includes(s) || p.last4.includes(s) || (p.no || '').toLowerCase().includes(s)));
+    (!s || [p.name, ...(p.alt || [])].some(n => n.toLowerCase().includes(s) || (/^[ㄱ-ㅎ]+$/.test(s.replace(/\s/g, '')) && cho(n).includes(cho(s)))) || p.last4.includes(s) || (p.no || '').toLowerCase().includes(s)));
   if (!D.preorders.length) return `<div class="empty" style="padding:40px 0"><b>명단 없음</b></div>`;
   if (!rows.length) return `<div class="empty" style="padding:40px 0"><b>검색 결과 없음</b></div>`;
-  return rows.map(p => `<div class="sr"><div class="l"><div class="t">${esc(p.name)} <span class="num l4">${esc(p.last4)}</span></div>
+  return rows.map(p => `<div class="sr"><div class="l"><div class="t">${esc(p.name)} <span class="num l4">${esc(p.last4)}</span>${p.alt ? ` <span class="s" style="display:inline">${esc(p.alt.join(' · '))}</span>` : ''}</div>
     <div class="s num">${itemsText(allItems(p), p.vars)}</div></div>
     ${p.at ? `<span class="badge gray">${hhmm(p.at)} 수령</span>` : `<button class="mini" data-go="${esc(p.key)}">수령 처리</button>`}</div>`).join('');
 }
@@ -808,7 +811,9 @@ function parseCSV(text) {
 const norm = s => String(s).toLowerCase().replace(/[\s「」『』"'“”‘’()\[\]<>《》〈〉_\-·.,:!?！？]/g, '');
 const META = {
   no: ['주문번호', '번호', '신청번호', 'no', 'id', '주문id'],
-  name: ['이름', '닉네임', '성함', '성명', '입금자명', 'name'],
+  name: ['이름', '닉네임', 'name'],
+  real: ['본명', '실명', '성함', '성명', '주문자명', '주문자'], // 검색용 (본명)
+  payer: ['입금자명', '입금자', '예금주', '환불예금주'],     // 검색용 (입금자)
   phone: ['전화번호', '연락처', '휴대폰', '휴대폰번호', '핸드폰', '핸드폰번호', '휴대전화', 'phone', '전화'],
   paid: ['입금확인', '입금여부', '입금', '확인', 'paid'],
 };
@@ -853,7 +858,7 @@ function analyzeCSV(rows, file) {
     if (h) unknown.push(h);
   });
   const missingCols = [];
-  if (col.name === undefined) missingCols.push('이름');
+  if (col.name === undefined && col.real === undefined && col.payer === undefined) missingCols.push('이름');
   if (col.phone === undefined) missingCols.push('전화번호');
   const list = []; let unpaid = 0, noPhone = 0, unknownVar = 0;
   for (const r of body) {
@@ -874,9 +879,12 @@ function analyzeCSV(rows, file) {
     if (!cnt(items)) continue;
     const phone = String(r[col.phone] ?? '').replace(/\D/g, '');
     if (phone.length < 4) { noPhone++; continue; }
-    const name = String(r[col.name] ?? '').trim() || '(이름 없음)';
+    const cell = k => col[k] !== undefined ? String(r[col[k]] ?? '').trim() : '';
+    const name = cell('name') || cell('real') || cell('payer') || '(이름 없음)';
     const no = col.no !== undefined ? String(r[col.no] || '').trim() : '';
     const o = { key: no ? 'no:' + no : 'np:' + name + '|' + phone, no, name, last4: phone.slice(-4), items, at: null };
+    const alt = [...new Set([cell('real'), cell('payer')].filter(x => x && x !== name))];
+    if (alt.length) o.alt = alt; // 본명·입금자명으로도 찾을 수 있게
     if (Object.keys(vars).length) o.vars = vars;
     list.push(o);
   }
