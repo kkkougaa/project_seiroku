@@ -39,6 +39,8 @@ self.BOOTH_CONFIG = {
         { id: 'pc10', name: '랜덤 포토카드 10세트', price: 20000, // 임시: 1세트 가격 × 10
           pool: 'photocard', units: 10, badge: '10', image: 'images/photocard.jpg' },
         { id: 'jokja', name: '족자봉', price: 20000, preorderOnly: true, variants: 'ABCDEFGHIJKLMNOPQRSTUVWXY'.split('') },
+        // 하치 님 책: 현장 판매만, 수익은 전부 하치 몫. 이름(가제)·가격·수량 미정. id는 이름이 바뀌어도 그대로 둬요.
+        { id: 'hachibook', name: '녹스책', sub: '가제', price: TODO, stock: TODO, noPreorder: true, owner: '하치' },
       ],
     },
     B: {
