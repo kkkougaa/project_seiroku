@@ -66,7 +66,8 @@ header{display:flex;align-items:baseline;justify-content:space-between;gap:2vw;f
       html = '<p id="idle">족자봉 없음</p>';
     } else {
       for (const g of m.groups) {
-        const ent = Object.entries(g.vars).sort(([a], [b]) => (a === '?') - (b === '?') || a.localeCompare(b));
+        const isN = x => /^\d+$/.test(x);
+        const ent = Object.entries(g.vars).sort(([a], [b]) => (a === '?') - (b === '?') || (isN(a) && isN(b) ? a - b : a.localeCompare(b))); // 숫자 넘버는 1, 2, 10 순서로
         ent.forEach(e => tiles.push(e));
         html += `<div class="grp">${m.groups.length > 1 ? `<h2>${esc(g.name)}</h2>` : ''}<div class="tiles">${ent.map(([L, q]) =>
           L === '?' ? `<div class="t q">종류<br>미정${q > 1 ? ` ×${q}` : ''}</div>` : `<div class="t">${esc(L)}${q > 1 ? `<small>×${q}</small>` : ''}</div>`).join('')}</div></div>`;

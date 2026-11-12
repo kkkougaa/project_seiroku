@@ -95,9 +95,12 @@ function giftRule() {
   const g = D && D.gift !== undefined ? D.gift : B().gift;
   return g && g.on !== false && g.give && (g.need || []).length && prod(g.give) ? g : null;
 }
+// per 가 있으면 그 상품 1개당 1개 (예: 족자봉 3개 → 포토카드 3세트), 없으면 1인당 1개
 function giftOf(p) {
   const g = giftRule(); if (!g) return {};
-  return g.need.every(id => (p.items[id] || 0) > 0) ? { [g.give]: 1 } : {};
+  if (!g.need.every(id => (p.items[id] || 0) > 0)) return {};
+  const q = g.per ? (p.items[g.per] || 0) : 1;
+  return q > 0 ? { [g.give]: q } : {};
 }
 const allKeys = p => [...new Set([...Object.keys(p.items), ...Object.keys(giftOf(p))])];
 const allItems = p => { const it = { ...p.items }; for (const [id, q] of Object.entries(giftOf(p))) it[id] = (it[id] || 0) + q; return it; };
@@ -613,7 +616,8 @@ function settingsView() {
       const n = D.preorders.filter(p => Object.keys(giftOf(p)).length).length;
       return `<div class="box"><div class="lhead"><h2>선입금 사은품</h2><button class="mini ${on ? '' : 'gray'}" data-act="giftToggle">${on ? '켜짐' : '꺼짐'}</button></div>
       <p class="lbl">이 상품을 모두 산 분께</p><div class="chips">${products().filter(p => p.id !== give).map(p => `<button class="${need.includes(p.id) ? 'on' : ''}" data-gneed="${esc(p.id)}">${esc(p.name)}</button>`).join('')}</div>
-      <p class="lbl">1인당 1개 증정</p><div class="chips">${sellable().filter(p => !need.includes(p.id)).map(p => `<button class="${give === p.id ? 'on' : ''}" data-ggive="${esc(p.id)}">${esc(p.name)}</button>`).join('')}</div>
+      <p class="lbl">증정 상품</p><div class="chips">${sellable().filter(p => !need.includes(p.id)).map(p => `<button class="${give === p.id ? 'on' : ''}" data-ggive="${esc(p.id)}">${esc(p.name)}</button>`).join('')}</div>
+      <p class="lbl">몇 개 줄까요</p><div class="chips"><button class="${!(g && g.per) ? 'on' : ''}" data-gper="">1인당 1개</button>${need.map(id => prod(id)).filter(Boolean).map(p => `<button class="${g && g.per === p.id ? 'on' : ''}" data-gper="${esc(p.id)}">${esc(p.name)} 1개당 1개</button>`).join('')}</div>
       ${on ? `<p class="cap num">지금 명단에서 ${n}명</p>` : ''}</div>`;
     })()}
     <div class="box"><h2>현금 시재</h2>
@@ -1046,7 +1050,7 @@ app.addEventListener('click', e => {
   const tb = g('[data-tab]'), md = g('[data-mode]'), k = g('[data-k]'), sl = g('[data-sel]'), add = g('[data-add]'), dec = g('[data-dec]'),
     m = g('[data-m]'), c = g('[data-cash]'), lfb = g('[data-lf]'), go = g('[data-go]'), ad = g('[data-adj]'), aq = g('[data-aq]'), rs = g('[data-rs]'),
     dir = g('[data-dir]'), un = g('[data-unadj]'), us = g('[data-unsale]'), apq = g('[data-apq]'), apv = g('[data-apv]'), apvc = g('[data-apvclr]'),
-    gneed = g('[data-gneed]'), ggive = g('[data-ggive]'),
+    gneed = g('[data-gneed]'), ggive = g('[data-ggive]'), gper = g('[data-gper]'),
     pedit = g('[data-pedit]'), pmove = g('[data-pmove]'), ptg = g('[data-ptg]'), ppool = g('[data-ppool]'),
     ug = g('[data-ungive]'), ap = g('[data-adjpick]'), pn = g('[data-pickname]'), sp = g('[data-split]'), fq = g('[data-fq]'), frs = g('[data-frs]'), uf = g('[data-unfail]');
   if (pn) { const p = D.preorders.find(x => x.key === pn.dataset.pickname); if (p) { selKey = p.key; digits = p.last4; nameMode = false; nq = ''; } }
@@ -1061,6 +1065,7 @@ app.addEventListener('click', e => {
   const giftCfg = () => (D.gift = D.gift !== undefined ? D.gift : JSON.parse(JSON.stringify(B().gift || { on: false, need: [], give: '' })));
   if (gneed) { const c = giftCfg(), id = gneed.dataset.gneed; c.need = c.need.includes(id) ? c.need.filter(x => x !== id) : [...c.need, id]; save(); }
   if (ggive) { const c = giftCfg(); c.give = c.give === ggive.dataset.ggive ? '' : ggive.dataset.ggive; save(); }
+  if (gper) { const c = giftCfg(); c.per = gper.dataset.gper; save(); }
   if (pedit) { openEditor(products().find(x => x.id === pedit.dataset.pedit)); }
   if (pmove) { const cat = ensureCatalog(), i = +pmove.dataset.pmove, j = i + (+pmove.dataset.d); if (j >= 0 && j < cat.products.length) { [cat.products[i], cat.products[j]] = [cat.products[j], cat.products[i]]; save(); } }
   if (ptg) { pe[ptg.dataset.ptg] = !pe[ptg.dataset.ptg]; if (ptg.dataset.ptg === 'preorderOnly' && pe.preorderOnly) { pe.pool = ''; pe.newPool = null; } }

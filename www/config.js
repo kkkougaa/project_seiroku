@@ -13,7 +13,7 @@
 //    units     pool 재고를 몇 개씩 쓰는지 (10세트 = 10)
 //    preorderOnly  선입금 전용 (판매 화면에 안 보여요)
 //    noPreorder    선입금이 없는 상품 (상품 카드에 선입금 잔여 칸을 안 보여줘요)
-//    variants  종류 목록 (족자봉 A~Y)
+//    variants  종류 목록 (족자봉 1~25)
 //    owner     수익을 전부 가져가는 사람 (없으면 부스의 owner, 그것도 없으면 공동 수익)
 //    r18       true면 받기를 누를 때 '성인 인증 팔찌 확인' 경고가 떠요
 //
@@ -26,8 +26,9 @@ self.BOOTH_CONFIG = {
     A: {
       name: '초건전회지위원회',
       account: { bank: '은행 이름', number: '계좌번호를 넣어 주세요', owner: '예금주' },
-      // 선입금 사은품: need 상품을 모두 산 분께 give 상품 1개 (1인당 1개). 설정에서 바꿀 수 있어요
-      gift: { on: true, need: ['postcardbook', 'jokja'], give: 'pc1' },
+      // 선입금 사은품: need 상품을 산 분께 give 상품을 줘요. per 가 있으면 그 상품 1개당 1개, 없으면 1인당 1개.
+      //  지금: 족자봉 1개당 랜덤 포토카드(카드팩) 1세트. 설정에서 바꿀 수 있어요
+      gift: { on: true, need: ['jokja'], give: 'pc1', per: 'jokja' },
       pools: {
         photocard: { name: '랜덤 포토카드', unit: '세트', stock: 500 }, // 1세트 기준 전체 수량
       },
@@ -38,7 +39,8 @@ self.BOOTH_CONFIG = {
           pool: 'photocard', units: 5, badge: '5', image: 'images/photocard.jpg' },
         { id: 'pc10', name: '랜덤 포토카드 10세트', price: 20000, // 임시: 1세트 가격 × 10
           pool: 'photocard', units: 10, badge: '10', image: 'images/photocard.jpg' },
-        { id: 'jokja', name: '족자봉', price: 20000, preorderOnly: true, variants: 'ABCDEFGHIJKLMNOPQRSTUVWXY'.split('') },
+        // 족자봉 넘버는 숫자(1~25, 작가 No와 같아요). 목록에 없는 넘버(26, 27 …)도 그대로 읽어요
+        { id: 'jokja', name: '족자봉', price: 20000, preorderOnly: true, variants: Array.from({ length: 25 }, (_, i) => String(i + 1)) },
         // 하치 님 책: 현장 판매만, 수익은 전부 하치 몫. 이름(가제)·가격·수량 미정. id는 이름이 바뀌어도 그대로 둬요.
         { id: 'hachibook', name: '녹스책', sub: '가제', price: TODO, stock: TODO, noPreorder: true, owner: '하치' },
       ],

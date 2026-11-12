@@ -1005,7 +1005,7 @@ const SETTINGS = [
   ['엽서북 가격', '선입금 1권 가격'], ['족자봉 가격', '선입금 1개 가격'],
   ['작가 여분 족자봉', '족자봉 넘버마다 작가 몫으로 더 만드는 개수'], ['작가 증정 엽서북', '확정 작가 1명당 엽서북 권수'],
   ['족자봉 표기', '족자봉 넘버를 숫자로 쓸지 A, B, C 로 쓸지. 비워두면 숫자', ['숫자', '알파벳']],
-  ['포스 족자봉 표기', '포스용 명단을 뽑을 때 1→A 로 바꿀지. 비워두면 알파벳', ['알파벳', '숫자']],
+  ['포스 족자봉 표기', '포스 족자봉 종류가 알파벳일 때만 써요. 지금 포스는 숫자라서 항상 숫자로 보내요', ['알파벳', '숫자']],
   ['분배 비율', '수익 분배. "이름 비율"을 쉼표로 구분. 예: 잏엫 5, 하치 4, 라굴 1'],
   ['통장 시작 금액', '행사 전부터 통장에 있던 개인 돈. 정산할 때 빼요. 비워두면 통장 내역 첫 거래 직전 잔액'],
   ['남겨둘 금액', '분배하지 않고 남겨둘 돈. 비워두면 공금 미처리 비용 합계'],
@@ -1556,11 +1556,12 @@ function download(name, rows) {
 }
 function posRows() {
   const m = M();
-  // 부스 포스(config.js)의 족자봉 종류 글자 (A~Y)
+  // 부스 포스(config.js)의 족자봉 종류 (지금은 숫자 1~25)
   const booths = (self.BOOTH_CONFIG && self.BOOTH_CONFIG.booths) || {};
   const jp = Object.values(booths).flatMap(b => b.products || []).find(p => p.variants);
   const letters = jp ? jp.variants : 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
-  const useLetters = m.posAlpha;
+  // 포스의 족자봉 종류가 숫자(1, 2, 3 …)면 숫자로, 알파벳이면 설정 '포스 족자봉 표기'를 따라요
+  const useLetters = m.posAlpha && letters.every(x => /^[A-Za-z]$/.test(x));
   const over = [];
   const rows = [['주문번호', '이름', '전화번호', '입금확인', '엽서북', '족자봉', 'PPPP2']];
   for (const o of m.live) {
