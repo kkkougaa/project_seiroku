@@ -12,6 +12,7 @@
 <style>
 @font-face { font-family: "Paperlogy"; font-weight: 600; font-display: block; src: url("paperlogy-600.woff2") format("woff2") }
 @font-face { font-family: "Paperlogy"; font-weight: 700; font-display: block; src: url("paperlogy-700.woff2") format("woff2") }
+@font-face { font-family: "Paperlogy"; font-weight: 900; font-display: block; src: url("paperlogy-900.woff2") format("woff2") }
 @font-face { font-family: "Pretendard"; font-weight: 100 900; font-display: block; src: url("../fonts/PretendardVariable.woff2") format("woff2-variations"), url("../fonts/PretendardVariable.woff2") format("woff2") }
 /* 레이아웃: 화면 가운데 아이패드 세로 비율(744:1133) 무대. 홈 = 카드팩, 판 = 20장, 당첨 = 포스터 한 장, 결과.
    크롬(버튼, 패널, 글자)은 잉크색 무채색으로 조용히, 색과 공은 카드팩과 당첨 카드에만. 서명 디테일 = 표지의 ㄱ자 가늠표와 가는 흰 원. */
@@ -38,7 +39,7 @@ button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px }
 .stage { position: relative; z-index: 1; width: min(100%, calc((100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) * 744 / 1133)); aspect-ratio: 744 / 1133; max-width: 100%;
   container-type: inline-size; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; isolation: isolate; touch-action: manipulation }
 .stage.shake { animation: shake .35s var(--ease) }
-@keyframes shake { 25% { transform: translate(-1cqw,.5cqw) } 50% { transform: translate(1cqw,-.5cqw) } 75% { transform: translate(-.4cqw,.2cqw) } }
+@keyframes shake { 25% { transform: translate(-.5cqw,.25cqw) } 50% { transform: translate(.5cqw,-.25cqw) } 75% { transform: translate(-.2cqw,.1cqw) } }
 .layer { position: absolute; inset: 0; display: flex; flex-direction: column }
 .layer[hidden] { display: none !important }
 
@@ -76,10 +77,8 @@ button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px }
 
 /* 홈: 카드팩 */
 #home { padding-bottom: 4cqw }
-.hero { flex: 1; display: grid; place-items: center; position: relative }
-.packwrap { position: relative; width: 46cqw }
-.float { animation: float 5s ease-in-out infinite }
-@keyframes float { 0%, 100% { transform: translateY(0) rotate(-1deg) } 50% { transform: translateY(-1.6cqw) rotate(1.2deg) } }
+.hero { flex: 1; display: grid; place-items: center; position: relative; perspective: 150cqw }
+.packwrap { position: relative; width: 46cqw; will-change: transform }
 .pack { position: relative; z-index: 2; border-radius: .8cqw; box-shadow: 0 4cqw 8cqw rgba(0,0,0,.55) }
 .seal { position: relative; overflow: hidden; color: var(--ink); line-height: 1; background: linear-gradient(180deg, #f6f1e7, #e7dfcf) }
 .seal::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(90deg, rgba(17,24,39,.05) 0 .2cqw, transparent .2cqw .7cqw) }
@@ -100,9 +99,15 @@ button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px }
 .pbody { position: relative; aspect-ratio: 3 / 4; background: var(--poster) center / cover; overflow: hidden }
 .pbody::after { content: ""; position: absolute; inset: 0; pointer-events: none;
   background: linear-gradient(90deg, rgba(0,0,0,.5), rgba(255,255,255,.12) 4%, transparent 12% 88%, rgba(255,255,255,.12) 96%, rgba(0,0,0,.5)), linear-gradient(180deg, rgba(0,0,0,.35), transparent 8% 92%, rgba(0,0,0,.35)) }
-.pbody .sheen { position: absolute; inset: 0; z-index: 2; mix-blend-mode: soft-light; pointer-events: none;
-  background: linear-gradient(115deg, transparent 38%, rgba(255,255,255,.8) 48%, transparent 58%); background-size: 300% 100%; animation: sheen 5s ease-in-out infinite }
-@keyframes sheen { 0%, 45% { background-position: 120% 0 } 80%, 100% { background-position: -20% 0 } }
+/* 홀로그램: 팩이 기운 각도(--hx 좌우, --hy 위아래)에 따라 무지개 띠와 반사광이 움직여요 */
+.pbody .holo { position: absolute; inset: 0; z-index: 2; pointer-events: none; mix-blend-mode: color-dodge; opacity: var(--ho, .3);
+  background:
+    repeating-linear-gradient(calc(45deg + var(--hx, 0) * 10deg), rgba(255,255,255,.07) 0 .3cqw, transparent .3cqw .9cqw),
+    linear-gradient(calc(115deg + var(--hx, 0) * 25deg), transparent 18%, rgba(255,110,190,.6) 30%, rgba(255,225,110,.6) 40%, rgba(110,255,190,.55) 50%, rgba(110,180,255,.6) 60%, rgba(190,130,255,.55) 70%, transparent 82%);
+  background-size: 100% 100%, 260% 260%;
+  background-position: 0 0, calc(50% + var(--hx, 0) * 55%) calc(50% + var(--hy, 0) * 55%) }
+.pbody .spec { position: absolute; inset: 0; z-index: 3; pointer-events: none; mix-blend-mode: soft-light;
+  background: radial-gradient(45% 32% at calc(50% - var(--hx, 0) * 45%) calc(38% - var(--hy, 0) * 40%), rgba(255,255,255,.75), transparent 70%) }
 .seal.bot { height: 7cqw; border-radius: 0 0 .8cqw .8cqw; display: flex; align-items: center; justify-content: space-between; gap: 1cqw; padding: 0 3cqw; font-family: var(--mono); font-size: 1.15cqw; line-height: 1.35; color: #3c4a57 }
 .seal.bot > span:last-of-type { text-align: right }
 .seal.bot .bar { width: 8cqw; height: 2.6cqw; background: repeating-linear-gradient(90deg, var(--ink) 0 .22cqw, transparent .22cqw .42cqw, var(--ink) .42cqw .85cqw, transparent .85cqw 1cqw) }
@@ -114,24 +119,24 @@ button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px }
 .panel { margin: 0 5cqw; display: grid; gap: 3cqw; transition: transform .35s var(--ease), opacity .25s }
 .row1 { display: grid; grid-template-columns: 12cqw 1fr 13cqw 13cqw; gap: 2cqw; align-items: stretch }
 .row1 .btn { height: 13cqw; padding: 0 }
-.row1 .x { display: grid; place-items: center; color: var(--fg2) }
+.row1 .x { display: grid; place-items: center; color: var(--fg) }
 .row1 .x svg { width: 4.6cqw; height: 4.6cqw }
 #home.opening .panel { transform: translateY(10cqw); opacity: 0; pointer-events: none }
 .step { display: grid; grid-template-columns: 12cqw 1fr 12cqw; align-items: center; height: 13cqw; background: var(--raised); border: 1px solid var(--hair); border-radius: 2.4cqw; overflow: hidden }
-.step button { height: 100%; border: 0; background: transparent; color: var(--fg2); display: grid; place-items: center; transition: background-color .15s }
+.step button { height: 100%; border: 0; background: transparent; color: var(--fg); display: grid; place-items: center; transition: background-color .15s }
 .step button:active { background: rgba(238,240,245,.06) }
 .step button svg { width: 5cqw; height: 5cqw }
 .step output { text-align: center; font-family: var(--title); font-weight: 600; font-size: 6.6cqw; line-height: 1; font-variant-numeric: tabular-nums; border-inline: 1px solid var(--hair); height: 100%; display: grid; place-items: center }
 .step output span { display: inline-flex; align-items: baseline; gap: 1cqw }
 .step output small { font-family: var(--body); font-size: 3.2cqw; font-weight: 500; color: var(--fg2) }
 .quick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2cqw }
-.btn { height: 11cqw; border-radius: 2.4cqw; border: 1px solid var(--hair2); background: var(--raised); font-weight: 500; font-size: 3.6cqw; color: var(--fg); box-shadow: inset 0 1px 0 rgba(255,255,255,.06); transition: background-color .15s, transform .1s var(--ease) }
+.btn { height: 11cqw; border-radius: 2.4cqw; border: 1px solid var(--hair2); background: var(--raised); font-family: var(--title); font-weight: 900; font-size: 4.8cqw; line-height: 1; color: var(--fg); box-shadow: inset 0 1px 0 rgba(255,255,255,.06); transition: background-color .15s, transform .1s var(--ease) }
 .btn:active { transform: scale(.98); background: #222836 }
 .btn.ghost { background: transparent; color: var(--fg2) }
-.btn.pri { border: 0; height: 14cqw; font-family: var(--title); letter-spacing: .02em; background: var(--paper); color: var(--ink); font-weight: 600; font-size: 4.2cqw; box-shadow: inset 0 -1px 0 rgba(0,0,0,.12) }
+.btn.pri { border: 0; height: 14cqw; font-family: var(--title); letter-spacing: .02em; background: var(--paper); color: var(--ink); font-weight: 900; font-size: 5.6cqw; box-shadow: inset 0 -1px 0 rgba(0,0,0,.12) }
 .btn.pri:active { background: #e4dccc }
 .btn[disabled] { opacity: .4; pointer-events: none }
-.btn .n { font-family: var(--mono); font-weight: 500; color: #5e554a; margin-left: 1.6cqw }
+.btn .n { font-family: var(--title); font-weight: 900; color: #8a7a63; margin-left: 1.6cqw }
 
 /* 카드 판 */
 #board { padding-bottom: 6cqw }
@@ -158,12 +163,33 @@ button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px }
 .foot .btn[hidden] { display: none }
 
 /* 당첨 공개: 카드 한 장을 똑바로, 표지 가늠표로 감싸기 */
-#reveal { z-index: 20; align-items: center; justify-content: center; gap: 6cqw; background: rgba(11,13,20,.9) }
+#reveal { z-index: 20; align-items: center; justify-content: center; gap: 6cqw; background: rgba(11,13,20,.9); overflow: hidden }
+#reveal .ttl, #reveal .staff { position: relative; z-index: 3 }
+/* 카드 뒤: 화면을 세로로 가르는 빛 띠 + 후광 + 천천히 도는 옅은 빛살 + 반짝이 */
+.glow { position: absolute; inset: 0; pointer-events: none; z-index: 0 }
+.glow .band { position: absolute; left: 50%; top: 0; bottom: 0; width: 72cqw; translate: -50% 0; transform: scaleY(0); transition: transform .6s var(--ease);
+  background: linear-gradient(90deg, transparent, rgba(233,181,74,.14) 14%, rgba(255,226,160,.22) 50%, rgba(233,181,74,.14) 86%, transparent),
+    linear-gradient(180deg, transparent, #000 22% 78%, transparent);
+  -webkit-mask: linear-gradient(180deg, transparent, #000 18% 82%, transparent); mask: linear-gradient(180deg, transparent, #000 18% 82%, transparent) }
+.glow .band::before, .glow .band::after { content: ""; position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(255,232,180,.45) }
+.glow .band::before { left: 12% } .glow .band::after { right: 12% }
+.glow .halo { position: absolute; left: 50%; top: 52%; width: 120cqw; aspect-ratio: 1; translate: -50% -50%; opacity: 0; transform: scale(.7); transition: opacity .6s var(--ease), transform .8s var(--ease);
+  background: radial-gradient(closest-side, rgba(255,214,130,.42), rgba(233,181,74,.16) 45%, transparent 75%) }
+.glow .rays { position: absolute; inset: 0; border-radius: 50%; animation: spin 40s linear infinite;
+  background: repeating-conic-gradient(rgba(255,236,190,.16) 0 4deg, transparent 4deg 15deg);
+  -webkit-mask: radial-gradient(closest-side, transparent 30%, #000 45%, transparent 85%); mask: radial-gradient(closest-side, transparent 30%, #000 45%, transparent 85%) }
+@keyframes spin { to { transform: rotate(360deg) } }
+#reveal.on .glow .band { transform: scaleY(1) }
+#reveal.on .glow .halo { opacity: 1; transform: none }
+.tw { position: absolute; z-index: 2; width: var(--s); aspect-ratio: 1; background: #fff; opacity: 0;
+  clip-path: polygon(50% 0, 58% 42%, 100% 50%, 58% 58%, 50% 100%, 42% 58%, 0 50%, 42% 42%) }
+#reveal.on .tw { animation: twinkle 2.4s ease-in-out infinite; animation-delay: var(--dl) }
+@keyframes twinkle { 0%, 100% { opacity: 0; transform: scale(.4) rotate(0) } 50% { opacity: 1; transform: scale(1) rotate(45deg) } }
 #reveal .ttl { text-align: center; opacity: 0; transform: translateY(2cqw); transition: opacity .3s var(--ease), transform .3s var(--ease) }
 #reveal.on .ttl { opacity: 1; transform: none }
 .won { font-family: var(--title); font-weight: 700; font-size: 10cqw; line-height: 1.1; letter-spacing: -.02em }
 .won small { display: block; font-family: var(--body); font-weight: 500; font-size: 3.6cqw; color: var(--fg2); letter-spacing: 0; margin-top: 1.6cqw }
-.rwrap { position: relative; perspective: 160cqw; padding: 4cqw }
+.rwrap { position: relative; z-index: 1; perspective: 160cqw; padding: 4cqw }
 .rwrap > .marks { color: var(--fg); --m: 4cqw; --mw: .35cqw; opacity: 0; transition: opacity .3s .2s }
 #reveal.on .rwrap > .marks { opacity: 1 }
 .sway { animation: sway 6s ease-in-out infinite; transform-style: preserve-3d }
@@ -198,10 +224,10 @@ button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px }
 .seg .btn[aria-pressed="true"] { background: var(--paper); color: var(--ink); border-color: transparent }
 
 canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 30 }
-.flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 40 }
-.flash.go { animation: flash .4s ease-out }
-@keyframes flash { 0% { opacity: 0 } 15% { opacity: .85 } 100% { opacity: 0 } }
-@media (prefers-reduced-motion: reduce) { .float, .sway, .pbody .sheen, .foil::before, .cd.omen .in3 { animation: none } }
+.flash { position: absolute; inset: -20%; opacity: 0; pointer-events: none; z-index: 40; background: radial-gradient(closest-side, rgba(255,250,238,.95), rgba(255,240,215,.55) 45%, rgba(255,240,215,0) 100%) }
+.flash.go { animation: flash .9s cubic-bezier(.3,.6,.3,1) }
+@keyframes flash { 0% { opacity: 0; transform: scale(.6) } 22% { opacity: .7; transform: scale(1) } 100% { opacity: 0; transform: scale(1.15) } }
+@media (prefers-reduced-motion: reduce) { .glow .rays, #reveal.on .tw, .sway, .foil::before, .cd.omen .in3 { animation: none } }
 </style>
 </head>
 <body>
@@ -214,7 +240,7 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
         <span class="label"><b>SEIROKU : WORK</b>VOL.3</span>
         <button class="icon" id="gear" aria-label="직원 설정"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button>
       </div>
-      <div class="hero"><div class="packwrap float" id="packwrap">
+      <div class="hero"><div class="packwrap" id="packwrap">
         <div class="shoot" id="shoot"></div>
         <div class="pack" id="deck">
           <div class="seal top" id="sealTop">
@@ -224,17 +250,17 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
             <div class="tearline"></div>
           </div>
           <div class="pop" id="pop"></div>
-          <div class="pbody"><div class="sheen"></div></div>
+          <div class="pbody"><div class="holo"></div><div class="spec"></div></div>
           <div class="seal bot"><span class="marks"><i></i><i></i><i></i><i></i></span><span>Anthology<br>With 25 Artists</span><span class="bar"></span><span>Released<br>2026 Winter</span></div>
         </div>
       </div></div>
       <div class="panel">
         <div class="row1">
-          <button class="btn ghost x" data-q="0" aria-label="0장으로 초기화"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+          <button class="btn ghost x" data-q="0" aria-label="0장으로 초기화"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
           <div class="step">
-            <button id="minus" aria-label="한 장 빼기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
+            <button id="minus" aria-label="한 장 빼기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
             <output id="n" aria-live="polite"></output>
-            <button id="plus" aria-label="한 장 더하기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M5 12h14M12 5v14"/></svg></button>
+            <button id="plus" aria-label="한 장 더하기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M5 12h14M12 5v14"/></svg></button>
           </div>
           <button class="btn" data-q="5">+5</button><button class="btn" data-q="10">+10</button>
         </div>
@@ -252,8 +278,12 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
     </section>
 
     <section class="layer" id="reveal" hidden>
+      <div class="glow" aria-hidden="true"><div class="band"></div><div class="halo"><div class="rays"></div></div></div>
       <div class="ttl"><div class="won">포스터 당첨<small>엽서북 표지 포스터</small></div></div>
-      <div class="rwrap"><span class="marks"><i></i><i></i><i></i><i></i></span><div class="sway"><div class="rcard"><div class="in3"><div class="face b"></div><div class="face f win foil"></div></div></div></div></div>
+      <div class="rwrap"><span class="marks"><i></i><i></i><i></i><i></i></span>
+        <i class="tw" style="--s:5cqw;left:-6cqw;top:12%;--dl:0s"></i><i class="tw" style="--s:3cqw;left:-2cqw;top:30%;--dl:.9s"></i>
+        <i class="tw" style="--s:4cqw;right:-5cqw;top:6%;--dl:.5s"></i><i class="tw" style="--s:6cqw;right:-8cqw;bottom:22%;--dl:1.3s"></i>
+        <i class="tw" style="--s:3cqw;left:-4cqw;bottom:8%;--dl:1.7s"></i><i class="tw" style="--s:3cqw;right:-1cqw;bottom:4%;--dl:.3s"></i><div class="sway"><div class="rcard"><div class="in3"><div class="face b"></div><div class="face f win foil"></div></div></div></div></div>
       <div class="staff"><button class="btn pri" id="ok">직원 확인</button></div>
     </section>
 
@@ -268,9 +298,9 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
         <h2 id="cfgT">직원 설정</h2>
                 <div class="row"><span>당첨 카드 위치</span>
           <div class="step">
-            <button id="wMinus" aria-label="하나 빼기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
+            <button id="wMinus" aria-label="하나 빼기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
             <output id="wN"></output>
-            <button id="wPlus" aria-label="하나 더하기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M5 12h14M12 5v14"/></svg></button>
+            <button id="wPlus" aria-label="하나 더하기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M5 12h14M12 5v14"/></svg></button>
           </div>
         </div>
         <div class="row"><span>효과음</span><div class="seg"><button class="btn" id="sOn" aria-pressed="true">켜기</button><button class="btn" id="sOff" aria-pressed="false">끄기</button></div></div>
@@ -367,6 +397,19 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
   const views = ['home', 'board', 'reveal', 'sum'];
   const show = (...ids) => views.forEach(x => { $(x).hidden = !ids.includes(x); });
 
+  // ---- 홈 카드팩: x·y·z축으로 조금씩 흔들리고, 각도에 따라 홀로그램이 움직여요 ----
+  let idle = true;
+  function packLoop(now) {
+    if (!idle) return;
+    const t = now / 1000, pw = $('packwrap'), dk = $('deck');
+    const rx = Math.sin(t * .8) * 7, ry = Math.sin(t * .55 + 1) * 14, rz = Math.sin(t * .37) * 2.2, ty = Math.sin(t * .9) * 1.4;
+    pw.style.transform = `translateY(${ty.toFixed(2)}cqw) rotateX(${rx.toFixed(2)}deg) rotateY(${ry.toFixed(2)}deg) rotateZ(${rz.toFixed(2)}deg)`;
+    dk.style.setProperty('--hx', (ry / 14).toFixed(3)); dk.style.setProperty('--hy', (rx / 7).toFixed(3));
+    dk.style.setProperty('--ho', (.22 + Math.abs(ry / 14) * .35).toFixed(3));
+    if (!reduce) requestAnimationFrame(packLoop);
+  }
+  requestAnimationFrame(packLoop);
+
   // ---- 개봉: 팩이 아래로 → 팡 → 카드가 슈슈슉 위로 → 위에서 판으로 ----
   let total = 0, wins = new Set(), start = 1, hits = 0, done = false;
   $('go').onclick = async () => {
@@ -374,11 +417,12 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
     total = n; wins = new Set(winAt && winAt <= total ? [winAt] : []); start = 1; hits = 0;
     const home = $('home'), pw = $('packwrap'), deck = $('deck'), sh = $('shoot');
     sh.innerHTML = '<div class="face b"></div>'.repeat(Math.min(10, total));
-    home.classList.add('opening'); pw.classList.remove('float');
-    anim(pw, [{ transform: 'translateY(0)' }, { transform: 'translateY(-3cqw)', offset: .35 }, { transform: 'translateY(16cqw)' }], { duration: 380, easing: 'cubic-bezier(.5,0,.7,.4)' });
+    idle = false; const cur = pw.style.transform || 'none';
+    home.classList.add('opening');
+    anim(pw, [{ transform: cur }, { transform: 'translateY(-3cqw)', offset: .35 }, { transform: 'translateY(16cqw)' }], { duration: 380, easing: 'cubic-bezier(.5,0,.7,.4)' });
     await wait(380);
     // 팡
-    flash(); shake(); sfx.pop();
+    flash(); sfx.pop();
     anim($('sealTop'), [{ transform: 'none' }, { transform: 'translate(20cqw,-30cqw) rotate(30deg)', opacity: 0 }], { duration: 450, easing: 'cubic-bezier(.2,.7,.4,1)' });
     anim($('pop'), [{ opacity: 0 }, { opacity: 1, offset: .2 }, { opacity: 0 }], { duration: 500 });
     [...sh.children].forEach((c, i) => {
@@ -443,7 +487,7 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
     const R = $('reveal'); R.className = 'layer'; show('board', 'reveal');
     await wait(30); R.classList.add('go');
     await wait(380); R.classList.add('on');
-    await wait(240); flash();
+    await wait(240);
     confetti(fxc.width / 2, fxc.height * .5, 160);
   }
   function summary() {
@@ -455,9 +499,10 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
   }
   $('home2').onclick = () => {
     show('home'); busy = false; setN(1);
-    $('home').classList.remove('opening'); $('packwrap').classList.add('float');
+    $('home').classList.remove('opening');
     for (const el of [$('packwrap'), $('deck'), $('sealTop'), $('pop')]) el.getAnimations().forEach(a => a.cancel());
     $('shoot').innerHTML = '';
+    idle = true; requestAnimationFrame(packLoop);
   };
   addEventListener('resize', fxSize);
 
