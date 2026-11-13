@@ -58,11 +58,12 @@ button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px }
 .face.b { background: var(--back) center / cover }
 .face.b::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1px rgba(255,255,255,.16) }
 .face.f { transform: rotateY(180deg) }
+/* 판 위의 카드 안쪽 크기는 카드 폭 기준(cqw = 카드 폭의 1%) */
 .face.nor { background: var(--paper); color: var(--ink); display: flex; flex-direction: column; justify-content: space-between; padding: 9% 10% }
-.nor .k { font-weight: 700; font-size: 1.2cqw; color: var(--orange) }
-.nor .ty { font-family: var(--title); font-weight: 700; font-size: 3cqw; line-height: 1 }
-.nor .ty small { display: block; font-family: var(--body); font-weight: 500; font-size: 1.3cqw; margin-top: 1.2cqw; color: #5e554a; line-height: 1.3 }
-.nor .ft { display: flex; justify-content: space-between; border-top: .2cqw solid var(--ink); padding-top: .7cqw; font-family: var(--mono); font-size: 1.1cqw }
+.nor .k { font-weight: 700; font-size: 7.6cqw; color: var(--orange) }
+.nor .ty { font-family: var(--title); font-weight: 700; font-size: 19cqw; line-height: 1 }
+.nor .ty small { display: block; font-family: var(--body); font-weight: 500; font-size: 8.4cqw; margin-top: 7.6cqw; color: #5e554a; line-height: 1.3 }
+.nor .ft { display: flex; justify-content: space-between; border-top: 1.3cqw solid var(--ink); padding-top: 4.5cqw; font-family: var(--mono); font-size: 7cqw }
 .face.win { background: var(--poster) center / cover }
 .foil::before { content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none; mix-blend-mode: soft-light;
   background: linear-gradient(115deg, transparent 30%, rgba(255,255,255,.7) 45%, transparent 60%); background-size: 260% 100%; animation: foil 3.6s ease-in-out infinite alternate }
@@ -140,22 +141,22 @@ button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px }
 
 /* 카드 판 */
 #board { padding-bottom: 6cqw }
-.grid { flex: 1; display: grid; grid-template-columns: repeat(5, 1fr); align-content: center; gap: 5cqw 3cqw; padding: 0 7cqw; transform: rotate(-5deg) }
-.cd { --rad: 1.2cqw; position: relative; aspect-ratio: 3 / 4; border: 0; padding: 0; background: none; opacity: 0; perspective: 80cqw; cursor: default }
+.grid { flex: 1; display: grid; grid-template-columns: repeat(var(--cols, 5), minmax(0, var(--cw, 1fr))); justify-content: center; align-content: center; gap: 5cqw 3cqw; padding: 0 7cqw; transform: rotate(-5deg) }
+.cd { --rad: 7.6cqw; position: relative; aspect-ratio: 3 / 4; border: 0; padding: 0; background: none; opacity: 0; perspective: 500cqw; cursor: default; container-type: inline-size }
 .cd.dealt { opacity: 1; animation: deal .45s var(--ease) backwards; animation-delay: var(--d) }
 @keyframes deal { from { opacity: 0; transform: translate(var(--dx), var(--dy)) rotate(var(--dr)) scale(1.2) } 20% { opacity: 1 } }
 .cd .in3 { position: absolute; inset: 0; transform-style: preserve-3d; transition: transform .4s var(--ease) }
 .cd.open .in3 { transform: rotateY(180deg) }
-.cd .face.b { box-shadow: 0 .8cqw 1.6cqw rgba(0,0,0,.45) }
-.slot { position: absolute; inset: -1cqw; border: 1px solid var(--hair); border-radius: 2.2cqw; pointer-events: none }
-.tag { position: absolute; z-index: 2; left: 50%; bottom: -2.6cqw; translate: -50% 0; padding: .5cqw 1.4cqw; border-radius: .8cqw; font-family: var(--mono); font-size: 1.8cqw; line-height: 1.2; color: var(--fg2); background: var(--raised); border: 1px solid var(--hair); opacity: 0; transition: opacity .2s .25s; white-space: nowrap }
+.cd .face.b { box-shadow: 0 5cqw 10cqw rgba(0,0,0,.45) }
+.slot { position: absolute; inset: -6.5cqw; border: 1px solid var(--hair); border-radius: 14cqw; pointer-events: none }
+.tag { position: absolute; z-index: 2; left: 50%; bottom: -16cqw; translate: -50% 0; padding: .3em .8em; border-radius: .45em; font-family: var(--mono); font-size: clamp(10px, 11.6cqw, 20px); line-height: 1.2; color: var(--fg2); background: var(--raised); border: 1px solid var(--hair); opacity: 0; transition: opacity .2s .25s; white-space: nowrap }
 .cd.open .tag { opacity: 1 }
 .cd.won .tag { background: var(--gold); color: var(--ink); border-color: transparent; font-weight: 600 }
 .cd.omen { z-index: 3 }
-.cd.omen .in3 { transform: translateY(-2cqw) scale(1.12); animation: tremble .08s linear infinite }
-.cd.omen .face.b { box-shadow: 0 0 0 .5cqw var(--gold), 0 2cqw 4cqw rgba(0,0,0,.5) }
-@keyframes tremble { 25% { translate: -.3cqw 0 } 75% { translate: .3cqw 0 } }
-.cd.won .face.f::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 .45cqw var(--gold); z-index: 2 }
+.cd.omen .in3 { transform: translateY(-13cqw) scale(1.12); animation: tremble .08s linear infinite }
+.cd.omen .face.b { box-shadow: 0 0 0 3.2cqw var(--gold), 0 13cqw 26cqw rgba(0,0,0,.5) }
+@keyframes tremble { 25% { translate: -2cqw 0 } 75% { translate: 2cqw 0 } }
+.cd.won .face.f::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 2.9cqw var(--gold); z-index: 2 }
 .cd.won .slot { border-color: rgba(233,181,74,.6) }
 .foot { display: flex; gap: 2.4cqw; padding: 0 6cqw }
 .foot { min-height: 18cqw; justify-content: center; align-items: center }
@@ -230,6 +231,18 @@ button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px }
 .sheet .row > span { font-size: 3.2cqw; color: var(--fg2) }
 .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 2cqw }
 .seg .btn[aria-pressed="true"] { background: var(--paper); color: var(--ink); border-color: transparent }
+.sheet[hidden] { display: none }
+.dots { display: flex; justify-content: center; gap: 4cqw; padding: 2cqw 0 }
+.dots i { width: 3.6cqw; height: 3.6cqw; border-radius: 50%; border: 1px solid var(--fg2) }
+.dots i.on { background: var(--fg); border-color: var(--fg) }
+.dots.bad { animation: shake .35s var(--ease) }
+.pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2cqw }
+.pad .btn { height: 13cqw; font-size: 5.4cqw }
+.pad .btn.ghost { font-size: 3.8cqw }
+.chips { display: flex; flex-wrap: wrap; gap: 2cqw; min-height: 9cqw; align-items: center }
+.chips button { height: 9cqw; padding: 0 2.6cqw; border-radius: 2cqw; border: 1px solid var(--hair2); background: var(--gold); color: var(--ink); font-family: var(--title); font-weight: 900; font-size: 3.8cqw; display: inline-flex; align-items: center; gap: 1.4cqw }
+.chips button svg { width: 3.4cqw; height: 3.4cqw }
+.chips em { font-style: normal; font-size: 3.4cqw; color: var(--mute) }
 
 canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 30 }
 .flash { position: absolute; inset: -20%; opacity: 0; pointer-events: none; z-index: 40; background: radial-gradient(closest-side, rgba(255,250,238,.95), rgba(255,240,215,.55) 45%, rgba(255,240,215,0) 100%) }
@@ -292,24 +305,31 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
         <i class="tw" style="--s:5cqw;left:-6cqw;top:12%;--dl:0s"></i><i class="tw" style="--s:3cqw;left:-2cqw;top:30%;--dl:.9s"></i>
         <i class="tw" style="--s:4cqw;right:-5cqw;top:6%;--dl:.5s"></i><i class="tw" style="--s:6cqw;right:-8cqw;bottom:22%;--dl:1.3s"></i>
         <i class="tw" style="--s:3cqw;left:-4cqw;bottom:8%;--dl:1.7s"></i><i class="tw" style="--s:3cqw;right:-1cqw;bottom:4%;--dl:.3s"></i><div class="sway"><div class="rcard"><div class="in3"><div class="face b"></div><div class="face f win foil"></div></div></div></div></div>
-      <div class="staff"><button class="btn pri" id="ok">직원 확인</button></div>
+      <div class="staff"><p>이 화면을 부스 직원에게 보여 주세요</p><button class="btn pri" id="ok">직원 확인</button></div>
     </section>
 
     <section class="layer" id="sum" hidden>
-      <div class="shead"><div class="big" id="s1"></div><p id="s2"></p></div>
+      <div class="shead"><div class="big" id="s1"></div></div>
       <div class="mini" id="mini"></div>
       <div class="foot"><div class="cta"><span class="marks"><i></i><i></i><i></i><i></i></span><button class="btn pri big" id="home2"><span class="word">DONE</span></button></div></div>
     </section>
 
     <section class="layer" id="cfg" hidden>
-      <div class="sheet" role="dialog" aria-labelledby="cfgT">
+      <div class="sheet" id="lock" role="dialog" aria-labelledby="lockT">
+        <h2 id="lockT">직원 설정</h2>
+        <div class="dots" id="dots"><i></i><i></i><i></i></div>
+        <div class="pad" id="pad"><button class="btn">1</button><button class="btn">2</button><button class="btn">3</button><button class="btn">4</button><button class="btn">5</button><button class="btn">6</button><button class="btn">7</button><button class="btn">8</button><button class="btn">9</button><button class="btn ghost" data-k="x">닫기</button><button class="btn">0</button><button class="btn ghost" data-k="b">지우기</button></div>
+      </div>
+      <div class="sheet" id="cfgSheet" role="dialog" aria-labelledby="cfgT" hidden>
         <h2 id="cfgT">직원 설정</h2>
-                <div class="row"><span>당첨 카드 위치</span>
+        <div class="row"><span>당첨 카드 위치</span>
+          <div class="chips" id="wList"></div>
           <div class="step">
             <button id="wMinus" aria-label="하나 빼기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
             <output id="wN"></output>
             <button id="wPlus" aria-label="하나 더하기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M5 12h14M12 5v14"/></svg></button>
           </div>
+          <button class="btn" id="wAdd">위치 추가</button>
         </div>
         <div class="row"><span>효과음</span><div class="seg"><button class="btn" id="sOn" aria-pressed="true">켜기</button><button class="btn" id="sOff" aria-pressed="false">끄기</button></div></div>
         <button class="btn pri" id="cfgOk">닫기</button>
@@ -329,7 +349,12 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
   document.documentElement.style.setProperty('--poster', `url("${POSTER}")`);
   const stage = $('stage'), fxc = $('fx');
   const B = 20; // 한 화면에 까는 장 수
-  let winAt = 3, n = 1, sound = true, busy = false;
+  // 직원 설정은 이 기기에 저장해서 새로고침해도 유지돼요
+  const KEY = 'seiroku-gacha-settings';
+  let saved = {}; try { saved = JSON.parse(localStorage.getItem(KEY)) || {}; } catch {}
+  let winList = Array.isArray(saved.wins) ? saved.wins : [3], pick = 1, n = 1, sound = saved.sound !== false, busy = false;
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ wins: winList, sound })); } catch {} };
+  const PIN = '486';
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const wait = ms => new Promise(r => setTimeout(r, reduce ? Math.min(ms, 80) : ms));
   const anim = (el, kf, o) => el.animate(kf, { fill: 'forwards', ...o, duration: reduce ? 1 : o.duration });
@@ -346,13 +371,34 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
   setN(1);
 
   // ---- 직원 설정 ----
-  const setW = v => { winAt = Math.max(0, Math.min(300, v)); $('wN').innerHTML = winAt ? `<span>${winAt}<small>번째</small></span>` : '<span><small>없음</small></span>'; };
-  setW(winAt);
-  $('gear').onclick = () => { $('cfg').hidden = false; };
+  // 당첨 위치는 여러 개: 숫자를 고르고 '위치 추가', 칩을 누르면 빠져요
+  const X = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+  const drawW = () => {
+    $('wList').innerHTML = winList.length ? winList.map(k => `<button data-k="${k}" aria-label="${k}번째 빼기">${k}번째${X}</button>`).join('') : '<em>없음</em>';
+    $('wList').querySelectorAll('button').forEach(b => b.onclick = () => { winList = winList.filter(k => k !== +b.dataset.k); save(); drawW(); });
+    $('wN').innerHTML = `<span>${pick}<small>번째</small></span>`;
+  };
+  const setPick = v => { pick = Math.max(1, Math.min(300, v)); drawW(); };
+  $('wMinus').onclick = () => setPick(pick - 1); $('wPlus').onclick = () => setPick(pick + 1);
+  $('wAdd').onclick = () => { if (!winList.includes(pick)) winList = [...winList, pick].sort((a, b) => a - b); save(); setPick(pick + 1); };
+  drawW();
+  // 비밀번호 키패드
+  let code = '';
+  const drawDots = () => [...$('dots').children].forEach((d, i) => d.classList.toggle('on', i < code.length));
+  $('gear').onclick = () => { code = ''; drawDots(); $('lock').hidden = false; $('cfgSheet').hidden = true; $('cfg').hidden = false; };
+  $('pad').querySelectorAll('button').forEach(b => b.onclick = () => {
+    const k = b.dataset.k;
+    if (k === 'x') { $('cfg').hidden = true; return; }
+    if (k === 'b') { code = code.slice(0, -1); drawDots(); return; }
+    code += b.textContent; drawDots();
+    if (code.length < PIN.length) return;
+    if (code === PIN) { $('lock').hidden = true; $('cfgSheet').hidden = false; }
+    else { const d = $('dots'); d.classList.remove('bad'); void d.offsetWidth; d.classList.add('bad'); setTimeout(() => { code = ''; drawDots(); }, 300); }
+  });
   $('cfgOk').onclick = () => { $('cfg').hidden = true; };
-  $('wMinus').onclick = () => setW(winAt - 1); $('wPlus').onclick = () => setW(winAt + 1);
-  const setS = v => { sound = v; $('sOn').setAttribute('aria-pressed', v); $('sOff').setAttribute('aria-pressed', !v); };
+  const setS = v => { sound = v; save(); $('sOn').setAttribute('aria-pressed', v); $('sOff').setAttribute('aria-pressed', !v); };
   $('sOn').onclick = () => setS(true); $('sOff').onclick = () => setS(false);
+  setS(sound);
 
   // ---- 소리 ----
   let ac = null;
@@ -423,7 +469,7 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
   let total = 0, wins = new Set(), start = 1, hits = 0, done = false;
   $('go').onclick = async () => {
     if (busy || !n) return; busy = true; A(); fxSize();
-    total = n; wins = new Set(winAt && winAt <= total ? [winAt] : []); start = 1; hits = 0;
+    total = n; wins = new Set(winList.filter(k => k <= total)); start = 1; hits = 0;
     const home = $('home'), pw = $('packwrap'), deck = $('deck'), sh = $('shoot');
     sh.innerHTML = '<div class="face b"></div>'.repeat(Math.min(10, total));
     idle = false; const cur = pw.style.transform || 'none';
@@ -452,6 +498,9 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
     $('left').textContent = total - start + 1;
     const grid = $('grid'), ks = [];
     for (let k = start; k <= end; k++) ks.push(k);
+    // 장 수가 적으면 한 줄을 화면 폭에 맞춰 크게 (한 줄 최대 5장, 1장일 때는 너무 커지지 않게)
+    grid.style.setProperty('--cols', Math.min(5, ks.length));
+    grid.style.setProperty('--cw', ks.length === 1 ? '56cqw' : '1fr');
     grid.innerHTML = ks.map(k => `<div class="cd down" data-k="${k}"><i class="slot"></i><div class="in3"><div class="face b"></div>${wins.has(k)
       ? '<div class="face f win foil"></div>'
       : '<div class="face f nor"><span class="k">SEIROKU : WORK</span><span class="ty">THANK<br>YOU<small>다음 팩에서 만나요</small></span><span class="ft"><span>青録</span><span>VOL.3</span></span></div>'}</div><span class="tag">${wins.has(k) ? '포스터' : '꽝'}</span></div>`).join('');
@@ -502,7 +551,6 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
   function summary() {
     show('sum');
     $('s1').textContent = hits ? `포스터 ${hits}장 당첨` : '이번엔 꽝';
-    $('s2').textContent = hits ? `${total}장 중 ${hits}장이 엽서북 표지 포스터예요` : `${total}장 모두 열었어요. 다음 팩에서 만나요`;
     let h = ''; for (let k = 1; k <= total; k++) h += wins.has(k) ? '<i class="w"></i>' : '<i>꽝</i>';
     $('mini').innerHTML = h;
   }
@@ -542,10 +590,9 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
     for (const o of orbit) {
       const a = o.a + t * o.v, x = cx + Math.cos(a) * m * o.k, y = cy + Math.sin(a) * m * o.k, s = o.big ? 9 : 5;
       if (x < -20 || x > W + 20 || y < -20 || y > H + 20) continue;
-      bx.globalAlpha = .25; bx.beginPath(); bx.arc(x, y, s * .9, 0, 7); bx.fill();
       // 뾰족한 두 끝이 원의 중심을 향하도록(지름 방향) 돌려서 그려요
       bx.save(); bx.translate(x, y); bx.rotate(a); bx.globalAlpha = 1; bx.beginPath();
-      const L = s * 1.5, Wd = s * .7;
+      const L = s * 1.2, Wd = s * 1.2;
       bx.moveTo(L, 0); bx.quadraticCurveTo(0, 0, 0, Wd); bx.quadraticCurveTo(0, 0, -L, 0); bx.quadraticCurveTo(0, 0, 0, -Wd); bx.quadraticCurveTo(0, 0, L, 0); bx.fill();
       bx.restore(); bx.setTransform(D, 0, 0, D, 0, 0);
     }
