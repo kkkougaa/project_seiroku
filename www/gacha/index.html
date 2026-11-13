@@ -272,7 +272,7 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
           </div>
           <button class="btn" data-q="5">+5</button><button class="btn" data-q="10">+10</button>
         </div>
-        <div class="cta"><span class="marks"><i></i><i></i><i></i><i></i></span><button class="btn pri big" id="go"><span class="word">OPEN</span><span class="n" id="goN"></span></button></div>
+        <div class="cta"><span class="marks"><i></i><i></i><i></i><i></i></span><button class="btn pri big" id="go"><span class="word">OPEN</span></button></div>
       </div>
     </section>
 
@@ -338,7 +338,6 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
   const setN = v => {
     n = Math.max(0, Math.min(300, v));
     $('n').innerHTML = `<span>${n}<small>장</small></span>`;
-    $('goN').textContent = n ? `${n}장` : '';
     $('go').disabled = n === 0;
   };
   $('minus').onclick = () => setN(n - 1); $('plus').onclick = () => setN(n + 1);
