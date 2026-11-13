@@ -124,34 +124,34 @@ button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px }
 .btn { height: 11cqw; border-radius: 2.4cqw; border: 1px solid var(--hair2); background: var(--raised); font-weight: 500; font-size: 3.6cqw; color: var(--fg); box-shadow: inset 0 1px 0 rgba(255,255,255,.06); transition: background-color .15s, transform .1s var(--ease) }
 .btn:active { transform: scale(.98); background: #222836 }
 .btn.ghost { background: transparent; color: var(--fg2) }
-.btn.pri { border: 0; height: 14cqw; background: var(--paper); color: var(--ink); font-weight: 600; font-size: 4.2cqw; box-shadow: inset 0 -1px 0 rgba(0,0,0,.12) }
+.btn.pri { border: 0; height: 14cqw; font-family: var(--title); letter-spacing: .02em; background: var(--paper); color: var(--ink); font-weight: 600; font-size: 4.2cqw; box-shadow: inset 0 -1px 0 rgba(0,0,0,.12) }
 .btn.pri:active { background: #e4dccc }
 .btn[disabled] { opacity: .4; pointer-events: none }
 .btn .n { font-family: var(--mono); font-weight: 500; color: #5e554a; margin-left: 1.6cqw }
 
 /* 카드 판 */
 #board { padding-bottom: 6cqw }
-.grid { flex: 1; display: grid; grid-template-columns: repeat(5, 1fr); align-content: center; gap: 5cqw 3cqw; padding: 0 7cqw; perspective: 200cqw; transform: rotate(-5deg) }
-.cd { --rad: 1.2cqw; position: relative; aspect-ratio: 3 / 4; transform-style: preserve-3d; border: 0; padding: 0; background: none; opacity: 0 }
+.grid { flex: 1; display: grid; grid-template-columns: repeat(5, 1fr); align-content: center; gap: 5cqw 3cqw; padding: 0 7cqw; transform: rotate(-5deg) }
+.cd { --rad: 1.2cqw; position: relative; aspect-ratio: 3 / 4; border: 0; padding: 0; background: none; opacity: 0; perspective: 80cqw; cursor: default }
 .cd.dealt { opacity: 1; animation: deal .45s var(--ease) backwards; animation-delay: var(--d) }
 @keyframes deal { from { opacity: 0; transform: translate(var(--dx), var(--dy)) rotate(var(--dr)) scale(1.2) } 20% { opacity: 1 } }
 .cd .in3 { position: absolute; inset: 0; transform-style: preserve-3d; transition: transform .4s var(--ease) }
 .cd.open .in3 { transform: rotateY(180deg) }
 .cd .face.b { box-shadow: 0 .8cqw 1.6cqw rgba(0,0,0,.45) }
-.cd::after { content: ""; position: absolute; inset: -1cqw; border: 1px solid var(--hair); border-radius: 2.2cqw; pointer-events: none; transform: translateZ(-1px) }
-.cd.down { cursor: pointer }
-.cd.down:active .in3 { transform: scale(.96) }
-.tag { position: absolute; left: 50%; bottom: -2.6cqw; translate: -50% 0; transform: translateZ(2px); padding: .5cqw 1.4cqw; border-radius: .8cqw; font-family: var(--mono); font-size: 1.8cqw; line-height: 1.2; color: var(--fg2); background: var(--raised); border: 1px solid var(--hair); opacity: 0; transition: opacity .2s .25s; white-space: nowrap }
+.slot { position: absolute; inset: -1cqw; border: 1px solid var(--hair); border-radius: 2.2cqw; pointer-events: none }
+.tag { position: absolute; z-index: 2; left: 50%; bottom: -2.6cqw; translate: -50% 0; padding: .5cqw 1.4cqw; border-radius: .8cqw; font-family: var(--mono); font-size: 1.8cqw; line-height: 1.2; color: var(--fg2); background: var(--raised); border: 1px solid var(--hair); opacity: 0; transition: opacity .2s .25s; white-space: nowrap }
 .cd.open .tag { opacity: 1 }
 .cd.won .tag { background: var(--gold); color: var(--ink); border-color: transparent; font-weight: 600 }
 .cd.omen { z-index: 3 }
 .cd.omen .in3 { transform: translateY(-2cqw) scale(1.12); animation: tremble .08s linear infinite }
 .cd.omen .face.b { box-shadow: 0 0 0 .5cqw var(--gold), 0 2cqw 4cqw rgba(0,0,0,.5) }
 @keyframes tremble { 25% { translate: -.3cqw 0 } 75% { translate: .3cqw 0 } }
-.cd.won .face.f { box-shadow: 0 0 0 .45cqw var(--gold) }
-.cd.won::after { border-color: rgba(233,181,74,.6) }
+.cd.won .face.f::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 .45cqw var(--gold); z-index: 2 }
+.cd.won .slot { border-color: rgba(233,181,74,.6) }
 .foot { display: flex; gap: 2.4cqw; padding: 0 6cqw }
+.foot { min-height: 14cqw }
 .foot .btn { flex: 1 }
+.foot .btn[hidden] { display: none }
 
 /* 당첨 공개: 카드 한 장을 똑바로, 표지 가늠표로 감싸기 */
 #reveal { z-index: 20; align-items: center; justify-content: center; gap: 6cqw; background: rgba(11,13,20,.9) }
@@ -233,7 +233,7 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
         <div class="quick">
           <button class="btn ghost" data-q="0">초기화</button><button class="btn" data-q="1">+1</button><button class="btn" data-q="5">+5</button><button class="btn" data-q="10">+10</button>
         </div>
-        <button class="btn pri" id="go">카드팩 열기<span class="n" id="goN"></span></button>
+        <button class="btn pri" id="go">OPEN<span class="n" id="goN"></span></button>
       </div>
     </section>
 
@@ -243,13 +243,13 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
         <span class="count">남은 카드 <b id="left">0</b></span>
       </div>
       <div class="grid" id="grid"></div>
-      <div class="foot"><button class="btn pri" id="act">모두 열기</button></div>
+      <div class="foot"><button class="btn pri" id="act" hidden>NEXT</button></div>
     </section>
 
     <section class="layer" id="reveal" hidden>
       <div class="ttl"><div class="won">포스터 당첨<small>엽서북 표지 포스터</small></div></div>
       <div class="rwrap"><span class="marks"><i></i><i></i><i></i><i></i></span><div class="sway"><div class="rcard"><div class="in3"><div class="face b"></div><div class="face f win foil"></div></div></div></div></div>
-      <div class="staff"><p>이 화면을 부스 직원에게 보여 주세요</p><button class="btn pri" id="ok">직원 확인</button></div>
+      <div class="staff"><button class="btn pri" id="ok">직원 확인</button></div>
     </section>
 
     <section class="layer" id="sum" hidden>
@@ -261,8 +261,7 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
     <section class="layer" id="cfg" hidden>
       <div class="sheet" role="dialog" aria-labelledby="cfgT">
         <h2 id="cfgT">직원 설정</h2>
-        <p>손님에게 보이지 않게 바꿔 주세요</p>
-        <div class="row"><span>당첨 카드 위치</span>
+                <div class="row"><span>당첨 카드 위치</span>
           <div class="step">
             <button id="wMinus" aria-label="하나 빼기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
             <output id="wN"></output>
@@ -364,7 +363,7 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
   const show = (...ids) => views.forEach(x => { $(x).hidden = !ids.includes(x); });
 
   // ---- 개봉: 팩이 아래로 → 팡 → 카드가 슈슈슉 위로 → 위에서 판으로 ----
-  let total = 0, wins = new Set(), start = 1, auto = false, hits = 0, done = false;
+  let total = 0, wins = new Set(), start = 1, hits = 0, done = false;
   $('go').onclick = async () => {
     if (busy || !n) return; busy = true; A(); fxSize();
     total = n; wins = new Set(winAt && winAt <= total ? [winAt] : []); start = 1; hits = 0;
@@ -388,16 +387,16 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
   };
 
   async function deal(origin) {
-    show('board'); auto = false; done = false;
+    show('board'); done = false;
     const s = stage.getBoundingClientRect(), o = origin || { x: s.width / 2, y: -s.width * .4 };
     const end = Math.min(total, start + B - 1);
     $('page').textContent = `${Math.ceil(start / B)} / ${Math.ceil(total / B)}`;
     $('left').textContent = total - start + 1;
     const grid = $('grid'), ks = [];
     for (let k = start; k <= end; k++) ks.push(k);
-    grid.innerHTML = ks.map(k => `<button class="cd down" data-k="${k}" aria-label="카드 뒤집기"><div class="in3"><div class="face b"></div>${wins.has(k)
+    grid.innerHTML = ks.map(k => `<div class="cd down" data-k="${k}"><i class="slot"></i><div class="in3"><div class="face b"></div>${wins.has(k)
       ? '<div class="face f win foil"></div>'
-      : '<div class="face f nor"><span class="k">SEIROKU : WORK</span><span class="ty">THANK<br>YOU<small>다음 팩에서 만나요</small></span><span class="ft"><span>青録</span><span>VOL.3</span></span></div>'}</div><span class="tag">${wins.has(k) ? '포스터' : '꽝'}</span></button>`).join('');
+      : '<div class="face f nor"><span class="k">SEIROKU : WORK</span><span class="ty">THANK<br>YOU<small>다음 팩에서 만나요</small></span><span class="ft"><span>青録</span><span>VOL.3</span></span></div>'}</div><span class="tag">${wins.has(k) ? '포스터' : '꽝'}</span></div>`).join('');
     const cards = [...grid.children];
     const th = 5 * Math.PI / 180, c = Math.cos(th), sn = Math.sin(th); // 판이 -5° 기울어 있어서 되돌려 계산
     cards.forEach((el, i) => {
@@ -407,23 +406,17 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
       el.style.setProperty('--dr', ((Math.random() - .5) * 30).toFixed(0) + 'deg');
       el.style.setProperty('--d', i * 30 + 'ms');
       el.classList.add('dealt'); sfx.deal(i % 12);
-      el.onclick = () => tapCard(el);
     });
-    const b = $('act'); b.textContent = '모두 열기'; b.onclick = openAll; b.disabled = true;
-    await wait(400 + cards.length * 30); b.disabled = false;
+    $('act').hidden = true;
+    await wait(500 + cards.length * 30);
+    openAll();
   }
   const downCards = () => [...$('grid').querySelectorAll('.cd.down')];
   const remaining = () => total - start + 1 - $('grid').querySelectorAll('.cd.open').length;
   function flip(el) { el.classList.remove('down'); el.classList.add('open'); sfx.flip(); $('left').textContent = remaining(); }
-  function tapCard(el) {
-    if (!el.classList.contains('down') || $('grid').querySelector('.omen')) return;
-    if (wins.has(+el.dataset.k)) return omen(el);
-    flip(el); checkDone();
-  }
   // 당첨: 금테로 떠오른 뒤 바로 팡
-  async function omen(el) { el.classList.remove('down'); el.classList.add('omen'); sfx.omen(); $('act').disabled = true; await wait(550); reveal(el); }
+  async function omen(el) { el.classList.remove('down'); el.classList.add('omen'); sfx.omen(); await wait(550); reveal(el); }
   async function openAll() {
-    auto = true; $('act').disabled = true;
     for (const el of downCards()) {
       if (!el.classList.contains('down')) continue;
       if (wins.has(+el.dataset.k)) { omen(el); return; }
@@ -431,27 +424,22 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
     }
     checkDone();
   }
-  // 한 화면을 다 열면 자동으로 다음 화면이나 결과로
-  async function checkDone() {
+  // 한 화면을 다 열면 NEXT
+  function checkDone() {
     if (done || downCards().length || $('grid').querySelector('.omen')) return;
-    done = true; const b = $('act'); b.disabled = true;
-    const last = start + B - 1 >= total;
-    b.textContent = last ? '결과로 이동' : '다음 카드로 이동';
-    await wait(1000);
-    if (last) summary(); else { start += B; deal(); }
+    done = true; const b = $('act');
+    b.onclick = () => { b.hidden = true; if (start + B - 1 >= total) summary(); else { start += B; deal(); } };
+    b.hidden = false;
   }
   async function reveal(el) {
     el.classList.remove('omen'); el.classList.add('open', 'won'); hits++; $('left').textContent = remaining();
+    $('ok').onclick = async () => { $('ok').onclick = null; show('board'); await wait(250); openAll(); };
     flash(); shake(); sfx.reveal();
     const R = $('reveal'); R.className = 'layer'; show('board', 'reveal');
     await wait(30); R.classList.add('go');
     await wait(380); R.classList.add('on');
     await wait(240); flash();
     confetti(fxc.width / 2, fxc.height * .5, 160);
-    $('ok').onclick = async () => {
-      show('board');
-      if (auto) { await wait(250); openAll(); } else { $('act').disabled = false; checkDone(); }
-    };
   }
   function summary() {
     show('sum');
