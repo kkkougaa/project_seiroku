@@ -105,10 +105,10 @@ button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px }
   background:
     repeating-linear-gradient(calc(45deg + var(--hx, 0) * 10deg), rgba(255,255,255,.07) 0 .3cqw, transparent .3cqw .9cqw),
     linear-gradient(calc(115deg + var(--hx, 0) * 25deg), transparent 18%, rgba(255,110,190,.6) 30%, rgba(255,225,110,.6) 40%, rgba(110,255,190,.55) 50%, rgba(110,180,255,.6) 60%, rgba(190,130,255,.55) 70%, transparent 82%);
-  background-size: 100% 100%, 260% 260%;
-  background-position: 0 0, calc(50% + var(--hx, 0) * 55%) calc(50% + var(--hy, 0) * 55%) }
+  background-size: 100% 100%, 260% 260%; background-repeat: repeat, no-repeat;
+  background-position: 0 0, calc(50% + var(--hx, 0) * 32%) calc(50% + var(--hy, 0) * 32%) }
 .pbody .spec { position: absolute; inset: 0; z-index: 3; pointer-events: none; mix-blend-mode: soft-light;
-  background: radial-gradient(45% 32% at calc(50% - var(--hx, 0) * 45%) calc(38% - var(--hy, 0) * 40%), rgba(255,255,255,.75), transparent 70%) }
+  background: radial-gradient(45% 32% at calc(50% - var(--hx, 0) * 45%) calc(38% - var(--hy, 0) * 40%), rgba(255,255,255,.75), transparent 70%) no-repeat }
 .seal.bot { height: 7cqw; border-radius: 0 0 .8cqw .8cqw; display: flex; align-items: center; justify-content: space-between; gap: 1cqw; padding: 0 3cqw; font-family: var(--mono); font-size: 1.15cqw; line-height: 1.35; color: #3c4a57 }
 .seal.bot > span:last-of-type { text-align: right }
 .seal.bot .bar { width: 8cqw; height: 2.6cqw; background: repeating-linear-gradient(90deg, var(--ink) 0 .22cqw, transparent .22cqw .42cqw, var(--ink) .42cqw .85cqw, transparent .85cqw 1cqw) }
@@ -224,10 +224,22 @@ button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px }
 
 /* 직원 설정 */
 #cfg { z-index: 50; background: rgba(11,13,20,.8); align-items: center; justify-content: center }
-.sheet { width: 82cqw; background: var(--card); border: 1px solid var(--hair2); border-radius: 4cqw; padding: 6cqw; display: grid; gap: 4cqw }
+.sheet { width: 84cqw; max-height: 100%; overflow-y: auto; background: var(--card); border: 1px solid var(--hair2); border-radius: 4cqw; padding: 6cqw; display: grid; gap: 5cqw }
+/* 직원용이라 버튼은 작고 담백하게 */
+.sheet .btn, .sheet .btn.pri { height: 10cqw; font-family: var(--body); font-weight: 600; font-size: 3.6cqw; letter-spacing: 0 }
+.sheet .row > label { font-size: 3.2cqw; color: var(--fg2) }
+.field { display: flex; align-items: center; gap: 2cqw }
+.field input { flex: 1; min-width: 0; width: 0; height: 10cqw; padding: 0 3cqw; border-radius: 2.4cqw; border: 1px solid var(--hair2); background: var(--raised); color: var(--fg); font: 600 4.2cqw var(--body); font-variant-numeric: tabular-nums }
+.field input:focus { outline: 2px solid var(--fg2); outline-offset: 0 }
+.field > span { font-size: 3.4cqw; color: var(--fg2) }
+.field .btn { flex: none; padding: 0 4cqw }
+.meta2 { display: flex; justify-content: space-between; align-items: center; gap: 2cqw; font-size: 3.2cqw; color: var(--fg2); font-variant-numeric: tabular-nums }
+.link { border: 0; background: none; padding: 1cqw 0; font-size: 3.2cqw; color: var(--fg); text-decoration: underline; text-underline-offset: .6cqw }
+.link.warn { color: var(--orange) }
 .sheet h2 { margin: 0; font-family: var(--title); font-weight: 700; font-size: 5.2cqw }
 .sheet p { margin: -2cqw 0 0; font-size: 3.2cqw; color: var(--fg2) }
-.sheet .row { display: grid; gap: 2cqw }
+.sheet .row { display: grid; gap: 2cqw; grid-template-columns: minmax(0, 1fr); min-width: 0 }
+.sheet { grid-template-columns: minmax(0, 1fr) }
 .sheet .row > span { font-size: 3.2cqw; color: var(--fg2) }
 .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 2cqw }
 .seg .btn[aria-pressed="true"] { background: var(--paper); color: var(--ink); border-color: transparent }
@@ -237,10 +249,11 @@ button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px }
 .dots i.on { background: var(--fg); border-color: var(--fg) }
 .dots.bad { animation: shake .35s var(--ease) }
 .pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2cqw }
-.pad .btn { height: 13cqw; font-size: 5.4cqw }
-.pad .btn.ghost { font-size: 3.8cqw }
+.sheet .pad .btn { height: 12cqw; font-size: 4.8cqw }
+.sheet .pad .btn.ghost { font-size: 3.4cqw }
 .chips { display: flex; flex-wrap: wrap; gap: 2cqw; min-height: 9cqw; align-items: center }
-.chips button { height: 9cqw; padding: 0 2.6cqw; border-radius: 2cqw; border: 1px solid var(--hair2); background: var(--gold); color: var(--ink); font-family: var(--title); font-weight: 900; font-size: 3.8cqw; display: inline-flex; align-items: center; gap: 1.4cqw }
+.chips button { height: 8cqw; padding: 0 2.4cqw; border-radius: 2cqw; border: 0; background: var(--gold); color: var(--ink); font: 600 3.4cqw var(--body); font-variant-numeric: tabular-nums; display: inline-flex; align-items: center; gap: 1.2cqw }
+.chips button.past { background: var(--raised); color: var(--mute); text-decoration: line-through }
 .chips button svg { width: 3.4cqw; height: 3.4cqw }
 .chips em { font-style: normal; font-size: 3.4cqw; color: var(--mute) }
 
@@ -322,14 +335,13 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
       </div>
       <div class="sheet" id="cfgSheet" role="dialog" aria-labelledby="cfgT" hidden>
         <h2 id="cfgT">직원 설정</h2>
-        <div class="row"><span>당첨 카드 위치</span>
+        <div class="row"><label for="tIn">총 팩 수</label>
+          <div class="field"><input id="tIn" type="number" inputmode="numeric" min="1" max="9999"><span>팩</span></div>
+          <div class="meta2"><span id="tStat"></span><button class="link" id="tReset">연 팩 수 0으로</button></div>
+        </div>
+        <div class="row"><label for="wIn">당첨 위치 (전체에서 몇 번째 팩)</label>
           <div class="chips" id="wList"></div>
-          <div class="step">
-            <button id="wMinus" aria-label="하나 빼기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
-            <output id="wN"></output>
-            <button id="wPlus" aria-label="하나 더하기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M5 12h14M12 5v14"/></svg></button>
-          </div>
-          <button class="btn" id="wAdd">위치 추가</button>
+          <div class="field"><input id="wIn" type="number" inputmode="numeric" min="1" placeholder="번호"><span>번째</span><button class="btn" id="wAdd">추가</button></div>
         </div>
         <div class="row"><span>효과음</span><div class="seg"><button class="btn" id="sOn" aria-pressed="true">켜기</button><button class="btn" id="sOff" aria-pressed="false">끄기</button></div></div>
         <button class="btn pri" id="cfgOk">닫기</button>
@@ -352,8 +364,10 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
   // 직원 설정은 이 기기에 저장해서 새로고침해도 유지돼요
   const KEY = 'seiroku-gacha-settings';
   let saved = {}; try { saved = JSON.parse(localStorage.getItem(KEY)) || {}; } catch {}
-  let winList = Array.isArray(saved.wins) ? saved.wins : [3], pick = 1, n = 1, sound = saved.sound !== false, busy = false;
-  const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ wins: winList, sound })); } catch {} };
+  let winList = Array.isArray(saved.wins) ? saved.wins : [3], packs = saved.packs > 0 ? saved.packs : 300, opened = saved.opened > 0 ? saved.opened : 0;
+  let n = 1, sound = saved.sound !== false, busy = false;
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ wins: winList, sound, packs, opened })); } catch {} };
+  const left = () => Math.max(0, packs - opened);
   const PIN = '486';
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const wait = ms => new Promise(r => setTimeout(r, reduce ? Math.min(ms, 80) : ms));
@@ -361,7 +375,7 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
 
   // ---- 장 수 ----
   const setN = v => {
-    n = Math.max(0, Math.min(300, v));
+    n = Math.max(0, Math.min(left(), v));
     $('n').innerHTML = `<span>${n}<small>장</small></span>`;
     $('go').disabled = n === 0;
   };
@@ -373,15 +387,29 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
   // ---- 직원 설정 ----
   // 당첨 위치는 여러 개: 숫자를 고르고 '위치 추가', 칩을 누르면 빠져요
   const X = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>';
-  const drawW = () => {
-    $('wList').innerHTML = winList.length ? winList.map(k => `<button data-k="${k}" aria-label="${k}번째 빼기">${k}번째${X}</button>`).join('') : '<em>없음</em>';
-    $('wList').querySelectorAll('button').forEach(b => b.onclick = () => { winList = winList.filter(k => k !== +b.dataset.k); save(); drawW(); });
-    $('wN').innerHTML = `<span>${pick}<small>번째</small></span>`;
+  // 총 팩 수와 지금까지 연 팩 수 (손님마다 연 만큼 누적, 당첨 위치는 이 누적 번호 기준)
+  const drawT = () => {
+    $('tIn').value = packs;
+    $('tStat').textContent = `${opened}팩 열림 · ${left()}팩 남음`;
+    const r = $('tReset'); r.textContent = '연 팩 수 0으로'; r.classList.remove('warn'); r.dataset.arm = '';
   };
-  const setPick = v => { pick = Math.max(1, Math.min(300, v)); drawW(); };
-  $('wMinus').onclick = () => setPick(pick - 1); $('wPlus').onclick = () => setPick(pick + 1);
-  $('wAdd').onclick = () => { if (!winList.includes(pick)) winList = [...winList, pick].sort((a, b) => a - b); save(); setPick(pick + 1); };
-  drawW();
+  $('tIn').onchange = () => { const v = Math.round(+$('tIn').value); if (v >= 1) packs = Math.min(9999, v); save(); drawT(); drawW(); setN(n); };
+  $('tReset').onclick = () => {
+    const r = $('tReset');
+    if (!r.dataset.arm) { r.dataset.arm = '1'; r.textContent = '한 번 더 누르면 0으로'; r.classList.add('warn'); return; }
+    opened = 0; save(); drawT(); drawW(); setN(n);
+  };
+  const drawW = () => {
+    $('wList').innerHTML = winList.length ? winList.map(k => `<button data-k="${k}" class="${k <= opened ? 'past' : ''}" aria-label="${k}번째 빼기">${k}번째${X}</button>`).join('') : '<em>없음</em>';
+    $('wList').querySelectorAll('button').forEach(b => b.onclick = () => { winList = winList.filter(k => k !== +b.dataset.k); save(); drawW(); });
+  };
+  $('wAdd').onclick = () => {
+    const k = Math.round(+$('wIn').value);
+    if (k >= 1 && k <= packs && !winList.includes(k)) { winList = [...winList, k].sort((a, b) => a - b); save(); drawW(); }
+    $('wIn').value = ''; $('wIn').focus();
+  };
+  $('wIn').onkeydown = e => { if (e.key === 'Enter') $('wAdd').click(); };
+  drawT(); drawW();
   // 비밀번호 키패드
   let code = '';
   const drawDots = () => [...$('dots').children].forEach((d, i) => d.classList.toggle('on', i < code.length));
@@ -392,10 +420,10 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
     if (k === 'b') { code = code.slice(0, -1); drawDots(); return; }
     code += b.textContent; drawDots();
     if (code.length < PIN.length) return;
-    if (code === PIN) { $('lock').hidden = true; $('cfgSheet').hidden = false; }
+    if (code === PIN) { $('lock').hidden = true; $('cfgSheet').hidden = false; drawT(); drawW(); }
     else { const d = $('dots'); d.classList.remove('bad'); void d.offsetWidth; d.classList.add('bad'); setTimeout(() => { code = ''; drawDots(); }, 300); }
   });
-  $('cfgOk').onclick = () => { $('cfg').hidden = true; };
+  $('cfgOk').onclick = () => { $('cfg').hidden = true; setN(n || 1); };
   const setS = v => { sound = v; save(); $('sOn').setAttribute('aria-pressed', v); $('sOff').setAttribute('aria-pressed', !v); };
   $('sOn').onclick = () => setS(true); $('sOff').onclick = () => setS(false);
   setS(sound);
@@ -469,7 +497,9 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
   let total = 0, wins = new Set(), start = 1, hits = 0, done = false;
   $('go').onclick = async () => {
     if (busy || !n) return; busy = true; A(); fxSize();
-    total = n; wins = new Set(winList.filter(k => k <= total)); start = 1; hits = 0;
+    total = n; const base = opened;
+    wins = new Set(winList.filter(k => k > base && k <= base + total).map(k => k - base)); start = 1; hits = 0;
+    opened += total; save();
     const home = $('home'), pw = $('packwrap'), deck = $('deck'), sh = $('shoot');
     sh.innerHTML = '<div class="face b"></div>'.repeat(Math.min(10, total));
     idle = false; const cur = pw.style.transform || 'none';
@@ -503,7 +533,7 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
     grid.style.setProperty('--cw', ks.length === 1 ? '56cqw' : '1fr');
     grid.innerHTML = ks.map(k => `<div class="cd down" data-k="${k}"><i class="slot"></i><div class="in3"><div class="face b"></div>${wins.has(k)
       ? '<div class="face f win foil"></div>'
-      : '<div class="face f nor"><span class="k">SEIROKU : WORK</span><span class="ty">THANK<br>YOU<small>다음 팩에서 만나요</small></span><span class="ft"><span>青録</span><span>VOL.3</span></span></div>'}</div><span class="tag">${wins.has(k) ? '포스터' : '꽝'}</span></div>`).join('');
+      : '<div class="face f nor"><span class="k">SEIROKU : WORK</span><span class="ty">THANK<br>YOU<small>다음 팩에서 만나요</small></span><span class="ft"><span>青録</span><span>VOL.3</span></span></div>'}</div>${wins.has(k) ? '<span class="tag">포스터</span>' : ''}</div>`).join('');
     const cards = [...grid.children];
     const th = 5 * Math.PI / 180, c = Math.cos(th), sn = Math.sin(th); // 판이 -5° 기울어 있어서 되돌려 계산
     cards.forEach((el, i) => {
@@ -551,7 +581,7 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
   function summary() {
     show('sum');
     $('s1').textContent = hits ? `포스터 ${hits}장 당첨` : '이번엔 꽝';
-    let h = ''; for (let k = 1; k <= total; k++) h += wins.has(k) ? '<i class="w"></i>' : '<i>꽝</i>';
+    let h = ''; for (let k = 1; k <= total; k++) h += wins.has(k) ? '<i class="w"></i>' : '<i></i>';
     $('mini').innerHTML = h;
   }
   $('home2').onclick = () => {
