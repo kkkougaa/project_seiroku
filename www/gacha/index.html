@@ -457,8 +457,6 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
   }
   const sfx = {
     pop: () => { if (play('open')) return; tone(80, 0, .35, 'sine', .3, 40); noise(0, .3, .25, 1800); },
-    whoosh: i => { noise(i * .05, .12, .1, 3000 + i * 200); },
-    deal: i => noise(i * .04, .06, .1, 2500),
     flip: () => { noise(0, .06, .14, 3500); tone(900, 0, .05, 'triangle', .035); },
     omen: () => { if (play('omen')) return; tone(330, 0, .45, 'triangle', .07, 1300); },
     reveal: () => { if (play('win', .7, .1)) return; tone(60, 0, .5, 'sine', .35, 35); noise(0, .45, .2, 1500); [523, 659, 784, 1046].forEach((f, i) => tone(f, .08 + i * .07, .8, 'triangle', .07)); },
@@ -525,7 +523,6 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
     [...sh.children].forEach((c, i) => {
       const x = (Math.random() - .5) * 50, r = (Math.random() - .5) * 50;
       anim(c, [{ opacity: 1, transform: 'translateY(0)' }, { opacity: 1, transform: `translate(${x}cqw,-170cqw) rotate(${r}deg)` }], { duration: 520, delay: i * 45, easing: 'cubic-bezier(.3,.4,.4,1)' });
-      sfx.whoosh(i);
     });
     anim(deck, [{ transform: 'none' }, { transform: 'translateY(90cqw)', opacity: 0 }], { duration: 420, delay: 120, easing: 'cubic-bezier(.5,0,.8,.4)' });
     await wait(560 + Math.min(10, total) * 45);
@@ -554,7 +551,7 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
       el.style.setProperty('--dy', (vx * sn + vy * c) + 'px');
       el.style.setProperty('--dr', ((Math.random() - .5) * 30).toFixed(0) + 'deg');
       el.style.setProperty('--d', i * 30 + 'ms');
-      el.classList.add('dealt'); sfx.deal(i % 12);
+      el.classList.add('dealt');
     });
     $('actWrap').hidden = true;
     await wait(500 + cards.length * 30);
