@@ -543,7 +543,11 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
       const a = o.a + t * o.v, x = cx + Math.cos(a) * m * o.k, y = cy + Math.sin(a) * m * o.k, s = o.big ? 9 : 5;
       if (x < -20 || x > W + 20 || y < -20 || y > H + 20) continue;
       bx.globalAlpha = .25; bx.beginPath(); bx.arc(x, y, s * .9, 0, 7); bx.fill();
-      star(x, y, s, 1);
+      // 뾰족한 두 끝이 원의 중심을 향하도록(지름 방향) 돌려서 그려요
+      bx.save(); bx.translate(x, y); bx.rotate(a); bx.globalAlpha = 1; bx.beginPath();
+      const L = s * 1.5, Wd = s * .7;
+      bx.moveTo(L, 0); bx.quadraticCurveTo(0, 0, 0, Wd); bx.quadraticCurveTo(0, 0, -L, 0); bx.quadraticCurveTo(0, 0, 0, -Wd); bx.quadraticCurveTo(0, 0, L, 0); bx.fill();
+      bx.restore(); bx.setTransform(D, 0, 0, D, 0, 0);
     }
     bx.lineWidth = 1 / D * 1.2;
     for (const [y0, y1, sp] of [[H * .14, H * .02, .05], [H * 1.0, H * .8, .035]]) {
