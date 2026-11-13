@@ -213,21 +213,42 @@ button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px }
 
 /* 결과 */
 /* 결과: 내지의 영수증처럼 */
-#sum { z-index: 25; padding: 9cqw 0 6cqw; align-items: center; gap: 6cqw }
-.rcpt { position: relative; flex: 1; min-height: 0; width: 76cqw; display: flex; flex-direction: column; gap: 3cqw; padding: 6cqw 6cqw 5cqw; background: #fdfdfb; color: #141414; font-family: var(--mono); transform: rotate(-2deg); box-shadow: 0 3cqw 8cqw rgba(0,0,0,.55) }
+#sum { z-index: 25; padding: 7cqw 0 6cqw; align-items: center; gap: 5cqw }
+/* 서류더미: 크라프트 폴더 + 아래 깔린 종이 + 바인더 속지 + 클립 꽂힌 영수증 (내지 디자인 참고) */
+.pile { position: relative; flex: 1; min-height: 0; width: 92cqw }
+.folder { position: absolute; inset: 3cqw 4cqw 1cqw 0; border-radius: 2.4cqw; transform: rotate(1.4deg);
+  background: linear-gradient(160deg, #c99a6c, #b07f55 60%, #a8774d); box-shadow: 0 3cqw 8cqw rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.12) }
+.folder::after { content: ""; position: absolute; inset: 0; border-radius: inherit; opacity: .25; background: repeating-linear-gradient(35deg, rgba(0,0,0,.08) 0 .2cqw, transparent .2cqw .9cqw) }
+.tab { position: absolute; right: -3.6cqw; width: 5cqw; border-radius: 0 1.6cqw 1.6cqw 0 }
+.tab.t1 { top: 10%; height: 14%; background: #ee7a45 }
+.tab.t2 { top: 25%; height: 13%; background: #e6dccb }
+.under { position: absolute; inset: 1cqw 9cqw 6cqw 3cqw; background: #f6f2ea; border-radius: 1cqw; transform: rotate(-3deg); box-shadow: 0 1cqw 3cqw rgba(0,0,0,.25) }
+.page { position: absolute; inset: 0 8cqw 5cqw 2cqw; background: #ebe3d5; border-radius: 1cqw; transform: rotate(-.6deg); box-shadow: 0 1.4cqw 4cqw rgba(0,0,0,.3); color: #1b1b1b; padding: 7cqw 6cqw 0 11cqw; overflow: hidden }
+.holes { position: absolute; left: 3cqw; top: 5cqw; bottom: 3cqw; width: 3cqw;
+  background: radial-gradient(circle, #a8774d 0 1.2cqw, transparent 1.3cqw) 50% 0 / 3cqw 10cqw repeat-y; opacity: .85 }
+.ph { display: flex; justify-content: space-between; align-items: baseline; border-bottom: .25cqw solid #1b1b1b; padding-bottom: 1.6cqw;
+  font-family: Didot, "Bodoni 72", "Bodoni Moda", Georgia, serif; letter-spacing: -.02em }
+.ph .no { font-size: 7cqw; line-height: 1 }
+.ph .sw { font-size: 3.6cqw }
+.lb { display: inline-block; margin-top: 3cqw; background: #ee7a45; color: #fff; font-family: "SeirokuKanji", "Hiragino Mincho ProN", serif; font-weight: 200; font-size: 5cqw; padding: .6cqw 1.8cqw }
+.br { margin-top: 2cqw; font-size: 2.6cqw; color: #ee7a45; letter-spacing: -.01em }
+.br b { font-family: var(--title); font-weight: 900 }
+.wm { position: absolute; left: 10cqw; bottom: 3cqw; font-family: Didot, "Bodoni 72", Georgia, serif; font-size: 11cqw; line-height: .85; color: rgba(140,110,70,.18) }
+.wm i { font-style: italic }
+.rcpt { position: absolute; right: 2cqw; top: 30cqw; bottom: 0; width: 62cqw; display: flex; flex-direction: column; gap: 2.6cqw; padding: 5cqw 5cqw 4cqw; background: #fdfdfb; color: #141414; font-family: var(--mono); transform: rotate(3deg); box-shadow: 0 3cqw 8cqw rgba(0,0,0,.45) }
 .rcpt .clip { position: absolute; right: 2cqw; top: -5cqw; width: 5cqw; height: 13cqw; border: .5cqw solid #b9bec6; border-radius: 3cqw; transform: rotate(18deg); box-shadow: inset 0 0 0 .2cqw rgba(255,255,255,.6) }
-.rh { display: flex; justify-content: space-between; font-weight: 800; font-size: 3.4cqw; letter-spacing: .04em; padding-right: 6cqw }
-.kanji { text-align: center; font-family: "SeirokuKanji", "Hiragino Mincho ProN", "Yu Mincho", serif; font-weight: 200; font-size: 9cqw; line-height: 1 }
+.rh { display: flex; justify-content: space-between; font-weight: 800; font-size: 3cqw; letter-spacing: .04em; padding-right: 6cqw }
+.kanji { text-align: center; font-family: "SeirokuKanji", "Hiragino Mincho ProN", "Yu Mincho", serif; font-weight: 200; font-size: 8cqw; line-height: 1 }
 .kanji small { display: block; margin-top: 1.4cqw; font-family: Georgia, "Times New Roman", serif; font-size: 2.2cqw; line-height: 1.3 }
 .rcpt .big { text-align: center; font-family: var(--title); font-weight: 900; font-size: 6.4cqw; line-height: 1.15 }
 .rcpt .big b { display: inline-block; background: var(--orange); color: #fff; padding: .4cqw 1.6cqw .2cqw; margin-right: 1.4cqw; font-weight: 900 }
-.mini { flex: 1; min-height: 12cqw; overflow-y: auto; display: grid; grid-template-columns: repeat(8, 1fr); gap: 1.6cqw; align-content: start; padding: 1cqw }
+.mini { flex: 1; min-height: 10cqw; overflow-y: auto; display: grid; grid-template-columns: repeat(7, 1fr); gap: 1.6cqw; align-content: start; padding: 1cqw }
 .mini i { position: relative; aspect-ratio: 3 / 4; border-radius: .8cqw; background: var(--back) center / cover; box-shadow: 0 0 0 1px rgba(0,0,0,.12) }
 .dash { border-top: .3cqw dashed #333 }
 .rcpt .ty { text-align: center; font-weight: 800; font-size: 3.2cqw; letter-spacing: .1em }
 .rcpt .ty + .bar { margin-top: -2cqw }
 .rcpt .bar { width: 62%; margin-inline: auto; height: 5.6cqw; background: repeating-linear-gradient(90deg, #141414 0 .5cqw, transparent .5cqw .9cqw, #141414 .9cqw 1.1cqw, transparent 1.1cqw 1.8cqw, #141414 1.8cqw 2.6cqw, transparent 2.6cqw 3cqw) }
-.cr { display: flex; justify-content: space-between; gap: 2cqw; font-size: 1.7cqw; line-height: 1.5; font-weight: 700 }
+.cr { display: flex; justify-content: space-between; gap: 1.6cqw; font-size: 1.4cqw; line-height: 1.5; font-weight: 700 }
 .cr span:nth-child(2) { text-align: center } .cr span:last-child { text-align: right }
 .mini i.w { background: var(--poster) center / cover; box-shadow: 0 0 0 .4cqw var(--gold) }
 
@@ -331,6 +352,16 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
     </section>
 
     <section class="layer" id="sum" hidden>
+      <div class="pile">
+        <div class="folder" aria-hidden="true"><i class="tab t1"></i><i class="tab t2"></i></div>
+        <div class="under" aria-hidden="true"></div>
+        <div class="page" aria-hidden="true">
+          <i class="holes"></i>
+          <div class="ph"><span class="no">VOL.3</span><span class="sw">SEIROKU : WORK!</span></div>
+          <span class="lb">結果</span>
+          <div class="br">「 <b>KEMONO ILLUST ANTHOLOGY</b> 」</div>
+          <div class="wm">SEIROKU<br><i>WORK!</i></div>
+        </div>
       <div class="rcpt">
         <i class="clip" aria-hidden="true"></i>
         <div class="rh"><span>RECEIPT</span><span id="rNo">NO. 000000</span></div>
@@ -341,6 +372,7 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
         <div class="bar"></div>
         <div class="dash"></div>
         <div class="cr"><span>ANTHOLOGY<br>WITH<br>25 ARTISTS</span><span>ORGANIZED BY : ITTO<br>DESIGN &amp; PRODUCTION : HACHI<br>SPECIAL THANKS TO : RAGUL</span><span>RELEASED<br>2026<br>WINTER</span></div>
+      </div>
       </div>
       <div class="foot"><div class="cta"><span class="marks"><i></i><i></i><i></i><i></i></span><button class="btn pri big" id="home2"><span class="word">DONE</span></button></div></div>
     </section>
