@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0b0d14">
+<title>세이로쿠 포스터 가챠</title>
+<link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
+<style>
+@font-face { font-family: "Paperlogy"; font-weight: 600; font-display: block; src: url("paperlogy-600.woff2") format("woff2") }
+@font-face { font-family: "Paperlogy"; font-weight: 700; font-display: block; src: url("paperlogy-700.woff2") format("woff2") }
+@font-face { font-family: "Pretendard"; font-weight: 100 900; font-display: block; src: url("../fonts/PretendardVariable.woff2") format("woff2-variations"), url("../fonts/PretendardVariable.woff2") format("woff2") }
+/* 레이아웃: 화면 가운데 아이패드 세로 비율(744:1133) 무대. 홈 = 카드팩, 판 = 20장, 당첨 = 포스터 한 장, 결과.
+   크롬(버튼, 패널, 글자)은 잉크색 무채색으로 조용히, 색과 공은 카드팩과 당첨 카드에만. 서명 디테일 = 표지의 ㄱ자 가늠표와 가는 흰 원. */
+:root {
+  --bg: #0b0d14; --card: #11141c; --raised: #1a1e28; --hair: rgba(238,240,245,.09); --hair2: rgba(238,240,245,.16);
+  --fg: #eef0f5; --fg2: #a3a9b8; --mute: #7a8296;
+  --paper: #f2ebde; --ink: #111827; --orange: #ff6a1a; --gold: #e9b54a;
+  --title: "Paperlogy", "Pretendard", "Apple SD Gothic Neo", sans-serif;
+  --body: "Pretendard", "Apple SD Gothic Neo", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --ease: cubic-bezier(.2,.7,.2,1);
+  color-scheme: dark;
+}
+* { box-sizing: border-box }
+html, body { height: 100%; margin: 0; background: var(--bg); overflow: hidden; overscroll-behavior: none }
+body { color: var(--fg); font-family: var(--body); font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; -webkit-text-size-adjust: 100% }
+button { font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent }
+button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px }
+
+.app { position: fixed; inset: 0; display: grid; place-items: center; overflow: hidden;
+  padding: env(safe-area-inset-top, 0px) max(16px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(16px, env(safe-area-inset-left, 0px)) }
+.bgimg { position: absolute; inset: 0; z-index: 0; background: radial-gradient(70% 34% at 50% 108%, rgba(80,150,190,.22), transparent 70%), radial-gradient(40% 24% at 6% 102%, rgba(255,106,26,.12), transparent 70%), var(--bg) }
+#bgfx { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none }
+.stage { position: relative; z-index: 1; width: min(100%, calc((100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) * 744 / 1133)); aspect-ratio: 744 / 1133; max-width: 100%;
+  container-type: inline-size; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; isolation: isolate; touch-action: manipulation }
+.stage.shake { animation: shake .35s var(--ease) }
+@keyframes shake { 25% { transform: translate(-1cqw,.5cqw) } 50% { transform: translate(1cqw,-.5cqw) } 75% { transform: translate(-.4cqw,.2cqw) } }
+.layer { position: absolute; inset: 0; display: flex; flex-direction: column }
+.layer[hidden] { display: none !important }
+
+/* 상단 바 */
+.hud { display: flex; align-items: center; justify-content: space-between; gap: 2cqw; padding: 4cqw 5cqw 0; min-height: 12cqw }
+.label { display: inline-flex; align-items: center; gap: 2cqw; font-size: 3.2cqw; font-weight: 500; color: var(--fg2) }
+.label b { background: var(--orange); color: #fff; font-family: var(--title); font-weight: 700; padding: 1cqw 2cqw .9cqw; line-height: 1 }
+.count { font-family: var(--mono); font-size: 3.2cqw; color: var(--fg2); font-variant-numeric: tabular-nums }
+.count b { color: var(--fg); font-weight: 600 }
+.icon { width: 9cqw; height: 9cqw; display: grid; place-items: center; border: 0; border-radius: 2cqw; background: transparent; color: var(--mute); transition: background-color .15s }
+.icon:active { background: var(--raised) }
+.icon svg { width: 4.4cqw; height: 4.4cqw }
+
+/* 카드 공통 */
+.face { position: absolute; inset: 0; border-radius: var(--rad); backface-visibility: hidden; -webkit-backface-visibility: hidden; overflow: hidden }
+.face.b { background: var(--back) center / cover }
+.face.b::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1px rgba(255,255,255,.16) }
+.face.f { transform: rotateY(180deg) }
+.face.nor { background: var(--paper); color: var(--ink); display: flex; flex-direction: column; justify-content: space-between; padding: 9% 10% }
+.nor .k { font-weight: 700; font-size: 1.2cqw; color: var(--orange) }
+.nor .ty { font-family: var(--title); font-weight: 700; font-size: 3cqw; line-height: 1 }
+.nor .ty small { display: block; font-family: var(--body); font-weight: 500; font-size: 1.3cqw; margin-top: 1.2cqw; color: #5e554a; line-height: 1.3 }
+.nor .ft { display: flex; justify-content: space-between; border-top: .2cqw solid var(--ink); padding-top: .7cqw; font-family: var(--mono); font-size: 1.1cqw }
+.face.win { background: var(--poster) center / cover }
+.foil::before { content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none; mix-blend-mode: soft-light;
+  background: linear-gradient(115deg, transparent 30%, rgba(255,255,255,.7) 45%, transparent 60%); background-size: 260% 100%; animation: foil 3.6s ease-in-out infinite alternate }
+@keyframes foil { from { background-position: 110% 0 } to { background-position: -10% 0 } }
+/* 서명 디테일: 표지의 ㄱ자 가늠표 */
+.marks { position: absolute; inset: 0; pointer-events: none }
+.marks i { position: absolute; width: var(--m, 2cqw); height: var(--m, 2cqw); border: 0 solid currentColor }
+.marks i:nth-child(1) { left: 0; top: 0; border-width: var(--mw, .3cqw) 0 0 var(--mw, .3cqw) }
+.marks i:nth-child(2) { right: 0; top: 0; border-width: var(--mw, .3cqw) var(--mw, .3cqw) 0 0 }
+.marks i:nth-child(3) { left: 0; bottom: 0; border-width: 0 0 var(--mw, .3cqw) var(--mw, .3cqw) }
+.marks i:nth-child(4) { right: 0; bottom: 0; border-width: 0 var(--mw, .3cqw) var(--mw, .3cqw) 0 }
+
+/* 홈: 카드팩 */
+#home { padding-bottom: 6cqw }
+.hero { flex: 1; display: grid; place-items: center; position: relative }
+.packwrap { position: relative; width: 42cqw }
+.float { animation: float 5s ease-in-out infinite }
+@keyframes float { 0%, 100% { transform: translateY(0) rotate(-1deg) } 50% { transform: translateY(-1.6cqw) rotate(1.2deg) } }
+.pack { position: relative; z-index: 2; border-radius: .8cqw; box-shadow: 0 4cqw 8cqw rgba(0,0,0,.55) }
+.seal { position: relative; overflow: hidden; color: var(--ink); line-height: 1; background: linear-gradient(180deg, #f6f1e7, #e7dfcf) }
+.seal::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(90deg, rgba(17,24,39,.05) 0 .2cqw, transparent .2cqw .7cqw) }
+.seal.top { height: 13.6cqw; border-radius: .8cqw .8cqw 0 0; padding: 1.6cqw 2.4cqw 2.8cqw; display: flex; justify-content: space-between; align-items: flex-end; z-index: 3 }
+.seal .marks { inset: 1.2cqw; --m: 1.6cqw; --mw: .25cqw }
+.seal.top .marks { bottom: auto; height: 3cqw }
+.seal.bot .marks { top: auto; height: 3cqw }
+.hole { position: absolute; left: 50%; top: 1.6cqw; width: 7.2cqw; height: 1.8cqw; translate: -50% 0; border-radius: 1cqw; background: var(--bg); box-shadow: inset 0 .3cqw .4cqw rgba(0,0,0,.6) }
+.labels { position: relative; display: grid; gap: .4cqw; justify-items: start }
+.labels span { font-weight: 700; font-size: 1.4cqw; padding: .5cqw .8cqw .4cqw; color: #fff; background: #151515 }
+.labels span + span { background: var(--orange) }
+.seal .meta { position: relative; text-align: right; font-family: var(--mono); font-size: 1.2cqw; line-height: 1.4; color: #3c4a57 }
+.seal .meta b { display: block; font-family: var(--title); font-weight: 700; font-size: 2.4cqw; color: var(--ink); line-height: 1.1 }
+.tearline { position: absolute; left: 0; right: 0; bottom: 1cqw; height: .2cqw; background: repeating-linear-gradient(90deg, var(--ink) 0 .9cqw, transparent .9cqw 1.5cqw); opacity: .6 }
+.tearline::before, .tearline::after { content: ""; position: absolute; top: -.9cqw; width: 1.2cqw; height: 2cqw; background: var(--bg) }
+.tearline::before { left: 0; clip-path: polygon(0 0, 100% 50%, 0 100%) }
+.tearline::after { right: 0; clip-path: polygon(100% 0, 0 50%, 100% 100%) }
+.pbody { position: relative; aspect-ratio: 3 / 4; background: var(--poster) center / cover; overflow: hidden }
+.pbody::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(90deg, rgba(0,0,0,.5), rgba(255,255,255,.12) 4%, transparent 12% 88%, rgba(255,255,255,.12) 96%, rgba(0,0,0,.5)), linear-gradient(180deg, rgba(0,0,0,.35), transparent 8% 92%, rgba(0,0,0,.35)) }
+.pbody .sheen { position: absolute; inset: 0; z-index: 2; mix-blend-mode: soft-light; pointer-events: none;
+  background: linear-gradient(115deg, transparent 38%, rgba(255,255,255,.8) 48%, transparent 58%); background-size: 300% 100%; animation: sheen 5s ease-in-out infinite }
+@keyframes sheen { 0%, 45% { background-position: 120% 0 } 80%, 100% { background-position: -20% 0 } }
+.seal.bot { height: 7cqw; border-radius: 0 0 .8cqw .8cqw; display: flex; align-items: center; justify-content: space-between; gap: 1cqw; padding: 0 3cqw; font-family: var(--mono); font-size: 1.15cqw; line-height: 1.35; color: #3c4a57 }
+.seal.bot > span:last-of-type { text-align: right }
+.seal.bot .bar { width: 8cqw; height: 2.6cqw; background: repeating-linear-gradient(90deg, var(--ink) 0 .22cqw, transparent .22cqw .42cqw, var(--ink) .42cqw .85cqw, transparent .85cqw 1cqw) }
+/* 개봉 때 위로 날아가는 카드들 (팩 몸통 뒤에서 출발) */
+.shoot { position: absolute; z-index: 1; left: 50%; top: 14cqw; width: 36cqw; aspect-ratio: 3 / 4; translate: -50% 0; pointer-events: none }
+.shoot .face.b { --rad: 1.4cqw; opacity: 0; box-shadow: 0 1cqw 2cqw rgba(0,0,0,.4) }
+.pop { position: absolute; left: -20%; right: -20%; top: 6cqw; height: 16cqw; z-index: 4; pointer-events: none; opacity: 0; background: radial-gradient(50% 50% at 50% 50%, #fff, rgba(255,250,240,.5) 45%, transparent 70%) }
+
+.panel { margin: 0 6cqw; padding: 4cqw; background: var(--card); border: 1px solid var(--hair); border-radius: 4cqw; display: grid; gap: 3cqw; transition: transform .35s var(--ease), opacity .25s }
+#home.opening .panel { transform: translateY(10cqw); opacity: 0; pointer-events: none }
+.step { display: grid; grid-template-columns: 14cqw 1fr 14cqw; align-items: center; height: 14cqw; background: var(--raised); border: 1px solid var(--hair); border-radius: 2.4cqw; overflow: hidden }
+.step button { height: 100%; border: 0; background: transparent; color: var(--fg2); display: grid; place-items: center; transition: background-color .15s }
+.step button:active { background: rgba(238,240,245,.06) }
+.step button svg { width: 5cqw; height: 5cqw }
+.step output { text-align: center; font-family: var(--title); font-weight: 600; font-size: 7.6cqw; line-height: 1; font-variant-numeric: tabular-nums; border-inline: 1px solid var(--hair); height: 100%; display: grid; place-items: center }
+.step output span { display: inline-flex; align-items: baseline; gap: 1cqw }
+.step output small { font-family: var(--body); font-size: 3.2cqw; font-weight: 500; color: var(--fg2) }
+.quick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2cqw }
+.btn { height: 11cqw; border-radius: 2.4cqw; border: 1px solid var(--hair2); background: var(--raised); font-weight: 500; font-size: 3.6cqw; color: var(--fg); box-shadow: inset 0 1px 0 rgba(255,255,255,.06); transition: background-color .15s, transform .1s var(--ease) }
+.btn:active { transform: scale(.98); background: #222836 }
+.btn.ghost { background: transparent; color: var(--fg2) }
+.btn.pri { border: 0; height: 14cqw; background: var(--paper); color: var(--ink); font-weight: 600; font-size: 4.2cqw; box-shadow: inset 0 -1px 0 rgba(0,0,0,.12) }
+.btn.pri:active { background: #e4dccc }
+.btn[disabled] { opacity: .4; pointer-events: none }
+.btn .n { font-family: var(--mono); font-weight: 500; color: #5e554a; margin-left: 1.6cqw }
+
+/* 카드 판 */
+#board { padding-bottom: 6cqw }
+.grid { flex: 1; display: grid; grid-template-columns: repeat(5, 1fr); align-content: center; gap: 5cqw 3cqw; padding: 0 7cqw; perspective: 200cqw; transform: rotate(-5deg) }
+.cd { --rad: 1.2cqw; position: relative; aspect-ratio: 3 / 4; transform-style: preserve-3d; border: 0; padding: 0; background: none; opacity: 0 }
+.cd.dealt { opacity: 1; animation: deal .45s var(--ease) backwards; animation-delay: var(--d) }
+@keyframes deal { from { opacity: 0; transform: translate(var(--dx), var(--dy)) rotate(var(--dr)) scale(1.2) } 20% { opacity: 1 } }
+.cd .in3 { position: absolute; inset: 0; transform-style: preserve-3d; transition: transform .4s var(--ease) }
+.cd.open .in3 { transform: rotateY(180deg) }
+.cd .face.b { box-shadow: 0 .8cqw 1.6cqw rgba(0,0,0,.45) }
+.cd::after { content: ""; position: absolute; inset: -1cqw; border: 1px solid var(--hair); border-radius: 2.2cqw; pointer-events: none; transform: translateZ(-1px) }
+.cd.down { cursor: pointer }
+.cd.down:active .in3 { transform: scale(.96) }
+.tag { position: absolute; left: 50%; bottom: -2.6cqw; translate: -50% 0; transform: translateZ(2px); padding: .5cqw 1.4cqw; border-radius: .8cqw; font-family: var(--mono); font-size: 1.8cqw; line-height: 1.2; color: var(--fg2); background: var(--raised); border: 1px solid var(--hair); opacity: 0; transition: opacity .2s .25s; white-space: nowrap }
+.cd.open .tag { opacity: 1 }
+.cd.won .tag { background: var(--gold); color: var(--ink); border-color: transparent; font-weight: 600 }
+.cd.omen { z-index: 3 }
+.cd.omen .in3 { transform: translateY(-2cqw) scale(1.12); animation: tremble .08s linear infinite }
+.cd.omen .face.b { box-shadow: 0 0 0 .5cqw var(--gold), 0 2cqw 4cqw rgba(0,0,0,.5) }
+@keyframes tremble { 25% { translate: -.3cqw 0 } 75% { translate: .3cqw 0 } }
+.cd.won .face.f { box-shadow: 0 0 0 .45cqw var(--gold) }
+.cd.won::after { border-color: rgba(233,181,74,.6) }
+.foot { display: flex; gap: 2.4cqw; padding: 0 6cqw }
+.foot .btn { flex: 1 }
+
+/* 당첨 공개: 카드 한 장을 똑바로, 표지 가늠표로 감싸기 */
+#reveal { z-index: 20; align-items: center; justify-content: center; gap: 6cqw; background: rgba(11,13,20,.9) }
+#reveal .ttl { text-align: center; opacity: 0; transform: translateY(2cqw); transition: opacity .3s var(--ease), transform .3s var(--ease) }
+#reveal.on .ttl { opacity: 1; transform: none }
+.won { font-family: var(--title); font-weight: 700; font-size: 10cqw; line-height: 1.1; letter-spacing: -.02em }
+.won small { display: block; font-family: var(--body); font-weight: 500; font-size: 3.6cqw; color: var(--fg2); letter-spacing: 0; margin-top: 1.6cqw }
+.rwrap { position: relative; perspective: 160cqw; padding: 4cqw }
+.rwrap > .marks { color: var(--fg); --m: 4cqw; --mw: .35cqw; opacity: 0; transition: opacity .3s .2s }
+#reveal.on .rwrap > .marks { opacity: 1 }
+.sway { animation: sway 6s ease-in-out infinite; transform-style: preserve-3d }
+@keyframes sway { 0%, 100% { transform: rotateY(-6deg) } 50% { transform: rotateY(6deg) } }
+.rcard { --rad: 2cqw; position: relative; width: 54cqw; aspect-ratio: 3 / 4; transform-style: preserve-3d; transform: scale(.6); opacity: 0 }
+.rcard .in3 { position: absolute; inset: 0; transform-style: preserve-3d; transition: transform .55s var(--ease) }
+#reveal.go .rcard { opacity: 1; transform: none; transition: transform .4s var(--ease), opacity .15s }
+#reveal.on .rcard .in3 { transform: rotateY(180deg) }
+.rcard .face { box-shadow: 0 0 0 .6cqw var(--gold), 0 4cqw 8cqw rgba(0,0,0,.6) }
+.staff { opacity: 0; transition: opacity .3s .3s; display: grid; gap: 3cqw; justify-items: center; text-align: center }
+#reveal.on .staff { opacity: 1 }
+.staff p { margin: 0; font-size: 3.4cqw; color: var(--fg2) }
+.staff .btn { width: 60cqw }
+
+/* 결과 */
+#sum { z-index: 25; padding-bottom: 6cqw }
+.shead { padding: 10cqw 7cqw 5cqw; display: grid; gap: 2cqw }
+.shead .big { font-family: var(--title); font-weight: 700; font-size: 9cqw; line-height: 1.15; letter-spacing: -.02em }
+.shead p { margin: 0; font-size: 3.6cqw; color: var(--fg2) }
+.mini { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(8, 1fr); gap: 2cqw; padding: 2cqw 8cqw; align-content: start; transform: rotate(-4deg) }
+.mini i { position: relative; aspect-ratio: 3 / 4; border-radius: .9cqw; background: var(--paper); display: grid; place-items: center; font-style: normal; font-family: var(--mono); font-size: 1.8cqw; color: #9a9184 }
+.mini i.w { background: var(--poster) center / cover; box-shadow: 0 0 0 .4cqw var(--gold) }
+
+/* 직원 설정 */
+#cfg { z-index: 50; background: rgba(11,13,20,.8); align-items: center; justify-content: center }
+.sheet { width: 82cqw; background: var(--card); border: 1px solid var(--hair2); border-radius: 4cqw; padding: 6cqw; display: grid; gap: 4cqw }
+.sheet h2 { margin: 0; font-family: var(--title); font-weight: 700; font-size: 5.2cqw }
+.sheet p { margin: -2cqw 0 0; font-size: 3.2cqw; color: var(--fg2) }
+.sheet .row { display: grid; gap: 2cqw }
+.sheet .row > span { font-size: 3.2cqw; color: var(--fg2) }
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 2cqw }
+.seg .btn[aria-pressed="true"] { background: var(--paper); color: var(--ink); border-color: transparent }
+
+canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 30 }
+.flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 40 }
+.flash.go { animation: flash .4s ease-out }
+@keyframes flash { 0% { opacity: 0 } 15% { opacity: .85 } 100% { opacity: 0 } }
+@media (prefers-reduced-motion: reduce) { .float, .sway, .pbody .sheen, .foil::before, .cd.omen .in3 { animation: none } }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="bgimg" aria-hidden="true"></div><canvas id="bgfx" aria-hidden="true"></canvas>
+  <div class="stage" id="stage">
+
+    <section class="layer" id="home">
+      <div class="hud">
+        <span class="label"><b>SEIROKU : WORK</b>VOL.3</span>
+        <button class="icon" id="gear" aria-label="직원 설정"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button>
+      </div>
+      <div class="hero"><div class="packwrap float" id="packwrap">
+        <div class="shoot" id="shoot"></div>
+        <div class="pack" id="deck">
+          <div class="seal top" id="sealTop">
+            <span class="marks"><i></i><i></i></span><span class="hole"></span>
+            <div class="labels"><span>KEMONO ILLUST ANTHOLOGY</span><span>SEIROKU : WORK</span></div>
+            <div class="meta"><b>青録 VOL.3</b>Photocard Pack</div>
+            <div class="tearline"></div>
+          </div>
+          <div class="pop" id="pop"></div>
+          <div class="pbody"><div class="sheen"></div></div>
+          <div class="seal bot"><span class="marks"><i></i><i></i><i></i><i></i></span><span>Anthology<br>With 25 Artists</span><span class="bar"></span><span>Released<br>2026 Winter</span></div>
+        </div>
+      </div></div>
+      <div class="panel">
+        <div class="step">
+          <button id="minus" aria-label="한 장 빼기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
+          <output id="n" aria-live="polite"></output>
+          <button id="plus" aria-label="한 장 더하기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M5 12h14M12 5v14"/></svg></button>
+        </div>
+        <div class="quick">
+          <button class="btn ghost" data-q="0">초기화</button><button class="btn" data-q="1">+1</button><button class="btn" data-q="5">+5</button><button class="btn" data-q="10">+10</button>
+        </div>
+        <button class="btn pri" id="go">카드팩 열기<span class="n" id="goN"></span></button>
+      </div>
+    </section>
+
+    <section class="layer" id="board" hidden>
+      <div class="hud">
+        <span class="count" id="page">1 / 1</span>
+        <span class="count">남은 카드 <b id="left">0</b></span>
+      </div>
+      <div class="grid" id="grid"></div>
+      <div class="foot"><button class="btn pri" id="act">모두 열기</button></div>
+    </section>
+
+    <section class="layer" id="reveal" hidden>
+      <div class="ttl"><div class="won">포스터 당첨<small>엽서북 표지 포스터</small></div></div>
+      <div class="rwrap"><span class="marks"><i></i><i></i><i></i><i></i></span><div class="sway"><div class="rcard"><div class="in3"><div class="face b"></div><div class="face f win foil"></div></div></div></div></div>
+      <div class="staff"><p>이 화면을 부스 직원에게 보여 주세요</p><button class="btn pri" id="ok">직원 확인</button></div>
+    </section>
+
+    <section class="layer" id="sum" hidden>
+      <div class="shead"><div class="big" id="s1"></div><p id="s2"></p></div>
+      <div class="mini" id="mini"></div>
+      <div class="foot"><button class="btn pri" id="home2">처음으로</button></div>
+    </section>
+
+    <section class="layer" id="cfg" hidden>
+      <div class="sheet" role="dialog" aria-labelledby="cfgT">
+        <h2 id="cfgT">직원 설정</h2>
+        <p>손님에게 보이지 않게 바꿔 주세요</p>
+        <div class="row"><span>당첨 카드 위치</span>
+          <div class="step">
+            <button id="wMinus" aria-label="하나 빼기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
+            <output id="wN"></output>
+            <button id="wPlus" aria-label="하나 더하기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M5 12h14M12 5v14"/></svg></button>
+          </div>
+        </div>
+        <div class="row"><span>효과음</span><div class="seg"><button class="btn" id="sOn" aria-pressed="true">켜기</button><button class="btn" id="sOff" aria-pressed="false">끄기</button></div></div>
+        <button class="btn pri" id="cfgOk">닫기</button>
+      </div>
+    </section>
+
+    <canvas class="fx" id="fx"></canvas>
+    <div class="flash" id="flash"></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const BACK = '../images/photocard.jpg', POSTER = '../images/postcardbook.jpg';
+  document.documentElement.style.setProperty('--back', `url("${BACK}")`);
+  document.documentElement.style.setProperty('--poster', `url("${POSTER}")`);
+  const stage = $('stage'), fxc = $('fx');
+  const B = 20; // 한 화면에 까는 장 수
+  let winAt = 3, n = 1, sound = true, busy = false;
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const wait = ms => new Promise(r => setTimeout(r, reduce ? Math.min(ms, 80) : ms));
+  const anim = (el, kf, o) => el.animate(kf, { fill: 'forwards', ...o, duration: reduce ? 1 : o.duration });
+
+  // ---- 장 수 ----
+  const setN = v => {
+    n = Math.max(0, Math.min(300, v));
+    $('n').innerHTML = `<span>${n}<small>장</small></span>`;
+    $('goN').textContent = n ? `${n}장` : '';
+    $('go').disabled = n === 0;
+  };
+  $('minus').onclick = () => setN(n - 1); $('plus').onclick = () => setN(n + 1);
+  document.querySelectorAll('[data-q]').forEach(b => b.onclick = () => setN(+b.dataset.q ? n + +b.dataset.q : 0));
+  setN(1);
+
+  // ---- 직원 설정 ----
+  const setW = v => { winAt = Math.max(0, Math.min(300, v)); $('wN').innerHTML = winAt ? `<span>${winAt}<small>번째</small></span>` : '<span><small>없음</small></span>'; };
+  setW(winAt);
+  $('gear').onclick = () => { $('cfg').hidden = false; };
+  $('cfgOk').onclick = () => { $('cfg').hidden = true; };
+  $('wMinus').onclick = () => setW(winAt - 1); $('wPlus').onclick = () => setW(winAt + 1);
+  const setS = v => { sound = v; $('sOn').setAttribute('aria-pressed', v); $('sOff').setAttribute('aria-pressed', !v); };
+  $('sOn').onclick = () => setS(true); $('sOff').onclick = () => setS(false);
+
+  // ---- 소리 ----
+  let ac = null;
+  const A = () => (ac = ac || new (window.AudioContext || window.webkitAudioContext)());
+  function tone(f, t, dur, type = 'sine', vol = .12, f2) {
+    if (!sound) return; const a = A(), o = a.createOscillator(), g = a.createGain(), T = a.currentTime + t;
+    o.type = type; o.frequency.setValueAtTime(f, T); if (f2) o.frequency.exponentialRampToValueAtTime(f2, T + dur);
+    g.gain.setValueAtTime(0, T); g.gain.linearRampToValueAtTime(vol, T + .008); g.gain.exponentialRampToValueAtTime(.0001, T + dur);
+    o.connect(g).connect(a.destination); o.start(T); o.stop(T + dur + .02);
+  }
+  function noise(t, dur, vol = .2, hp = 2000) {
+    if (!sound) return; const a = A(), buf = a.createBuffer(1, a.sampleRate * dur | 0, a.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length) ** 3;
+    const s = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain(); s.buffer = buf; f.type = 'highpass'; f.frequency.value = hp; g.gain.value = vol;
+    s.connect(f).connect(g).connect(a.destination); s.start(a.currentTime + t);
+  }
+  const sfx = {
+    pop: () => { tone(80, 0, .35, 'sine', .3, 40); noise(0, .3, .25, 1800); },
+    whoosh: i => { noise(i * .05, .12, .1, 3000 + i * 200); },
+    deal: i => noise(i * .04, .06, .1, 2500),
+    flip: () => { noise(0, .06, .14, 3500); tone(900, 0, .05, 'triangle', .035); },
+    omen: () => { tone(330, 0, .45, 'triangle', .07, 1300); },
+    reveal: () => { tone(60, 0, .5, 'sine', .35, 35); noise(0, .45, .2, 1500); [523, 659, 784, 1046].forEach((f, i) => tone(f, .08 + i * .07, .8, 'triangle', .07)); },
+  };
+
+  // ---- 종이 꽃가루 ----
+  let bits = [], raf = 0;
+  function fxSize() { const r = stage.getBoundingClientRect(); fxc.width = r.width * 2; fxc.height = r.height * 2; }
+  function confetti(x, y, count = 140) {
+    if (reduce) return;
+    const cols = ['#e9b54a', '#ff6a1a', '#f2ebde', '#ffffff'];
+    for (let i = 0; i < count; i++) {
+      const a = -Math.PI / 2 + (Math.random() - .5) * 2.4, s = 14 + Math.random() * 22;
+      bits.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, w: 8 + Math.random() * 10, h: 4 + Math.random() * 6, r: Math.random() * 6, vr: (Math.random() - .5) * .4, c: cols[i % cols.length], age: 0, life: 120 + Math.random() * 60 });
+    }
+    if (!raf) raf = requestAnimationFrame(tick);
+  }
+  function tick() {
+    const g = fxc.getContext('2d'); g.clearRect(0, 0, fxc.width, fxc.height);
+    bits = bits.filter(p => p.age < p.life && p.y < fxc.height + 40);
+    for (const p of bits) {
+      p.age++; p.vy += .55; p.vx *= .96; p.vy *= .96; p.x += p.vx + Math.sin(p.age / 9 + p.r) * 1.2; p.y += p.vy; p.r += p.vr;
+      g.save(); g.translate(p.x, p.y); g.rotate(p.r); g.scale(1, Math.cos(p.age / 6 + p.r));
+      g.globalAlpha = Math.min(1, (p.life - p.age) / 30); g.fillStyle = p.c; g.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); g.restore();
+    }
+    raf = bits.length ? requestAnimationFrame(tick) : 0;
+  }
+  function flash() { const f = $('flash'); f.classList.remove('go'); void f.offsetWidth; f.classList.add('go'); }
+  function shake() { stage.classList.remove('shake'); void stage.offsetWidth; stage.classList.add('shake'); }
+  const views = ['home', 'board', 'reveal', 'sum'];
+  const show = (...ids) => views.forEach(x => { $(x).hidden = !ids.includes(x); });
+
+  // ---- 개봉: 팩이 아래로 → 팡 → 카드가 슈슈슉 위로 → 위에서 판으로 ----
+  let total = 0, wins = new Set(), start = 1, auto = false, hits = 0, done = false;
+  $('go').onclick = async () => {
+    if (busy || !n) return; busy = true; A(); fxSize();
+    total = n; wins = new Set(winAt && winAt <= total ? [winAt] : []); start = 1; hits = 0;
+    const home = $('home'), pw = $('packwrap'), deck = $('deck'), sh = $('shoot');
+    sh.innerHTML = '<div class="face b"></div>'.repeat(Math.min(10, total));
+    home.classList.add('opening'); pw.classList.remove('float');
+    anim(pw, [{ transform: 'translateY(0)' }, { transform: 'translateY(-3cqw)', offset: .35 }, { transform: 'translateY(16cqw)' }], { duration: 380, easing: 'cubic-bezier(.5,0,.7,.4)' });
+    await wait(380);
+    // 팡
+    flash(); shake(); sfx.pop();
+    anim($('sealTop'), [{ transform: 'none' }, { transform: 'translate(20cqw,-30cqw) rotate(30deg)', opacity: 0 }], { duration: 450, easing: 'cubic-bezier(.2,.7,.4,1)' });
+    anim($('pop'), [{ opacity: 0 }, { opacity: 1, offset: .2 }, { opacity: 0 }], { duration: 500 });
+    [...sh.children].forEach((c, i) => {
+      const x = (Math.random() - .5) * 50, r = (Math.random() - .5) * 50;
+      anim(c, [{ opacity: 1, transform: 'translateY(0)' }, { opacity: 1, transform: `translate(${x}cqw,-170cqw) rotate(${r}deg)` }], { duration: 520, delay: i * 45, easing: 'cubic-bezier(.3,.4,.4,1)' });
+      sfx.whoosh(i);
+    });
+    anim(deck, [{ transform: 'none' }, { transform: 'translateY(90cqw)', opacity: 0 }], { duration: 420, delay: 120, easing: 'cubic-bezier(.5,0,.8,.4)' });
+    await wait(560 + Math.min(10, total) * 45);
+    deal({ x: stage.getBoundingClientRect().width / 2, y: -stage.getBoundingClientRect().width * .4 });
+  };
+
+  async function deal(origin) {
+    show('board'); auto = false; done = false;
+    const s = stage.getBoundingClientRect(), o = origin || { x: s.width / 2, y: -s.width * .4 };
+    const end = Math.min(total, start + B - 1);
+    $('page').textContent = `${Math.ceil(start / B)} / ${Math.ceil(total / B)}`;
+    $('left').textContent = total - start + 1;
+    const grid = $('grid'), ks = [];
+    for (let k = start; k <= end; k++) ks.push(k);
+    grid.innerHTML = ks.map(k => `<button class="cd down" data-k="${k}" aria-label="카드 뒤집기"><div class="in3"><div class="face b"></div>${wins.has(k)
+      ? '<div class="face f win foil"></div>'
+      : '<div class="face f nor"><span class="k">SEIROKU : WORK</span><span class="ty">THANK<br>YOU<small>다음 팩에서 만나요</small></span><span class="ft"><span>青録</span><span>VOL.3</span></span></div>'}</div><span class="tag">${wins.has(k) ? '포스터' : '꽝'}</span></button>`).join('');
+    const cards = [...grid.children];
+    const th = 5 * Math.PI / 180, c = Math.cos(th), sn = Math.sin(th); // 판이 -5° 기울어 있어서 되돌려 계산
+    cards.forEach((el, i) => {
+      const r = el.getBoundingClientRect(), vx = o.x - (r.left - s.left + r.width / 2), vy = o.y - (r.top - s.top + r.height / 2);
+      el.style.setProperty('--dx', (vx * c - vy * sn) + 'px');
+      el.style.setProperty('--dy', (vx * sn + vy * c) + 'px');
+      el.style.setProperty('--dr', ((Math.random() - .5) * 30).toFixed(0) + 'deg');
+      el.style.setProperty('--d', i * 30 + 'ms');
+      el.classList.add('dealt'); sfx.deal(i % 12);
+      el.onclick = () => tapCard(el);
+    });
+    const b = $('act'); b.textContent = '모두 열기'; b.onclick = openAll; b.disabled = true;
+    await wait(400 + cards.length * 30); b.disabled = false;
+  }
+  const downCards = () => [...$('grid').querySelectorAll('.cd.down')];
+  const remaining = () => total - start + 1 - $('grid').querySelectorAll('.cd.open').length;
+  function flip(el) { el.classList.remove('down'); el.classList.add('open'); sfx.flip(); $('left').textContent = remaining(); }
+  function tapCard(el) {
+    if (!el.classList.contains('down') || $('grid').querySelector('.omen')) return;
+    if (wins.has(+el.dataset.k)) return omen(el);
+    flip(el); checkDone();
+  }
+  // 당첨: 금테로 떠오른 뒤 바로 팡
+  async function omen(el) { el.classList.remove('down'); el.classList.add('omen'); sfx.omen(); $('act').disabled = true; await wait(550); reveal(el); }
+  async function openAll() {
+    auto = true; $('act').disabled = true;
+    for (const el of downCards()) {
+      if (!el.classList.contains('down')) continue;
+      if (wins.has(+el.dataset.k)) { omen(el); return; }
+      flip(el); await wait(90);
+    }
+    checkDone();
+  }
+  // 한 화면을 다 열면 자동으로 다음 화면이나 결과로
+  async function checkDone() {
+    if (done || downCards().length || $('grid').querySelector('.omen')) return;
+    done = true; const b = $('act'); b.disabled = true;
+    const last = start + B - 1 >= total;
+    b.textContent = last ? '결과로 이동' : '다음 카드로 이동';
+    await wait(1000);
+    if (last) summary(); else { start += B; deal(); }
+  }
+  async function reveal(el) {
+    el.classList.remove('omen'); el.classList.add('open', 'won'); hits++; $('left').textContent = remaining();
+    flash(); shake(); sfx.reveal();
+    const R = $('reveal'); R.className = 'layer'; show('board', 'reveal');
+    await wait(30); R.classList.add('go');
+    await wait(380); R.classList.add('on');
+    await wait(240); flash();
+    confetti(fxc.width / 2, fxc.height * .5, 160);
+    $('ok').onclick = async () => {
+      show('board');
+      if (auto) { await wait(250); openAll(); } else { $('act').disabled = false; checkDone(); }
+    };
+  }
+  function summary() {
+    show('sum');
+    $('s1').textContent = hits ? `포스터 ${hits}장 당첨` : '이번엔 꽝';
+    $('s2').textContent = hits ? `${total}장 중 ${hits}장이 엽서북 표지 포스터예요` : `${total}장 모두 열었어요. 다음 팩에서 만나요`;
+    let h = ''; for (let k = 1; k <= total; k++) h += wins.has(k) ? '<i class="w"></i>' : '<i>꽝</i>';
+    $('mini').innerHTML = h;
+  }
+  $('home2').onclick = () => {
+    show('home'); busy = false; setN(1);
+    $('home').classList.remove('opening'); $('packwrap').classList.add('float');
+    for (const el of [$('packwrap'), $('deck'), $('sealTop'), $('pop')]) el.getAnimations().forEach(a => a.cancel());
+    $('shoot').innerHTML = '';
+  };
+  addEventListener('resize', fxSize);
+
+  // ---- 배경: 가는 흰 동심원 + 별 몇 개 + 사선 + 빛 알갱이 (세로 화면에서도 과하지 않게) ----
+  const bg = $('bgfx'), bx = bg.getContext('2d');
+  let W = 0, H = 0, D = 1, stars = [], motes = [];
+  function bgSize() {
+    D = Math.min(2, devicePixelRatio || 1); W = bg.clientWidth; H = bg.clientHeight; bg.width = W * D; bg.height = H * D;
+    const m = Math.min(W, H), area = W * H / 1e6;
+    stars = Array.from({ length: Math.round(10 + area * 8) }, () => ({ x: Math.random() * W, y: Math.random() * H, s: (Math.random() ** 3) * m * .016 + 2, p: Math.random() * 6.3, v: .5 + Math.random() }));
+    motes = Array.from({ length: Math.round(6 + area * 8) }, () => ({ x: Math.random() * W, y: Math.random() * H, r: 1 + Math.random() * 1.6, v: .08 + Math.random() * .2, a: .15 + Math.random() * .35 }));
+  }
+  function star(x, y, s, a) {
+    bx.globalAlpha = a; bx.beginPath(); bx.moveTo(x, y - s);
+    bx.quadraticCurveTo(x, y, x + s, y); bx.quadraticCurveTo(x, y, x, y + s); bx.quadraticCurveTo(x, y, x - s, y); bx.quadraticCurveTo(x, y, x, y - s); bx.fill();
+  }
+  function bgDraw(t) {
+    t /= 1000; bx.setTransform(D, 0, 0, D, 0, 0); bx.clearRect(0, 0, W, H);
+    const cx = W / 2, cy = H * .42, m = Math.max(W, H);
+    bx.lineWidth = 1 / D * 1.2; bx.strokeStyle = '#fff';
+    [[.22, .5], [.34, .32], [.5, .2], [.7, .12]].forEach(([k, a]) => { bx.globalAlpha = a; bx.beginPath(); bx.arc(cx, cy, m * k, 0, 7); bx.stroke(); });
+    bx.globalAlpha = .55; bx.lineWidth = 1.5 / D * 1.2;
+    bx.beginPath(); bx.arc(cx, cy, m * .34, t * .06, t * .06 + 1.1); bx.stroke();
+    bx.beginPath(); bx.arc(cx, cy, m * .5, -t * .04 + 3, -t * .04 + 3.8); bx.stroke();
+    bx.lineWidth = 1 / D * 1.2; bx.fillStyle = '#fff';
+    for (const [y0, y1, sp] of [[H * .14, H * .02, .05], [H * 1.0, H * .8, .035]]) {
+      bx.globalAlpha = .3; bx.beginPath(); bx.moveTo(-10, y0); bx.lineTo(W + 10, y1); bx.stroke();
+      const q = (t * sp) % 1; star(q * W, y0 + (y1 - y0) * q, 6, .9);
+    }
+    for (const s of stars) star(s.x, s.y, s.s, Math.max(0, Math.sin(t * s.v + s.p)) * .7);
+    for (const d of motes) {
+      d.y -= d.v; if (d.y < -10) { d.y = H + 10; d.x = Math.random() * W; }
+      bx.globalAlpha = d.a; bx.beginPath(); bx.arc(d.x, d.y, d.r, 0, 7); bx.fill();
+    }
+    bx.globalAlpha = 1;
+    if (!reduce) requestAnimationFrame(bgDraw);
+  }
+  bgSize(); addEventListener('resize', bgSize); requestAnimationFrame(bgDraw);
+})();
+</script>
+</body>
+</html>
