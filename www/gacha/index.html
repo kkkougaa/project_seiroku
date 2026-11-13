@@ -75,9 +75,9 @@ button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px }
 .marks i:nth-child(4) { right: 0; bottom: 0; border-width: 0 var(--mw, .3cqw) var(--mw, .3cqw) 0 }
 
 /* 홈: 카드팩 */
-#home { padding-bottom: 6cqw }
+#home { padding-bottom: 4cqw }
 .hero { flex: 1; display: grid; place-items: center; position: relative }
-.packwrap { position: relative; width: 42cqw }
+.packwrap { position: relative; width: 46cqw }
 .float { animation: float 5s ease-in-out infinite }
 @keyframes float { 0%, 100% { transform: translateY(0) rotate(-1deg) } 50% { transform: translateY(-1.6cqw) rotate(1.2deg) } }
 .pack { position: relative; z-index: 2; border-radius: .8cqw; box-shadow: 0 4cqw 8cqw rgba(0,0,0,.55) }
@@ -111,13 +111,17 @@ button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px }
 .shoot .face.b { --rad: 1.4cqw; opacity: 0; box-shadow: 0 1cqw 2cqw rgba(0,0,0,.4) }
 .pop { position: absolute; left: -20%; right: -20%; top: 6cqw; height: 16cqw; z-index: 4; pointer-events: none; opacity: 0; background: radial-gradient(50% 50% at 50% 50%, #fff, rgba(255,250,240,.5) 45%, transparent 70%) }
 
-.panel { margin: 0 6cqw; padding: 4cqw; background: var(--card); border: 1px solid var(--hair); border-radius: 4cqw; display: grid; gap: 3cqw; transition: transform .35s var(--ease), opacity .25s }
+.panel { margin: 0 5cqw; display: grid; gap: 3cqw; transition: transform .35s var(--ease), opacity .25s }
+.row1 { display: grid; grid-template-columns: 12cqw 1fr 13cqw 13cqw; gap: 2cqw; align-items: stretch }
+.row1 .btn { height: 13cqw; padding: 0 }
+.row1 .x { display: grid; place-items: center; color: var(--fg2) }
+.row1 .x svg { width: 4.6cqw; height: 4.6cqw }
 #home.opening .panel { transform: translateY(10cqw); opacity: 0; pointer-events: none }
-.step { display: grid; grid-template-columns: 14cqw 1fr 14cqw; align-items: center; height: 14cqw; background: var(--raised); border: 1px solid var(--hair); border-radius: 2.4cqw; overflow: hidden }
+.step { display: grid; grid-template-columns: 12cqw 1fr 12cqw; align-items: center; height: 13cqw; background: var(--raised); border: 1px solid var(--hair); border-radius: 2.4cqw; overflow: hidden }
 .step button { height: 100%; border: 0; background: transparent; color: var(--fg2); display: grid; place-items: center; transition: background-color .15s }
 .step button:active { background: rgba(238,240,245,.06) }
 .step button svg { width: 5cqw; height: 5cqw }
-.step output { text-align: center; font-family: var(--title); font-weight: 600; font-size: 7.6cqw; line-height: 1; font-variant-numeric: tabular-nums; border-inline: 1px solid var(--hair); height: 100%; display: grid; place-items: center }
+.step output { text-align: center; font-family: var(--title); font-weight: 600; font-size: 6.6cqw; line-height: 1; font-variant-numeric: tabular-nums; border-inline: 1px solid var(--hair); height: 100%; display: grid; place-items: center }
 .step output span { display: inline-flex; align-items: baseline; gap: 1cqw }
 .step output small { font-family: var(--body); font-size: 3.2cqw; font-weight: 500; color: var(--fg2) }
 .quick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2cqw }
@@ -225,13 +229,14 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
         </div>
       </div></div>
       <div class="panel">
-        <div class="step">
-          <button id="minus" aria-label="한 장 빼기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
-          <output id="n" aria-live="polite"></output>
-          <button id="plus" aria-label="한 장 더하기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M5 12h14M12 5v14"/></svg></button>
-        </div>
-        <div class="quick">
-          <button class="btn ghost" data-q="0">초기화</button><button class="btn" data-q="1">+1</button><button class="btn" data-q="5">+5</button><button class="btn" data-q="10">+10</button>
+        <div class="row1">
+          <button class="btn ghost x" data-q="0" aria-label="0장으로 초기화"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+          <div class="step">
+            <button id="minus" aria-label="한 장 빼기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
+            <output id="n" aria-live="polite"></output>
+            <button id="plus" aria-label="한 장 더하기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M5 12h14M12 5v14"/></svg></button>
+          </div>
+          <button class="btn" data-q="5">+5</button><button class="btn" data-q="10">+10</button>
         </div>
         <button class="btn pri" id="go">OPEN<span class="n" id="goN"></span></button>
       </div>
@@ -458,10 +463,11 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
 
   // ---- 배경: 가는 흰 동심원 + 별 몇 개 + 사선 + 빛 알갱이 (세로 화면에서도 과하지 않게) ----
   const bg = $('bgfx'), bx = bg.getContext('2d');
-  let W = 0, H = 0, D = 1, stars = [], motes = [];
+  let W = 0, H = 0, D = 1, stars = [], motes = [], orbit = [];
   function bgSize() {
     D = Math.min(2, devicePixelRatio || 1); W = bg.clientWidth; H = bg.clientHeight; bg.width = W * D; bg.height = H * D;
     const m = Math.min(W, H), area = W * H / 1e6;
+    orbit = [[.22, 1], [.34, 2], [.5, 2], [.7, 1]].flatMap(([k, c], ri) => Array.from({ length: c }, (_, j) => ({ k, a: Math.random() * 6.3, v: (.05 + Math.random() * .06) * (ri % 2 ? -1 : 1), big: (ri + j) % 2 === 0 })));
     stars = Array.from({ length: Math.round(10 + area * 8) }, () => ({ x: Math.random() * W, y: Math.random() * H, s: (Math.random() ** 3) * m * .016 + 2, p: Math.random() * 6.3, v: .5 + Math.random() }));
     motes = Array.from({ length: Math.round(6 + area * 8) }, () => ({ x: Math.random() * W, y: Math.random() * H, r: 1 + Math.random() * 1.6, v: .08 + Math.random() * .2, a: .15 + Math.random() * .35 }));
   }
@@ -477,7 +483,15 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
     bx.globalAlpha = .55; bx.lineWidth = 1.5 / D * 1.2;
     bx.beginPath(); bx.arc(cx, cy, m * .34, t * .06, t * .06 + 1.1); bx.stroke();
     bx.beginPath(); bx.arc(cx, cy, m * .5, -t * .04 + 3, -t * .04 + 3.8); bx.stroke();
-    bx.lineWidth = 1 / D * 1.2; bx.fillStyle = '#fff';
+    bx.fillStyle = '#fff';
+    // 원을 따라 도는 반짝이 (큰 것 / 작은 것)
+    for (const o of orbit) {
+      const a = o.a + t * o.v, x = cx + Math.cos(a) * m * o.k, y = cy + Math.sin(a) * m * o.k, s = o.big ? 9 : 5;
+      if (x < -20 || x > W + 20 || y < -20 || y > H + 20) continue;
+      bx.globalAlpha = .25; bx.beginPath(); bx.arc(x, y, s * .9, 0, 7); bx.fill();
+      star(x, y, s, 1);
+    }
+    bx.lineWidth = 1 / D * 1.2;
     for (const [y0, y1, sp] of [[H * .14, H * .02, .05], [H * 1.0, H * .8, .035]]) {
       bx.globalAlpha = .3; bx.beginPath(); bx.moveTo(-10, y0); bx.lineTo(W + 10, y1); bx.stroke();
       const q = (t * sp) % 1; star(q * W, y0 + (y1 - y0) * q, 6, .9);
