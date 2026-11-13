@@ -136,7 +136,7 @@ button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px }
 .btn.pri { border: 0; height: 14cqw; font-family: var(--title); letter-spacing: .02em; background: var(--paper); color: var(--ink); font-weight: 900; font-size: 5.6cqw; box-shadow: inset 0 -1px 0 rgba(0,0,0,.12) }
 .btn.pri:active { background: #e4dccc }
 .btn[disabled] { opacity: .4; pointer-events: none }
-.btn .n { font-family: var(--title); font-weight: 900; color: #8a7a63 }
+.btn .n { font-family: var(--title); font-weight: 900; color: #7d6c55 }
 
 /* 카드 판 */
 #board { padding-bottom: 6cqw }
@@ -158,12 +158,16 @@ button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px }
 .cd.won .face.f::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 .45cqw var(--gold); z-index: 2 }
 .cd.won .slot { border-color: rgba(233,181,74,.6) }
 .foot { display: flex; gap: 2.4cqw; padding: 0 6cqw }
-.foot { min-height: 18cqw; justify-content: center; align-items: center }
+.foot { min-height: 22cqw; justify-content: center; align-items: center }
 /* OPEN · NEXT: 가운데 적당한 폭 + 표지 가늠표로 감싸기 */
 .cta { position: relative; width: 64cqw; padding: 2cqw; justify-self: center; margin-inline: auto }
 .cta > .marks { color: var(--fg2); --m: 3cqw; --mw: .35cqw }
 .cta .btn { width: 100%; display: flex; align-items: center; justify-content: center; gap: 2cqw }
-.cta .btn svg { width: 5cqw; height: 5cqw; margin-right: -1cqw }
+.cta .btn svg { width: 6.4cqw; height: 6.4cqw; margin-right: -1.4cqw }
+/* OPEN · NEXT 글자를 버튼 위에 찍힌 로고처럼 크게 */
+.cta .btn.big { height: 18cqw; gap: 2.4cqw }
+.btn .word { font-size: 9.4cqw; font-weight: 900; letter-spacing: -.01em; line-height: 1; padding-top: .4cqw; text-shadow: 0 .4cqw 0 rgba(17,24,39,.12) }
+.btn .n { font-size: 4.4cqw; padding: 1.2cqw 2cqw 1cqw; border-radius: 1.6cqw; background: rgba(17,24,39,.08); line-height: 1 }
 .cta[hidden] { display: none }
 
 /* 당첨 공개: 카드 한 장을 똑바로, 표지 가늠표로 감싸기 */
@@ -268,7 +272,7 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
           </div>
           <button class="btn" data-q="5">+5</button><button class="btn" data-q="10">+10</button>
         </div>
-        <div class="cta"><span class="marks"><i></i><i></i><i></i><i></i></span><button class="btn pri" id="go">OPEN<span class="n" id="goN"></span></button></div>
+        <div class="cta"><span class="marks"><i></i><i></i><i></i><i></i></span><button class="btn pri big" id="go"><span class="word">OPEN</span><span class="n" id="goN"></span></button></div>
       </div>
     </section>
 
@@ -278,7 +282,7 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
         <span class="count">남은 카드 <b id="left">0</b></span>
       </div>
       <div class="grid" id="grid"></div>
-      <div class="foot"><div class="cta" id="actWrap" hidden><span class="marks"><i></i><i></i><i></i><i></i></span><button class="btn pri" id="act">NEXT<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></button></div></div>
+      <div class="foot"><div class="cta" id="actWrap" hidden><span class="marks"><i></i><i></i><i></i><i></i></span><button class="btn pri big" id="act"><span class="word">NEXT</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></button></div></div>
     </section>
 
     <section class="layer" id="reveal" hidden>
@@ -294,7 +298,7 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
     <section class="layer" id="sum" hidden>
       <div class="shead"><div class="big" id="s1"></div><p id="s2"></p></div>
       <div class="mini" id="mini"></div>
-      <div class="foot"><div class="cta"><span class="marks"><i></i><i></i><i></i><i></i></span><button class="btn pri" id="home2">DONE</button></div></div>
+      <div class="foot"><div class="cta"><span class="marks"><i></i><i></i><i></i><i></i></span><button class="btn pri big" id="home2"><span class="word">DONE</span></button></div></div>
     </section>
 
     <section class="layer" id="cfg" hidden>
