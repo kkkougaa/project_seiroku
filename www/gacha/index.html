@@ -12,6 +12,7 @@
 <style>
 @font-face { font-family: "Paperlogy"; font-weight: 600; font-display: block; src: url("paperlogy-600.woff2") format("woff2") }
 @font-face { font-family: "Paperlogy"; font-weight: 700; font-display: block; src: url("paperlogy-700.woff2") format("woff2") }
+@font-face { font-family: "SeirokuKanji"; font-weight: 200; font-display: block; src: url("seiroku-kanji.woff2") format("woff2") }
 @font-face { font-family: "Paperlogy"; font-weight: 900; font-display: block; src: url("paperlogy-900.woff2") format("woff2") }
 @font-face { font-family: "Pretendard"; font-weight: 100 900; font-display: block; src: url("../fonts/PretendardVariable.woff2") format("woff2-variations"), url("../fonts/PretendardVariable.woff2") format("woff2") }
 /* 레이아웃: 화면 가운데 아이패드 세로 비율(744:1133) 무대. 홈 = 카드팩, 판 = 20장, 당첨 = 포스터 한 장, 결과.
@@ -216,7 +217,7 @@ button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px }
 .rcpt { position: relative; flex: 1; min-height: 0; width: 76cqw; display: flex; flex-direction: column; gap: 3cqw; padding: 6cqw 6cqw 5cqw; background: #fdfdfb; color: #141414; font-family: var(--mono); transform: rotate(-2deg); box-shadow: 0 3cqw 8cqw rgba(0,0,0,.55) }
 .rcpt .clip { position: absolute; right: 2cqw; top: -5cqw; width: 5cqw; height: 13cqw; border: .5cqw solid #b9bec6; border-radius: 3cqw; transform: rotate(18deg); box-shadow: inset 0 0 0 .2cqw rgba(255,255,255,.6) }
 .rh { display: flex; justify-content: space-between; font-weight: 800; font-size: 3.4cqw; letter-spacing: .04em; padding-right: 6cqw }
-.kanji { text-align: center; font-family: "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif CJK JP", serif; font-size: 12cqw; line-height: 1 }
+.kanji { text-align: center; font-family: "SeirokuKanji", "Hiragino Mincho ProN", "Yu Mincho", serif; font-weight: 200; font-size: 13cqw; line-height: 1 }
 .kanji small { display: block; margin-top: 1.4cqw; font-family: Georgia, "Times New Roman", serif; font-size: 2.2cqw; line-height: 1.3 }
 .rcpt .big { text-align: center; font-family: var(--title); font-weight: 900; font-size: 6.4cqw; line-height: 1.15 }
 .rcpt .big b { display: inline-block; background: var(--orange); color: #fff; padding: .4cqw 1.6cqw .2cqw; margin-right: 1.4cqw; font-weight: 900 }
@@ -224,7 +225,7 @@ button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px }
 .mini i { position: relative; aspect-ratio: 3 / 4; border-radius: .8cqw; background: var(--back) center / cover; box-shadow: 0 0 0 1px rgba(0,0,0,.12) }
 .dash { border-top: .3cqw dashed #333 }
 .rcpt .ty { text-align: center; font-weight: 800; font-size: 3.2cqw; letter-spacing: .1em }
-.rcpt .bar { height: 10cqw; background: repeating-linear-gradient(90deg, #141414 0 .5cqw, transparent .5cqw .9cqw, #141414 .9cqw 1.1cqw, transparent 1.1cqw 1.8cqw, #141414 1.8cqw 2.6cqw, transparent 2.6cqw 3cqw) }
+.rcpt .bar { width: 62%; margin-inline: auto; height: 5.6cqw; background: repeating-linear-gradient(90deg, #141414 0 .5cqw, transparent .5cqw .9cqw, #141414 .9cqw 1.1cqw, transparent 1.1cqw 1.8cqw, #141414 1.8cqw 2.6cqw, transparent 2.6cqw 3cqw) }
 .cr { display: flex; justify-content: space-between; gap: 2cqw; font-size: 1.7cqw; line-height: 1.5; font-weight: 700 }
 .cr span:nth-child(2) { text-align: center } .cr span:last-child { text-align: right }
 .mini i.w { background: var(--poster) center / cover; box-shadow: 0 0 0 .4cqw var(--gold) }
@@ -292,7 +293,7 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
           </div>
           <div class="pop" id="pop"></div>
           <div class="pbody"><div class="holo"></div><div class="spec"></div></div>
-          <div class="seal bot"><span class="booth">A-14</span><span class="proj">PROJECT<br>SEIROKU</span><span class="bar"></span></div>
+          <div class="seal bot"><span class="proj">PROJECT<br>SEIROKU</span><span class="bar"></span></div>
         </div>
       </div></div>
       <div class="panel">
