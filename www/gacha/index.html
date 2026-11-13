@@ -294,7 +294,7 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
     <section class="layer" id="sum" hidden>
       <div class="shead"><div class="big" id="s1"></div><p id="s2"></p></div>
       <div class="mini" id="mini"></div>
-      <div class="foot"><div class="cta"><span class="marks"><i></i><i></i><i></i><i></i></span><button class="btn pri" id="home2">처음으로</button></div></div>
+      <div class="foot"><div class="cta"><span class="marks"><i></i><i></i><i></i><i></i></span><button class="btn pri" id="home2">DONE</button></div></div>
     </section>
 
     <section class="layer" id="cfg" hidden>
@@ -338,7 +338,8 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
     $('go').disabled = n === 0;
   };
   $('minus').onclick = () => setN(n - 1); $('plus').onclick = () => setN(n + 1);
-  document.querySelectorAll('[data-q]').forEach(b => b.onclick = () => setN(+b.dataset.q ? n + +b.dataset.q : 0));
+  // +5, +10: 기본값 1장일 때 처음 누르면 5장·10장으로 맞추고, 그다음부터는 더해요
+  document.querySelectorAll('[data-q]').forEach(b => b.onclick = () => { const q = +b.dataset.q; setN(!q ? 0 : n === 1 ? q : n + q); });
   setN(1);
 
   // ---- 직원 설정 ----
