@@ -81,19 +81,15 @@ button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px }
 .hero { flex: 1; display: grid; place-items: center; position: relative; perspective: 150cqw }
 .packwrap { position: relative; width: 46cqw; will-change: transform }
 .pack { position: relative; z-index: 2; border-radius: .8cqw; box-shadow: 0 4cqw 8cqw rgba(0,0,0,.55) }
-.seal { position: relative; overflow: hidden; color: var(--ink); line-height: 1; background: linear-gradient(180deg, #f6f1e7, #e7dfcf) }
-.seal::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(90deg, rgba(17,24,39,.05) 0 .2cqw, transparent .2cqw .7cqw) }
-.seal.top { height: 13.6cqw; border-radius: .8cqw .8cqw 0 0; padding: 1.6cqw 2.4cqw 2.8cqw; display: flex; justify-content: space-between; align-items: flex-end; z-index: 3 }
-.seal .marks { inset: 1.2cqw; --m: 1.6cqw; --mw: .25cqw }
-.seal.top .marks { bottom: auto; height: 3cqw }
-.seal.bot .marks { top: auto; height: 3cqw }
+/* 위아래 택: 엽서북 책등처럼 위는 주황, 아래는 검정(부스 A-14 · PROJECT SEIROKU · 바코드) */
+.seal { position: relative; overflow: hidden; color: #fff; line-height: 1 }
+.seal::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(90deg, rgba(255,255,255,.07) 0 .2cqw, transparent .2cqw .7cqw) }
+.seal.top { height: 14cqw; border-radius: .8cqw .8cqw 0 0; padding: 1.6cqw 2.6cqw 3cqw; display: flex; justify-content: space-between; align-items: flex-end; z-index: 3; background: linear-gradient(180deg, #ff7326, #f45f12) }
+.ev { position: relative; font-family: var(--title); font-weight: 900; font-size: 3cqw; line-height: .92; letter-spacing: -.01em }
+.date { position: relative; font-family: "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif", Georgia, serif; font-size: 3.4cqw; line-height: 1; color: #fff }
+.date b { font-weight: 400; color: rgba(255,255,255,.65) }
 .hole { position: absolute; left: 50%; top: 1.6cqw; width: 7.2cqw; height: 1.8cqw; translate: -50% 0; border-radius: 1cqw; background: var(--bg); box-shadow: inset 0 .3cqw .4cqw rgba(0,0,0,.6) }
-.labels { position: relative; display: grid; gap: .4cqw; justify-items: start }
-.labels span { font-weight: 700; font-size: 1.4cqw; padding: .5cqw .8cqw .4cqw; color: #fff; background: #151515 }
-.labels span + span { background: var(--orange) }
-.seal .meta { position: relative; text-align: right; font-family: var(--mono); font-size: 1.2cqw; line-height: 1.4; color: #3c4a57 }
-.seal .meta b { display: block; font-family: var(--title); font-weight: 700; font-size: 2.4cqw; color: var(--ink); line-height: 1.1 }
-.tearline { position: absolute; left: 0; right: 0; bottom: 1cqw; height: .2cqw; background: repeating-linear-gradient(90deg, var(--ink) 0 .9cqw, transparent .9cqw 1.5cqw); opacity: .6 }
+.tearline { position: absolute; left: 0; right: 0; bottom: 1.2cqw; height: .2cqw; background: repeating-linear-gradient(90deg, #fff 0 .9cqw, transparent .9cqw 1.5cqw); opacity: .75 }
 .tearline::before, .tearline::after { content: ""; position: absolute; top: -.9cqw; width: 1.2cqw; height: 2cqw; background: var(--bg) }
 .tearline::before { left: 0; clip-path: polygon(0 0, 100% 50%, 0 100%) }
 .tearline::after { right: 0; clip-path: polygon(100% 0, 0 50%, 100% 100%) }
@@ -109,9 +105,10 @@ button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px }
   background-position: 0 0, calc(50% + var(--hx, 0) * 32%) calc(50% + var(--hy, 0) * 32%) }
 .pbody .spec { position: absolute; inset: 0; z-index: 3; pointer-events: none; mix-blend-mode: soft-light;
   background: radial-gradient(45% 32% at calc(50% - var(--hx, 0) * 45%) calc(38% - var(--hy, 0) * 40%), rgba(255,255,255,.75), transparent 70%) no-repeat }
-.seal.bot { height: 7cqw; border-radius: 0 0 .8cqw .8cqw; display: flex; align-items: center; justify-content: space-between; gap: 1cqw; padding: 0 3cqw; font-family: var(--mono); font-size: 1.15cqw; line-height: 1.35; color: #3c4a57 }
-.seal.bot > span:last-of-type { text-align: right }
-.seal.bot .bar { width: 8cqw; height: 2.6cqw; background: repeating-linear-gradient(90deg, var(--ink) 0 .22cqw, transparent .22cqw .42cqw, var(--ink) .42cqw .85cqw, transparent .85cqw 1cqw) }
+.seal.bot { height: 9cqw; border-radius: 0 0 .8cqw .8cqw; display: flex; align-items: center; gap: 2cqw; padding: 0 2.6cqw; background: #0d0d0d }
+.booth { position: relative; border: .35cqw solid #fff; padding: .5cqw 1.2cqw .3cqw; font-family: var(--title); font-weight: 900; font-size: 3.6cqw; line-height: 1; letter-spacing: -.02em }
+.proj { position: relative; font-family: var(--title); font-weight: 900; font-size: 1.7cqw; line-height: 1; flex: 1 }
+.seal.bot .bar { position: relative; width: 12cqw; height: 4.4cqw; background: repeating-linear-gradient(90deg, #fff 0 .22cqw, transparent .22cqw .42cqw, #fff .42cqw .85cqw, transparent .85cqw 1cqw, #fff 1cqw 1.15cqw, transparent 1.15cqw 1.5cqw) }
 /* 개봉 때 위로 날아가는 카드들 (팩 몸통 뒤에서 출발) */
 .shoot { position: absolute; z-index: 1; left: 50%; top: 14cqw; width: 36cqw; aspect-ratio: 3 / 4; translate: -50% 0; pointer-events: none }
 .shoot .face.b { --rad: 1.4cqw; opacity: 0; box-shadow: 0 1cqw 2cqw rgba(0,0,0,.4) }
@@ -214,12 +211,22 @@ button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px }
 .staff .btn { width: 60cqw }
 
 /* 결과 */
-#sum { z-index: 25; padding-bottom: 6cqw }
-.shead { padding: 10cqw 7cqw 5cqw; display: grid; gap: 2cqw }
-.shead .big { font-family: var(--title); font-weight: 700; font-size: 9cqw; line-height: 1.15; letter-spacing: -.02em }
-.shead p { margin: 0; font-size: 3.6cqw; color: var(--fg2) }
-.mini { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(8, 1fr); gap: 2cqw; padding: 2cqw 8cqw; align-content: start; transform: rotate(-4deg) }
-.mini i { position: relative; aspect-ratio: 3 / 4; border-radius: .9cqw; background: var(--paper); display: grid; place-items: center; font-style: normal; font-family: var(--mono); font-size: 1.8cqw; color: #9a9184 }
+/* 결과: 내지의 영수증처럼 */
+#sum { z-index: 25; padding: 9cqw 0 6cqw; align-items: center; gap: 6cqw }
+.rcpt { position: relative; flex: 1; min-height: 0; width: 76cqw; display: flex; flex-direction: column; gap: 3cqw; padding: 6cqw 6cqw 5cqw; background: #fdfdfb; color: #141414; font-family: var(--mono); transform: rotate(-2deg); box-shadow: 0 3cqw 8cqw rgba(0,0,0,.55) }
+.rcpt .clip { position: absolute; right: 2cqw; top: -5cqw; width: 5cqw; height: 13cqw; border: .5cqw solid #b9bec6; border-radius: 3cqw; transform: rotate(18deg); box-shadow: inset 0 0 0 .2cqw rgba(255,255,255,.6) }
+.rh { display: flex; justify-content: space-between; font-weight: 800; font-size: 3.4cqw; letter-spacing: .04em; padding-right: 6cqw }
+.kanji { text-align: center; font-family: "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif CJK JP", serif; font-size: 12cqw; line-height: 1 }
+.kanji small { display: block; margin-top: 1.4cqw; font-family: Georgia, "Times New Roman", serif; font-size: 2.2cqw; line-height: 1.3 }
+.rcpt .big { text-align: center; font-family: var(--title); font-weight: 900; font-size: 6.4cqw; line-height: 1.15 }
+.rcpt .big b { display: inline-block; background: var(--orange); color: #fff; padding: .4cqw 1.6cqw .2cqw; margin-right: 1.4cqw; font-weight: 900 }
+.mini { flex: 1; min-height: 12cqw; overflow-y: auto; display: grid; grid-template-columns: repeat(8, 1fr); gap: 1.6cqw; align-content: start; padding: 1cqw }
+.mini i { position: relative; aspect-ratio: 3 / 4; border-radius: .8cqw; background: var(--back) center / cover; box-shadow: 0 0 0 1px rgba(0,0,0,.12) }
+.dash { border-top: .3cqw dashed #333 }
+.rcpt .ty { text-align: center; font-weight: 800; font-size: 3.2cqw; letter-spacing: .1em }
+.rcpt .bar { height: 10cqw; background: repeating-linear-gradient(90deg, #141414 0 .5cqw, transparent .5cqw .9cqw, #141414 .9cqw 1.1cqw, transparent 1.1cqw 1.8cqw, #141414 1.8cqw 2.6cqw, transparent 2.6cqw 3cqw) }
+.cr { display: flex; justify-content: space-between; gap: 2cqw; font-size: 1.7cqw; line-height: 1.5; font-weight: 700 }
+.cr span:nth-child(2) { text-align: center } .cr span:last-child { text-align: right }
 .mini i.w { background: var(--poster) center / cover; box-shadow: 0 0 0 .4cqw var(--gold) }
 
 /* 직원 설정 */
@@ -278,14 +285,14 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
         <div class="shoot" id="shoot"></div>
         <div class="pack" id="deck">
           <div class="seal top" id="sealTop">
-            <span class="marks"><i></i><i></i></span><span class="hole"></span>
-            <div class="labels"><span>KEMONO ILLUST ANTHOLOGY</span><span>SEIROKU : WORK</span></div>
-            <div class="meta"><b>青録 VOL.3</b>Photocard Pack</div>
+            <span class="hole"></span>
+            <div class="ev">FURST<br>CLASS</div>
+            <div class="date"><b>{</b> 11.29 <b>}</b></div>
             <div class="tearline"></div>
           </div>
           <div class="pop" id="pop"></div>
           <div class="pbody"><div class="holo"></div><div class="spec"></div></div>
-          <div class="seal bot"><span class="marks"><i></i><i></i><i></i><i></i></span><span>Anthology<br>With 25 Artists</span><span class="bar"></span><span>Released<br>2026 Winter</span></div>
+          <div class="seal bot"><span class="booth">A-14</span><span class="proj">PROJECT<br>SEIROKU</span><span class="bar"></span></div>
         </div>
       </div></div>
       <div class="panel">
@@ -322,8 +329,18 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
     </section>
 
     <section class="layer" id="sum" hidden>
-      <div class="shead"><div class="big" id="s1"></div></div>
-      <div class="mini" id="mini"></div>
+      <div class="rcpt">
+        <i class="clip" aria-hidden="true"></i>
+        <div class="rh"><span>RECEIPT</span><span id="rNo">NO. 000000</span></div>
+        <div class="kanji">青録<small>'Seiroku' 3rd Anthology<br>Fox And Work</small></div>
+        <div class="big" id="s1"></div>
+        <div class="mini" id="mini"></div>
+        <div class="dash"></div>
+        <div class="ty">*** THANK YOU ***</div>
+        <div class="bar"></div>
+        <div class="dash"></div>
+        <div class="cr"><span>ANTHOLOGY<br>WITH<br>25 ARTISTS</span><span>ORGANIZED BY : ITTO<br>DESIGN &amp; PRODUCTION : HACHI<br>SPECIAL THANKS TO : RAGUL</span><span>RELEASED<br>2026<br>WINTER</span></div>
+      </div>
       <div class="foot"><div class="cta"><span class="marks"><i></i><i></i><i></i><i></i></span><button class="btn pri big" id="home2"><span class="word">DONE</span></button></div></div>
     </section>
 
@@ -339,9 +356,9 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
           <div class="field"><input id="tIn" type="number" inputmode="numeric" min="1" max="9999"><span>팩</span></div>
           <div class="meta2"><span id="tStat"></span><button class="link" id="tReset">연 팩 수 0으로</button></div>
         </div>
-        <div class="row"><label for="wIn">당첨 위치 (전체에서 몇 번째 팩)</label>
-          <div class="chips" id="wList"></div>
-          <div class="field"><input id="wIn" type="number" inputmode="numeric" min="1" placeholder="번호"><span>번째</span><button class="btn" id="wAdd">추가</button></div>
+        <div class="row"><label for="wIn">당첨 위치 (전체에서 몇 번째 팩, 쉼표로 구분)</label>
+          <div class="field"><input id="wIn" type="text" inputmode="text" autocomplete="off" placeholder="예: 1, 2, 6, 24, 67, 123"><button class="btn" id="wAdd">저장</button></div>
+          <div class="meta2" id="wStat"></div>
         </div>
         <div class="row"><span>효과음</span><div class="seg"><button class="btn" id="sOn" aria-pressed="true">켜기</button><button class="btn" id="sOff" aria-pressed="false">끄기</button></div></div>
         <button class="btn pri" id="cfgOk">닫기</button>
@@ -356,7 +373,7 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
 <script>
 (() => {
   const $ = id => document.getElementById(id);
-  const BACK = '../images/photocard.jpg', POSTER = '../images/postcardbook.jpg';
+  const BACK = '../images/cardback.jpg', POSTER = '../images/postcardbook.jpg';
   document.documentElement.style.setProperty('--back', `url("${BACK}")`);
   document.documentElement.style.setProperty('--poster', `url("${POSTER}")`);
   const stage = $('stage'), fxc = $('fx');
@@ -399,16 +416,18 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
     if (!r.dataset.arm) { r.dataset.arm = '1'; r.textContent = '한 번 더 누르면 0으로'; r.classList.add('warn'); return; }
     opened = 0; save(); drawT(); drawW(); setN(n);
   };
+  // "1, 2, 6, 24" 처럼 숫자를 쉼표(또는 띄어쓰기)로 이어서 입력
   const drawW = () => {
-    $('wList').innerHTML = winList.length ? winList.map(k => `<button data-k="${k}" class="${k <= opened ? 'past' : ''}" aria-label="${k}번째 빼기">${k}번째${X}</button>`).join('') : '<em>없음</em>';
-    $('wList').querySelectorAll('button').forEach(b => b.onclick = () => { winList = winList.filter(k => k !== +b.dataset.k); save(); drawW(); });
+    $('wIn').value = winList.join(', ');
+    const next = winList.filter(k => k > opened), past = winList.length - next.length;
+    $('wStat').textContent = winList.length ? `${winList.length}개 · 남은 당첨 ${next.length}개${past ? ` · 지난 것 ${past}개` : ''}` : '당첨 없음';
   };
-  $('wAdd').onclick = () => {
-    const k = Math.round(+$('wIn').value);
-    if (k >= 1 && k <= packs && !winList.includes(k)) { winList = [...winList, k].sort((a, b) => a - b); save(); drawW(); }
-    $('wIn').value = ''; $('wIn').focus();
+  const readW = () => {
+    const nums = ($('wIn').value.match(/\d+/g) || []).map(Number).filter(k => k >= 1 && k <= packs);
+    winList = [...new Set(nums)].sort((a, b) => a - b); save(); drawW();
   };
-  $('wIn').onkeydown = e => { if (e.key === 'Enter') $('wAdd').click(); };
+  $('wAdd').onclick = readW; $('wIn').onchange = readW;
+  $('wIn').onkeydown = e => { if (e.key === 'Enter') { readW(); $('wIn').blur(); } };
   drawT(); drawW();
   // 비밀번호 키패드
   let code = '';
@@ -423,7 +442,7 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
     if (code === PIN) { $('lock').hidden = true; $('cfgSheet').hidden = false; drawT(); drawW(); }
     else { const d = $('dots'); d.classList.remove('bad'); void d.offsetWidth; d.classList.add('bad'); setTimeout(() => { code = ''; drawDots(); }, 300); }
   });
-  $('cfgOk').onclick = () => { $('cfg').hidden = true; setN(n || 1); };
+  $('cfgOk').onclick = () => { readW(); $('cfg').hidden = true; setN(n || 1); };
   const setS = v => { sound = v; save(); $('sOn').setAttribute('aria-pressed', v); $('sOff').setAttribute('aria-pressed', !v); };
   $('sOn').onclick = () => setS(true); $('sOff').onclick = () => setS(false);
   setS(sound);
@@ -580,7 +599,8 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
   }
   function summary() {
     show('sum');
-    $('s1').textContent = hits ? `포스터 ${hits}장 당첨` : '이번엔 꽝';
+    $('s1').innerHTML = hits ? `<b>当選</b>포스터 ${hits}장` : '이번엔 꽝';
+    $('rNo').textContent = 'NO. ' + String(opened).padStart(6, '0');
     let h = ''; for (let k = 1; k <= total; k++) h += wins.has(k) ? '<i class="w"></i>' : '<i></i>';
     $('mini').innerHTML = h;
   }
