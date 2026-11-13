@@ -442,13 +442,26 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
     const s = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain(); s.buffer = buf; f.type = 'highpass'; f.frequency.value = hp; g.gain.value = vol;
     s.connect(f).connect(g).connect(a.destination); s.start(a.currentTime + t);
   }
+  // 받아 둔 효과음(sfx/*.mp3, T-STUDIO tnosite.com). 못 받았으면 아래 합성음이 대신 나요.
+  const SMP = {}, RAW = {};
+  ['open', 'omen', 'win'].forEach(n => fetch(`sfx/${n}.mp3`).then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(b => RAW[n] = b).catch(() => {}));
+  // 아이폰은 화면을 누른 뒤에야 소리를 풀 수 있어서, 누를 때마다 아직 안 푼 것을 풀어 둬요
+  addEventListener('pointerdown', () => {
+    const a = A(); if (a.state === 'suspended') a.resume();
+    for (const n in RAW) { const b = RAW[n]; delete RAW[n]; a.decodeAudioData(b, buf => SMP[n] = buf, () => {}); }
+  }, true);
+  function play(n, vol = .7, t = 0) {
+    if (!sound) return true; if (!SMP[n]) return false;
+    const a = A(), s = a.createBufferSource(), g = a.createGain(); s.buffer = SMP[n]; g.gain.value = vol;
+    s.connect(g).connect(a.destination); s.start(a.currentTime + t); return true;
+  }
   const sfx = {
-    pop: () => { tone(80, 0, .35, 'sine', .3, 40); noise(0, .3, .25, 1800); },
+    pop: () => { if (play('open')) return; tone(80, 0, .35, 'sine', .3, 40); noise(0, .3, .25, 1800); },
     whoosh: i => { noise(i * .05, .12, .1, 3000 + i * 200); },
     deal: i => noise(i * .04, .06, .1, 2500),
     flip: () => { noise(0, .06, .14, 3500); tone(900, 0, .05, 'triangle', .035); },
-    omen: () => { tone(330, 0, .45, 'triangle', .07, 1300); },
-    reveal: () => { tone(60, 0, .5, 'sine', .35, 35); noise(0, .45, .2, 1500); [523, 659, 784, 1046].forEach((f, i) => tone(f, .08 + i * .07, .8, 'triangle', .07)); },
+    omen: () => { if (play('omen')) return; tone(330, 0, .45, 'triangle', .07, 1300); },
+    reveal: () => { if (play('win', .7, .1)) return; tone(60, 0, .5, 'sine', .35, 35); noise(0, .45, .2, 1500); [523, 659, 784, 1046].forEach((f, i) => tone(f, .08 + i * .07, .8, 'triangle', .07)); },
   };
 
   // ---- 종이 꽃가루 ----
@@ -551,7 +564,7 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
   const remaining = () => total - start + 1 - $('grid').querySelectorAll('.cd.open').length;
   function flip(el) { el.classList.remove('down'); el.classList.add('open'); sfx.flip(); $('left').textContent = remaining(); }
   // 당첨: 금테로 떠오른 뒤 바로 팡
-  async function omen(el) { el.classList.remove('down'); el.classList.add('omen'); sfx.omen(); await wait(550); reveal(el); }
+  async function omen(el) { el.classList.remove('down'); el.classList.add('omen'); sfx.omen(); await wait(sound && SMP.omen ? 900 : 550); reveal(el); }
   async function openAll() {
     for (const el of downCards()) {
       if (!el.classList.contains('down')) continue;
