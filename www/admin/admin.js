@@ -162,14 +162,25 @@ const PPPP_COLS_KEY = 'PPPP 열';
 const PPPP_FIELDS = [
   ['ts', '타임스탬프', /타임스탬프|timestamp|제출/i], ['nick', '닉네임', /닉네임|트위터|트윗|x\s*아이디|계정/i],
   ['name', '이름', /^(?!.*(입금|예금|수령)).*(성함|이름|성명)/], ['payer', '입금자명', /입금자|예금주/], ['phone', '연락처', /연락처|전화|휴대폰|핸드폰/],
-  ['qty', '수량', /수량|권수|부수|몇\s*권|구매.*수|pppp/i], ['total', '금액', /금액|입금액|합계/], ['method', '수령 방법', /수령|배송/], ['memo', '메모', /메모|요청|문의|하고\s*싶은/],
+  ['qty', '수량', /수량|권수|부수|몇\s*권|구매.*수|pppp/i], ['total', '금액', /금액|입금액|합계/], ['method', '수령 방법', /^(?!.*(환불|미수령)).*(수령|배송)/], ['memo', '메모', /메모|요청|문의|하고\s*싶은/],
+  ['paidAt', '입금 시간', /입금.*(시간|시각|일시)/], ['refund', '환불 계좌', /환불/],
 ];
 function ppppCols(header) {
   const row = T('설정').rows.find(r => r.get('항목') === PPPP_COLS_KEY), saved = {};
   if (row) row.get('값').split(',').forEach(x => { const [k, v = ''] = x.split('='); saved[k.trim()] = v.trim(); });
-  const h = (header || []).map(x => String(x).trim()), out = {};
+  // 폼 질문이 여러 줄이어도 한 줄로 보고 찾아요
+  const h = (header || []).map(x => String(x).replace(/\s+/g, ' ').trim()), out = {};
   for (const [k, label, re] of PPPP_FIELDS) out[k] = label in saved ? colNo(saved[label]) : h.findIndex(x => re.test(x));
   return out;
+}
+// '정성운(볼트) / 010-1234-5678'처럼 한 칸에 이름과 연락처를 같이 적은 답을 나눠요
+function splitNamePhone(s) {
+  s = String(s ?? '').trim();
+  const m = s.match(/01[016789](?:[\s.\-]*\d){7,8}/);
+  if (!m) return { name: s, phone: '' };
+  const d = m[0].replace(/\D/g, ''), sep = /^[\s/,·|:]+|[\s/,·|:]+$/g;
+  const name = [s.slice(0, m.index), s.slice(m.index + m[0].length)].map(x => x.replace(sep, '')).filter(Boolean).join(' ');
+  return { name, phone: `${d.slice(0, 3)}-${d.slice(3, -4)}-${d.slice(-4)}` };
 }
 const colNo = s => { s = String(s ?? '').trim().toUpperCase(); if (!/^[A-Z]{1,2}$/.test(s)) return -1; let n = 0; for (const ch of s) n = n * 26 + ch.charCodeAt(0) - 64; return n - 1; };
 const colName = i => i < 0 ? '' : (i >= 26 ? String.fromCharCode(64 + Math.floor(i / 26)) : '') + String.fromCharCode(65 + i % 26);
@@ -466,9 +477,20 @@ function build() {
       const p = proc[id] || {};
       const n = pc.qty >= 0 ? toNum(g('qty')) : 1;
       const expect = n * ppppPrice;
+      // 입금자명과 연락처를 한 칸에 받는 폼: '정성운(볼트) / 010-…' → 입금자 정성운, 닉네임 볼트, 연락처 010-…
+      let nick = g('nick'), name = g('name'), payer = g('payer'), phone = g('phone');
+      if (pc.phone >= 0 && (pc.phone === pc.payer || pc.phone === pc.name)) {
+        const sp = splitNamePhone(phone);
+        phone = sp.phone;
+        if (pc.phone === pc.payer) payer = sp.name;
+        if (pc.phone === pc.name) name = sp.name;
+      }
+      const par = pc.nick < 0 && (payer || name).match(/^([^()（）]+?)\s*[(（]\s*([^()（）]+?)\s*[)）]$/);
+      if (par) { nick = par[2]; if (payer) payer = par[1]; else name = par[1]; }
+      name = name || payer || nick; payer = payer || name;
       orders.push({
-        row: r.row, r, id, baseId: id, num: 'P', kind: 'pppp', owner: ppppOwner, pppp: n, nick: g('nick'), name: g('name') || g('nick'), payer: g('payer') || g('name'), recv: g('name'),
-        phone: g('phone'), books: 0, qty: 0, text: '', parsed: {}, fixed: null, jk: {}, jCount: 0, jState: 'none', bad: [],
+        row: r.row, r, id, baseId: id, num: 'P', kind: 'pppp', owner: ppppOwner, pppp: n, nick, name, payer, recv: name, paidAt: g('paidAt'), refund: g('refund'),
+        phone, books: 0, qty: 0, text: '', parsed: {}, fixed: null, jk: {}, jCount: 0, jState: 'none', bad: [],
         total: pc.total >= 0 && toNum(g('total')) ? toNum(g('total')) : expect, expect, ship: 0, method: g('method'), formStatus: '', proc: p, pay: null, dep: null, deps: [], depSum: 0, cand: null, at: g('ts'),
       });
     });
@@ -1016,7 +1038,7 @@ const SETTINGS = [
   ['포토카드 제작 수량', '비워두면 족자봉 주문 수 + 추가 수량으로 계산해요. 적으면 그 수량을 써요'],
   ['PPPP2 가격', 'PPPP2 선입금 1권 가격. 비워두면 12000'],
   ['PPPP2 수익', 'PPPP2 선입금·현장 판매 수익을 다 가져가는 사람. 비워두면 잏엫'],
-  [PPPP_COLS_KEY, 'PPPP 선입금(구글폼)의 어느 열을 읽을지. 비워두면 열 제목으로 알아서 찾아요. 예: 수량=E, 입금자명=D'],
+  [PPPP_COLS_KEY, 'PPPP 선입금(구글폼)의 어느 열을 읽을지. 비워두면 열 제목으로 알아서 찾아요. 예: 수량=B, 입금자명=E, 연락처=E, 환불 계좌=F'],
 ];
 const CASH = ['보유 현금', '통장에 안 넣은 행사 현금. 정산할 돈에 더해요']; // 행사가 끝난 뒤 정산 탭에서 적어요
 const SETTINGS_OLD = ['현재 잔고 + 현금', CASH[0]]; // 안 쓰는 항목, 다른 화면에서 적는 항목은 설정 목록에서 숨겨요
@@ -1199,7 +1221,7 @@ function orderModal(id) {
   const pool = [...o.deps, ...m.unusedDeps.filter(d => !o.deps.includes(d)).sort((a, b) => (like(b) - like(a)) || (Math.abs(a.amt - left) - Math.abs(b.amt - left)))];
   const depItems = pool.map(d => `<label class="depi" data-q="${esc(normName(d.who))}"><input type="checkbox" value="${esc(d.key)}" data-amt="${d.amt}" ${o.deps.includes(d) ? 'checked' : ''}>
       <span class="t"><b>${esc(d.who)}</b>${like(d) ? ' <span class="badge blue">이름 비슷</span>' : ''}<small>${esc(d.at)}</small></span><b class="num">${won(d.amt)}</b></label>`).join('');
-  const info = [['닉네임', o.nick], ['주문자', o.name], ['입금자', o.payer], ['수령자', o.recv], ['연락처', o.phone], ['수령 방법', o.method], ['주문번호', o.id], ['폼 진행상태', o.formStatus]]
+  const info = [['닉네임', o.nick], ['주문자', o.name], ['입금자', o.payer], ['수령자', o.recv], ['연락처', o.phone], ['수령 방법', o.method], ['주문번호', o.id], ['폼 진행상태', o.formStatus], ...(o.kind === 'pppp' ? [['입금한 시간', o.paidAt], ['환불 계좌', o.refund]] : [])]
     .map(([k, v]) => `<div class="kv"><span>${k}</span><b>${esc(v || '-')}</b></div>`).join('');
   openModal({
     title: esc(o.nick || o.name), sub: `${esc(o.num)}번 주문 · 엽서북 ${o.books} · 족자봉 ${o.qty} · ${won(o.total)}`, wide: true,
