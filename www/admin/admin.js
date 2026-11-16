@@ -603,8 +603,9 @@ function build() {
     if (o.pay === 'cancel') continue;
     const hasJ = o.qty > 0 || o.jCount > 0;
     if (o.kind === 'pppp') {
+      // '3 (4권부터는 기타에 적어주세요)' 같은 폼 보기는 정상 답이에요
       if (!o.pppp) is.push(['empty', '수량 없음', 'PPPP2 수량이 0이에요']);
-      else if (o.qtyRaw && !/^\d+$/.test(o.qtyRaw)) is.push(['empty', '수량 확인', `폼에 "${o.qtyRaw}"라고 적어서 ${o.pppp}권으로 읽었어요`]);
+      else if (o.qtyRaw && !/^\d+\s*(권|개|부)?\s*(\(.*\))?$/.test(o.qtyRaw)) is.push(['empty', '수량 확인', `폼에 "${o.qtyRaw}"라고 적어서 ${o.pppp}권으로 읽었어요`]);
     } else if (!o.books && !hasJ) is.push(['empty', '수량 없음', '엽서북도 족자봉도 0개예요']);
     if (!o.books && hasJ) is.push(['onlyJ', '족자봉만 주문', '엽서북을 1권 이상 사야 족자봉을 살 수 있어요']);
     if (o.qty > 0 && !o.fixed && !sumObj(o.parsed)) is.push(['noNum', '넘버 안 적음', `족자봉 ${o.qty}개를 주문했는데 넘버가 없어요`]);
