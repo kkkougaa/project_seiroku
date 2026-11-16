@@ -97,7 +97,7 @@ const VIEWS = [['home', '홈'], ['authors', '작가'], ['orders', '주문'], ['m
 const st = {
   view: (location.hash.slice(1) || 'home'),
   tabs: null, loading: false, err: '', at: null, demo: !!store.demo,
-  authorSeg: 'ok', orderFilter: 'all', orderQ: '', authorQ: '',
+  authorSeg: 'ok', orderKind: 'book', orderFilter: 'all', orderQ: '', authorQ: '',
 };
 if (!VIEWS.some(v => v[0] === st.view)) st.view = 'home';
 
@@ -886,23 +886,37 @@ const ORDER_FILTERS = [
   ['all', '전체', o => o.pay !== 'cancel'], ['check', '입금 확인 필요', o => ['diff', 'none', 'unpaid'].includes(o.pay)],
   ['issue', '문제 있음', o => o.issues.length > 0], ['jokja', '족자봉 확인', o => o.jState === 'check'], ['money', '금액 다름', o => o.amtWarn],
   ['paid', '입금 완료', o => ['form', 'auto', 'linked', 'manual'].includes(o.pay)], ['cancel', '취소', o => o.pay === 'cancel'],
-  ['dupnum', '순번 겹침', o => o.dupNum], ['pppp', 'PPPP2', o => o.kind === 'pppp' && o.pay !== 'cancel'],
+  ['dupnum', '순번 겹침', o => o.dupNum],
 ];
+// 주문 탭 하위 탭: 엽서북(위치폼·직접 추가) / PPPP2(구글폼)
+const ORDER_KINDS = [['book', '엽서북', o => o.kind !== 'pppp'], ['pppp', 'PPPP2', o => o.kind === 'pppp']];
+const kindFn = k => (ORDER_KINDS.find(x => x[0] === k) || ORDER_KINDS[0])[2];
+const BOOK_ONLY_FILTERS = ['jokja', 'dupnum']; // PPPP2에는 족자봉·순번이 없어요
 function viewOrders() {
-  const m = M();
-  const [, , fn] = ORDER_FILTERS.find(f => f[0] === st.orderFilter) || ORDER_FILTERS[0];
+  const m = M(), pp = st.orderKind === 'pppp';
+  const all = m.orders.filter(kindFn(st.orderKind));
+  const filters = ORDER_FILTERS.filter(([k, , f]) => !(pp && BOOK_ONLY_FILTERS.includes(k)) && (k !== 'dupnum' || all.some(f) || st.orderFilter === k));
+  const [, , fn] = filters.find(f => f[0] === st.orderFilter) || filters[0];
   const q = normName(st.orderQ);
-  let list = m.orders.filter(fn);
+  let list = all.filter(fn);
   if (q) list = list.filter(o => normName([o.nick, o.name, o.payer, o.recv, o.id, o.phone].join(' ')).includes(q) || String(o.phone).replace(/\D/g, '').endsWith(q));
-  const rows = list.map(o => `<tr data-open="order:${esc(o.id)}"${o.pay === 'cancel' ? ' style="opacity:.45"' : ''}>
-      <td class="num muted">${o.manualOrder ? '<span class="badge">직접</span>' : esc(o.num)}${o.dupNum ? `<div><span class="badge orange" title="순번이 겹쳐요">${esc(o.id)}</span></div>` : ''}</td><td><b>${esc(o.nick || o.name)}</b>${partsBadge(o)}<div class="muted" style="font-size:13px">${esc(o.name)}${o.payer && o.payer !== o.name ? ' · 입금 ' + esc(o.payer) : ''}</div>${o.issues.length ? `<div style="margin-top:4px">${issueBadges(o)}</div>` : ''}</td>
-      <td class="r num">${o.books || '-'}</td><td>${o.kind === 'pppp' ? `<span class="badge blue">PPPP2 ${o.pppp}권</span> <span class="muted" style="font-size:13px">${esc(o.owner)} 몫</span>` : `${o.jCount ? `<b class="num">${o.jCount}개</b> ` : ''}${o.jCount || sumObj(o.jk) ? jokjaChips(o.jk) : '<span class="muted">-</span>'} ${jBadge(o)}`}</td>
-      <td class="r num">${won(o.cmpAmt)}${o.amtWarn ? `<div style="font-size:12px;color:var(--orange)">계산 ${won(o.expect)}</div>` : ''}</td><td>${payBadge(o)}</td>
+  const who = o => `<td><b>${esc(o.nick || o.name)}</b>${partsBadge(o)}<div class="muted" style="font-size:13px">${esc(o.name)}${o.payer && o.payer !== o.name ? ' · 입금 ' + esc(o.payer) : ''}</div>${o.issues.length ? `<div style="margin-top:4px">${issueBadges(o)}</div>` : ''}</td>`;
+  const money = o => `<td class="r num">${won(o.cmpAmt)}${o.amtWarn ? `<div style="font-size:12px;color:var(--orange)">계산 ${won(o.expect)}</div>` : ''}</td><td>${payBadge(o)}</td>`;
+  const rows = list.map(o => `<tr data-open="order:${esc(o.id)}"${o.pay === 'cancel' ? ' style="opacity:.45"' : ''}>${pp
+    ? `<td class="num muted">${esc(o.id)}</td>${who(o)}<td class="r num">${o.pppp ? `<b>${o.pppp}권</b>` : '-'}</td><td class="muted" style="font-size:13px">${esc(o.method || '-')}</td>${money(o)}`
+    : `<td class="num muted">${o.manualOrder ? '<span class="badge">직접</span>' : esc(o.num)}${o.dupNum ? `<div><span class="badge orange" title="순번이 겹쳐요">${esc(o.id)}</span></div>` : ''}</td>${who(o)}
+      <td class="r num">${o.books || '-'}</td><td>${o.jCount ? `<b class="num">${o.jCount}개</b> ` : ''}${o.jCount || sumObj(o.jk) ? jokjaChips(o.jk) : '<span class="muted">-</span>'} ${jBadge(o)}</td>${money(o)}`}
     </tr>`).join('');
-  return head('주문', '', `<button class="btn" data-act="exportPos">포스로 내보내기</button><button class="btn" data-act="orderCols">열 설정</button><button class="btn" data-act="newOrder">주문 직접 추가</button><button class="btn" data-act="paste" data-tab="${PPPP_TAB}">PPPP 선입금 넣기</button><button class="btn pri" data-act="paste" data-tab="선입금 리스트">선입금 데이터 넣기</button>`) +
-    `<div class="chips">${ORDER_FILTERS.filter(([k, , f]) => !['dupnum', 'pppp'].includes(k) || m.orders.some(f) || st.orderFilter === k).map(([k, t, f]) => `<button class="chip" aria-pressed="${st.orderFilter === k}" data-seg="orderFilter:${k}">${t} <b>${m.orders.filter(f).length}</b></button>`).join('')}</div>
+  const live = all.filter(o => o.pay !== 'cancel');
+  const sum = pp ? `<div class="muted" style="font-size:14px;margin-bottom:12px">PPPP2 <b class="num">${cnt(live.reduce((a, o) => a + (o.pppp || 0), 0))}권</b> · 수익은 전부 ${esc(m.ppppOwner)} 몫</div>` : '';
+  const thead = pp ? '<th>번호</th><th>주문자</th><th class="r">수량</th><th>수령</th><th class="r">금액</th><th>입금</th>' : '<th>번호</th><th>주문자</th><th class="r">엽서북</th><th>족자봉</th><th class="r">금액</th><th>입금</th>';
+  return head('주문', '', `<button class="btn" data-act="exportPos">포스로 내보내기</button>${pp
+    ? `<button class="btn pri" data-act="paste" data-tab="${PPPP_TAB}">PPPP 선입금 넣기</button>`
+    : '<button class="btn" data-act="orderCols">열 설정</button><button class="btn" data-act="newOrder">주문 직접 추가</button><button class="btn pri" data-act="paste" data-tab="선입금 리스트">선입금 데이터 넣기</button>'}`) +
+    `<div class="tools"><div class="seg">${ORDER_KINDS.map(([k, t, f]) => `<button aria-selected="${st.orderKind === k}" data-seg="orderKind:${k}">${t} ${m.orders.filter(o => f(o) && o.pay !== 'cancel').length}</button>`).join('')}</div></div>
+    ${sum}<div class="chips">${filters.map(([k, t, f]) => `<button class="chip" aria-pressed="${fn === f}" data-seg="orderFilter:${k}">${t} <b>${all.filter(f).length}</b></button>`).join('')}</div>
     <div class="tools"><input class="search" id="orderQ" placeholder="이름, 닉네임, 입금자명, 전화번호 뒷자리, 주문번호" value="${esc(st.orderQ)}"></div>
-    <div class="tbl-wrap">${list.length ? `<table class="tbl"><thead><tr><th>번호</th><th>주문자</th><th class="r">엽서북</th><th>족자봉</th><th class="r">금액</th><th>입금</th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty">${m.orders.length ? '조건에 맞는 주문이 없어요' : '아직 선입금 데이터가 없어요. 오른쪽 위 버튼으로 넣어 주세요.'}</div>`}</div>`;
+    <div class="tbl-wrap">${list.length ? `<table class="tbl"><thead><tr>${thead}</tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty">${all.length ? '조건에 맞는 주문이 없어요' : pp ? '아직 PPPP 선입금 데이터가 없어요. 오른쪽 위 버튼으로 넣어 주세요.' : '아직 선입금 데이터가 없어요. 오른쪽 위 버튼으로 넣어 주세요.'}</div>`}</div>`;
 }
 
 // ---------- 입금 대조 ----------
@@ -1710,7 +1724,12 @@ function applyTheme() { if (store.theme) document.documentElement.dataset.theme 
 // ---------------------------------------------------------------------
 function go(v) {
   const [view, filter] = v.split(':');
-  st.view = view; if (filter) st.orderFilter = filter;
+  st.view = view;
+  if (filter) { // 홈에서 넘어올 때: 엽서북 쪽에 해당 주문이 없고 PPPP2 쪽에만 있으면 PPPP2 탭을 열어요
+    st.orderFilter = filter;
+    const f = (ORDER_FILTERS.find(x => x[0] === filter) || ORDER_FILTERS[0])[2], os = M().orders;
+    st.orderKind = !BOOK_ONLY_FILTERS.includes(filter) && !os.some(o => kindFn('book')(o) && f(o)) && os.some(o => kindFn('pppp')(o) && f(o)) ? 'pppp' : 'book';
+  }
   history.replaceState(null, '', '#' + view);
   closeModal(); render(); scrollTo(0, 0);
 }
