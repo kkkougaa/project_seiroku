@@ -922,7 +922,7 @@ function viewOrders() {
       <td class="r num">${won(o.cmpAmt)}${o.amtWarn ? `<div style="font-size:12px;color:var(--orange)">계산 ${won(o.expect)}</div>` : ''}</td><td>${payBadge(o)}</td>
     </tr>`).join('');
   return head('주문', '', `<button class="btn" data-act="exportPos">포스로 내보내기</button><button class="btn" data-act="orderCols">열 설정</button><button class="btn" data-act="newOrder">주문 직접 추가</button><button class="btn" data-act="paste" data-tab="${PPPP_TAB}">PPPP 선입금 넣기</button><button class="btn pri" data-act="paste" data-tab="선입금 리스트">선입금 데이터 넣기</button>`) +
-    `<div class="chips">${ORDER_FILTERS.filter(([k, , f]) => !['dupnum', 'pppp'].includes(k) || m.orders.some(f) || st.orderFilter === k).map(([k, t, f]) => `<button class="chip" aria-pressed="${st.orderFilter === k}" data-seg="orderFilter:${k}">${t} <b>${m.orders.filter(f).length}</b></button>`).join('')}</div>
+    `<div class="chips">${ORDER_FILTERS.filter(([k, , f]) => k !== 'dupnum' || m.orders.some(f) || st.orderFilter === k).map(([k, t, f]) => `<button class="chip" aria-pressed="${st.orderFilter === k}" data-seg="orderFilter:${k}">${t} <b>${m.orders.filter(f).length}</b></button>`).join('')}</div>
     <div class="tools"><input class="search" id="orderQ" placeholder="이름, 닉네임, 입금자명, 전화번호 뒷자리, 주문번호" value="${esc(st.orderQ)}"></div>
     <div class="tbl-wrap">${list.length ? `<table class="tbl"><thead><tr><th>번호</th><th>주문자</th><th class="r">엽서북</th><th>족자봉</th><th class="r">금액</th><th>입금</th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty">${m.orders.length ? '조건에 맞는 주문이 없어요' : '아직 선입금 데이터가 없어요. 오른쪽 위 버튼으로 넣어 주세요.'}</div>`}</div>`;
 }
@@ -1534,17 +1534,56 @@ function parseTable(text) {
   if (f !== '' || row.length) { row.push(f); rows.push(row); }
   return rows.filter(r => r.some(x => String(x).trim() !== ''));
 }
+// PDF 거래내역서 (토스뱅크는 엑셀을 안 줘요): 글자를 뽑아서 입금기록 표로 바꿔요.
+//  한 줄 모양: 2026-11-12 00:26:12  입금  12,000  3,344,000  정성운
+const STMT_HEAD = ['거래 일시', '적요', '거래 유형', '거래 기관', '계좌번호', '거래 금액', '거래 후 잔액', '메모'];
+function stmtTextRows(text) {
+  text = String(text).replace(/\r\n?/g, '\n');
+  const DATE = '\\d{4}[-.]\\d{1,2}[-.]\\d{1,2}[ \\t]+\\d{1,2}:\\d{2}(?::\\d{2})?';
+  const re = new RegExp(`(${DATE})\\s+(입금|출금)\\s+(-?[\\d,]+)\\s+(-?[\\d,]+)[ \\t]*([^\\n]*)`, 'g'), startsRow = new RegExp('^\\s*' + DATE);
+  const acct = (text.match(/계좌번호\s*([\d-]{8,})/) || [])[1] || '', bank = (text.match(/예금종류\s*(\S+)/) || [])[1] || '';
+  const rows = []; let m;
+  while ((m = re.exec(text))) {
+    let who = m[5].trim();
+    if (!who) { // 칸마다 줄이 바뀐 채로 복사됐으면 이름이 다음 줄에 있어요
+      const next = (text.slice(re.lastIndex).match(/^\n[ \t]*([^\n]+)/) || [])[1] || '';
+      if (next && !startsRow.test(next) && !/^\d+\s*\/\s*\d+$/.test(next.trim())) who = next.trim();
+    }
+    rows.push([m[1].replace(/[ \t]+/, ' '), who, m[2], bank, acct, m[3], m[4], '']);
+  }
+  return rows.length ? [STMT_HEAD, ...rows] : [];
+}
+// 붙여넣은 글을 표로. 통장 내역은 엑셀 표가 아니면 PDF에서 복사한 글인지도 봐요
+function pasteRows(tab, text) {
+  const rows = parseTable(text);
+  if (tab !== '입금기록' || headerRow(tab, rows) >= 0) return rows;
+  const s = stmtTextRows(text);
+  return s.length ? s : rows;
+}
+async function readPdfText(file) {
+  if (!self.pdfjsLib) await new Promise((ok, no) => { const el = document.createElement('script'); el.src = '../vendor/pdf.min.js'; el.onload = ok; el.onerror = () => no(new Error('load')); document.head.appendChild(el); });
+  pdfjsLib.GlobalWorkerOptions.workerSrc = '../vendor/pdf.worker.min.js';
+  const doc = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise, out = [];
+  for (let p = 1; p <= doc.numPages; p++) {
+    const items = (await (await doc.getPage(p)).getTextContent()).items.filter(i => i.str.trim());
+    // 같은 높이에 있는 글자를 한 줄로 모아요
+    const lines = [];
+    items.forEach(i => { const y = i.transform[5]; let l = lines.find(l => Math.abs(l.y - y) < 4); if (!l) lines.push(l = { y, it: [] }); l.it.push(i); });
+    lines.sort((a, b) => b.y - a.y).forEach(l => out.push(l.it.sort((a, b) => a.transform[4] - b.transform[4]).map(i => i.str.trim()).join(' ')));
+  }
+  return out.join('\n');
+}
 function pasteModal(tab) {
   const need = tab === PPPP_TAB ? ['타임스탬프(첫 줄 제목)'] : NEED[tab] || [`${colName(orderCols().num)}열 순번`];
   openModal({
     title: `${tab} 넣기`, wide: true,
-    sub: tab === PPPP_TAB ? '구글폼 응답 시트를 전체 선택(⌘A) → 복사해서 붙여넣어요. 다시 넣어도 입금 연결은 남아요.' : tab === '입금기록' ? '은행 앱에서 받은 거래내역(엑셀)을 통째로 복사해서 붙여넣어요.' : '위치폼에서 받은 엑셀을 열고 전체 선택(⌘A) → 복사해서 붙여넣어요.',
+    sub: tab === PPPP_TAB ? '구글폼 응답 시트를 전체 선택(⌘A) → 복사해서 붙여넣어요. 다시 넣어도 입금 연결은 남아요.' : tab === '입금기록' ? '은행 앱에서 받은 거래내역(엑셀)을 통째로 복사해서 붙여넣어요. 토스뱅크처럼 PDF 거래내역서만 주는 은행은 파일 고르기로 PDF를 넣어요.' : '위치폼에서 받은 엑셀을 열고 전체 선택(⌘A) → 복사해서 붙여넣어요.',
     body: `<div class="note"><b>${tab}</b> 탭 내용이 통째로 바뀌어요. 첫 줄 위에 제목 줄이 있어도 괜찮아요. 꼭 있어야 하는 열: ${need.map(n => `<code>${n}</code>`).join(' ')}</div>
       <textarea class="inp" id="pTxt" style="min-height:220px;font-size:13px" placeholder="여기에 붙여넣기"></textarea>
-      <div class="acts" style="margin-top:10px"><button class="btn sm" data-act="pickFile">CSV 파일 고르기</button><span class="hint" id="pInfo"></span></div>`,
+      <div class="acts" style="margin-top:10px"><button class="btn sm" data-act="pickFile">${tab === '입금기록' ? 'CSV·PDF 파일 고르기' : 'CSV 파일 고르기'}</button><span class="hint" id="pInfo"></span></div>`,
     foot: `<span class="sp"></span><button class="btn" data-act="close">취소</button><button class="btn pri" data-act="save">시트에 저장</button>`,
     onSave: async () => {
-      const rows = parseTable($('#pTxt').value);
+      const rows = pasteRows(tab, $('#pTxt').value);
       const hi = headerRow(tab, rows);
       if (hi < 0) return toast(NEED[tab] ? `${need.join(', ')} 열이 있는 줄을 못 찾았어요` : `${need[0]}에 숫자가 있는 줄을 못 찾았어요. 열 설정을 확인해 주세요`, true);
       let data = rows.slice(hi);
@@ -1561,7 +1600,7 @@ function pasteModal(tab) {
     },
   });
   $('#pTxt').addEventListener('input', () => {
-    const rows = parseTable($('#pTxt').value), hi = headerRow(tab, rows);
+    const rows = pasteRows(tab, $('#pTxt').value), hi = headerRow(tab, rows);
     $('#pInfo').textContent = rows.length ? (hi < 0 ? `${rows.length}줄 · 필요한 열을 못 찾았어요` : `${rows.length - hi - 1}줄을 찾았어요`) : '';
   });
 }
@@ -1858,7 +1897,12 @@ $('#fileIn').addEventListener('change', async e => {
   const f = e.target.files[0]; e.target.value = '';
   if (!f) return;
   const t = $('#pTxt'); if (!t) return;
-  t.value = await readTextFile(f);
+  if (/\.pdf$/i.test(f.name) || f.type === 'application/pdf') {
+    let rows = [];
+    try { rows = stmtTextRows(await readPdfText(f)); } catch (err) { return toast(err && err.name === 'PasswordException' ? '비밀번호가 걸린 PDF는 못 읽어요' : 'PDF를 못 읽었어요', true); }
+    if (!rows.length) return toast('PDF에서 거래내역을 못 찾았어요', true);
+    t.value = rows.map(r => r.join('\t')).join('\n');
+  } else t.value = await readTextFile(f);
   t.dispatchEvent(new Event('input'));
 });
 
