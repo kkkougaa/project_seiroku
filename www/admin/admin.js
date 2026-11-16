@@ -341,14 +341,16 @@ function build() {
   for (const r of T('주문 처리').rows) if (r.get('주문번호')) proc[r.get('주문번호')] = { row: r.row, j: r.get('족자봉 확정'), pay: r.get('입금 처리'), dep: r.get('입금 키'), memo: r.get('메모'), merge: r.get('합침') };
 
   // 입금기록
-  const deposits = T('입금기록').rows.filter(r => r.get('거래 일시') || r.get('적요')).map(r => {
+  //  '통장' 칸이 PPPP인 줄은 PPPP 통장(개인 통장) 거래예요. 공동 통장 잔액·정산·출금에는 안 넣고, PPPP 주문 입금 확인에만 써요.
+  const allDeps = T('입금기록').rows.filter(r => r.get('거래 일시') || r.get('적요')).map(r => {
     const amt = toNum(r.get('거래 금액'));
     // 은행마다 유형이 달라요 ("입금이체", "타행입금", "출금", "체크카드" …). 금액이 마이너스면 출금, 아니면 단어로 봐요.
     const raw = r.get('거래 유형');
     const type = amt < 0 ? '출금' : /입금/.test(raw) && !/출금/.test(raw) ? '입금' : /출금/.test(raw) ? '출금' : !raw ? '입금' : raw === '입금' ? '입금' : '출금';
     const key = [r.get('거래 일시'), r.get('적요'), Math.abs(amt)].join('|');
-    return { row: r.row, key, at: r.get('거래 일시'), who: r.get('적요'), type, typeRaw: raw, amt: Math.abs(amt), bal: r.get('거래 후 잔액'), balN: toNum(r.get('거래 후 잔액')), memo: r.get('메모'), bank: r.get('거래 기관'), order: null };
+    return { row: r.row, key, at: r.get('거래 일시'), who: r.get('적요'), type, typeRaw: raw, amt: Math.abs(amt), bal: r.get('거래 후 잔액'), balN: toNum(r.get('거래 후 잔액')), memo: r.get('메모'), bank: r.get('거래 기관'), acct: r.get(ACCT_COL) === ACCT_PPPP ? 'pppp' : '', order: null };
   });
+  const deposits = allDeps.filter(d => !d.acct), pDeps = allDeps.filter(d => d.acct), pSep = pDeps.length > 0;
   // 입금/출금은 통장 잔액으로 정해요: 직전 잔액 + 금액 = 이번 잔액이면 입금, − 금액이면 출금.
   //  유형 글자는 은행마다 달라서, 잔액으로 알 수 없을 때(첫 거래, 잔액 빈칸)만 글자를 써요.
   //  순서는 시트 순서(최신순이면 뒤집기)와 시간순 둘 다 해보고 덜 틀리는 쪽을 써요.
@@ -407,7 +409,7 @@ function build() {
     const gone = new Set(recon.matched.map(x => x.m));
     for (let i = deposits.length - 1; i >= 0; i--) if (gone.has(deposits[i])) deposits.splice(i, 1);
   }
-  const depByKey = {}; deposits.forEach(d => { depByKey[d.key] = d; });
+  const depByKey = {}; pDeps.forEach(d => { depByKey[d.key] = d; }); deposits.forEach(d => { depByKey[d.key] = d; });
   recon.matched.forEach(({ m: mr, s: sr }) => { depByKey[mr.key] = sr; }); // 예전 연결이 통장 거래를 가리키게
   // 출금 처리: 출금마다 환불 / 비용 / 기타 로 분류하고, 환불이면 어느 주문인지 적어요
   const wdProc = {};
@@ -548,18 +550,20 @@ function build() {
     if (o.formStatus === '결제완료') { o.pay = 'form'; continue; }
   }
   const names = o => [o.payer, o.name, o.recv, o.nick, ...(o.alt || [])].map(normName).filter(x => x.length >= 2);
-  const free = () => deposits.filter(d => d.type === '입금' && !used.has(d.key));
+  // PPPP 통장 내역이 있으면 PPPP 주문은 그 통장에서만, 나머지 주문은 공동 통장에서만 찾아요
+  const poolOf = o => o.kind === 'pppp' && pSep ? pDeps : deposits;
+  const free = o => poolOf(o).filter(d => d.type === '입금' && !used.has(d.key));
   const pend = () => orders.filter(o => !o.pay);
   const tryMatch = (test, how) => {
     for (const o of pend()) {
       const ns = names(o);
-      const d = free().find(d => d.amt === o.total - o.formPaid && test(normName(d.who), ns));
+      const d = free(o).find(d => d.amt === o.total - o.formPaid && test(normName(d.who), ns));
       if (d) { o.dep = d; o.deps = [d]; o.depSum = d.amt; d.order = o; used.add(d.key); o.pay = 'auto'; o.how = how; continue; }
       if (!o.parts) continue;
       // 합친 주문은 따로따로 입금했을 수 있어요. 주문마다 같은 금액의 입금을 하나씩 찾아요.
       const got = [];
       for (const p of o.parts.filter(p => p.formStatus !== '결제완료')) {
-        const x = free().find(d => !got.includes(d) && d.amt === p.total && test(normName(d.who), ns));
+        const x = free(o).find(d => !got.includes(d) && d.amt === p.total && test(normName(d.who), ns));
         if (!x) { got.length = 0; break; }
         got.push(x);
       }
@@ -570,10 +574,12 @@ function build() {
   tryMatch((w, ns) => ns.some(n => w.includes(n) || (w.length >= 2 && n.includes(w))), '이름 일부·금액 일치');
   for (const o of orders.filter(o => !o.pay || (o.pay === 'diff' && o.deps.length))) {
     const ns = names(o);
-    o.cand = free().filter(d => { const w = normName(d.who); return ns.some(n => w === n || w.includes(n) || n.includes(w)); });
+    o.cand = free(o).filter(d => { const w = normName(d.who); return ns.some(n => w === n || w.includes(n) || n.includes(w)); });
     if (!o.pay) o.pay = o.cand.length ? 'diff' : 'none';
   }
   const unusedDeps = deposits.filter(d => d.type === '입금' && !used.has(d.key));
+  const pUnused = pDeps.filter(d => d.type === '입금' && !used.has(d.key));
+  const freeFor = o => o.kind === 'pppp' && pSep ? pUnused : unusedDeps;
 
   // 금액 검증: 실제 엽서북·족자봉 개수로 계산한 금액(expect) ↔ 받은 금액(입금됐으면, 환불 빼고) 또는 신청 금액
   for (const o of orders) {
@@ -650,8 +656,12 @@ function build() {
   // 개인 몫: PPPP2처럼 한 사람이 다 가져가는 수익. 공동 통장·현금에 들어온 건 분배 전에 떼서 그 사람에게 줘요.
   //  그 사람이 부담할 비용을 공금이나 다른 사람이 냈으면 개인 몫에서 빼요. 본인이 따로 보관한 돈은 표시만 해요.
   const own = {};
-  const ownOf = n => (own[n] = own[n] || { pre: 0, preCount: 0, inc: 0, cost: 0, held: 0, items: [] });
-  paid.filter(o => o.owner).forEach(o => { const x = ownOf(o.owner); x.pre += o.paidAmt; x.preCount++; });
+  const ownOf = n => (own[n] = own[n] || { pre: 0, preCount: 0, inc: 0, cost: 0, held: 0, heldPre: 0, heldCount: 0, items: [] });
+  //  PPPP 통장 내역이 있으면 PPPP 선입금은 그 사람 통장에 있는 돈이에요 (공동 통장 입금과 연결한 주문만 빼고). 분배에서 떼지 않아요.
+  paid.filter(o => o.owner).forEach(o => {
+    const x = ownOf(o.owner);
+    if (pSep && !o.deps.some(d => !d.acct)) { x.held += o.paidAmt; x.heldPre += o.paidAmt; x.heldCount++; } else { x.pre += o.paidAmt; x.preCount++; }
+  });
   income.filter(i => i.owner).forEach(i => { const x = ownOf(i.owner); if (i.held) x.held += i.amt; else x.inc += i.amt; x.items.push(i); });
   costs.filter(c => c.burden && c.who !== c.burden).forEach(c => { ownOf(c.burden).cost += c.amt; });
   Object.values(own).forEach(x => { x.net = x.pre + x.inc - x.cost; });
@@ -697,7 +707,7 @@ function build() {
 
 
   return {
-    cfg, priceBook, priceJ, ppppPrice, ppppOwner, spareJ, bookPerAuthor, ratios, authors, confirmed, authorByNo, maxNo, orders, dupIds, posAlpha, live, paid, deposits, unusedDeps, withdrawals, refundSum, recon,
+    cfg, priceBook, priceJ, ppppPrice, ppppOwner, spareJ, bookPerAuthor, ratios, authors, confirmed, authorByNo, maxNo, orders, dupIds, posAlpha, live, paid, deposits, pDeps, pSep, pUnused, freeFor, allDeps, unusedDeps, withdrawals, refundSum, recon,
     extra, make, bookOrder, bookAuthor, bookExtra, cardOrder, cardExtra, cardSet, cardTotal, income, costs, preForm, preBank, incomeSum, costShared, own, ownSum, personal, personalSum, reserve, reserveAuto,
     balanceIn, bankStart, bankStartAuto, cash, pool, people, wsum, dIn, dOut, bankCheck,
   };
@@ -950,6 +960,9 @@ function viewMatch() {
     <div class="card"><div class="card-h"><div><h2>주문과 연결 안 된 입금</h2></div></div>
       ${m.unusedDeps.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>입금 일시</th><th>입금자명</th><th class="r">금액</th><th>메모</th></tr></thead><tbody>${m.unusedDeps.map(d => `<tr data-open="dep:${esc(d.key)}"><td class="num muted">${esc(d.at)}</td><td><b>${esc(d.who)}</b></td><td class="r num">${won(d.amt)}</td><td class="muted">${esc(d.memo)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">남은 입금이 없어요</div>'}
     </div>
+    ${m.pSep ? `<div class="card"><div class="card-h"><div><h2>PPPP 통장 · 주문과 연결 안 된 입금</h2><p class="sub">PPPP 통장은 개인 통장이라 상관없는 입금도 섞여 있어요. PPPP 입금인데 이름이 달라서 못 찾은 것만 눌러서 연결해요.</p></div></div>
+      ${m.pUnused.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>입금 일시</th><th>입금자명</th><th class="r">금액</th></tr></thead><tbody>${m.pUnused.map(d => `<tr data-open="dep:${esc(d.key)}"><td class="num muted">${esc(d.at)}</td><td><b>${esc(d.who)}</b></td><td class="r num">${won(d.amt)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">남은 입금이 없어요</div>'}
+    </div>` : ''}
     ${reconCard(m)}
     ${wdCard(m)}
     <div class="card"><div class="card-h"><div><h2>자동으로 연결된 입금</h2></div></div>
@@ -984,6 +997,7 @@ function viewMoney() {
     m.income.filter(x => !x.owner).map(x => `<div class="kv"><span>${esc(x.name)}</span><b class="num">${won(x.amt)}</b></div>`).join('') + `<div class="kv total"><span>공동 수입 합계</span><b class="num">${won(m.incomeSum)}</b></div>`;
   const ownList = Object.entries(m.own).map(([n, x]) => `<div class="kv"><span><b>${esc(n)} 몫</b></span><b class="num">${won(x.net)}</b></div>
       ${x.preCount ? `<div class="kv sub"><span>PPPP2 선입금 ${x.preCount}건 (통장)</span><b class="num">${won(x.pre)}</b></div>` : ''}
+      ${x.heldCount ? `<div class="kv sub"><span>PPPP2 선입금 ${x.heldCount}건 · PPPP 통장 (본인 보관)</span><b class="num">${won(x.heldPre)}</b></div>` : ''}
       ${x.items.map(i => `<div class="kv sub"><span>${esc(i.name)}${i.held ? ' · 본인 보관' : ''}</span><b class="num">${won(i.amt)}</b></div>`).join('')}
       ${x.cost ? `<div class="kv sub minus"><span>${esc(n)} 부담 비용</span><b class="num">${won(-x.cost)}</b></div>` : ''}
       ${x.held ? `<div class="kv sub"><span>그중 본인이 따로 보관한 돈은 분배에서 빼지 않아요</span><b></b></div>` : ''}`).join('');
@@ -1218,7 +1232,7 @@ function orderModal(id) {
   const ns = [o.payer, o.name, o.recv, o.nick].map(normName).filter(x => x.length >= 2);
   const like = d => { const w = normName(d.who); return ns.some(n => w === n || w.includes(n) || n.includes(w)); };
   const left = o.total - o.depSum;
-  const pool = [...o.deps, ...m.unusedDeps.filter(d => !o.deps.includes(d)).sort((a, b) => (like(b) - like(a)) || (Math.abs(a.amt - left) - Math.abs(b.amt - left)))];
+  const pool = [...o.deps, ...m.freeFor(o).filter(d => !o.deps.includes(d)).sort((a, b) => (like(b) - like(a)) || (Math.abs(a.amt - left) - Math.abs(b.amt - left)))];
   const depItems = pool.map(d => `<label class="depi" data-q="${esc(normName(d.who))}"><input type="checkbox" value="${esc(d.key)}" data-amt="${d.amt}" ${o.deps.includes(d) ? 'checked' : ''}>
       <span class="t"><b>${esc(d.who)}</b>${like(d) ? ' <span class="badge blue">이름 비슷</span>' : ''}<small>${esc(d.at)}</small></span><b class="num">${won(d.amt)}</b></label>`).join('');
   const info = [['닉네임', o.nick], ['주문자', o.name], ['입금자', o.payer], ['수령자', o.recv], ['연락처', o.phone], ['수령 방법', o.method], ['주문번호', o.id], ['폼 진행상태', o.formStatus], ...(o.kind === 'pppp' ? [['입금한 시간', o.paidAt], ['환불 계좌', o.refund]] : [])]
@@ -1322,19 +1336,19 @@ async function delManualDep(key) {
 }
 
 function depModal(key) {
-  const m = M(), d = m.deposits.find(x => x.key === key);
+  const m = M(), d = m.allDeps.find(x => x.key === key);
   if (!d) return;
   const left = o => o.total - o.depSum;
   const w = normName(d.who);
   const like = o => [o.payer, o.name, o.recv, o.nick].map(normName).filter(x => x.length >= 2).some(n => w.includes(n) || n.includes(w));
   const unpaid = o => !['form', 'auto', 'linked', 'manual'].includes(o.pay);
-  const near = m.live.slice().sort((a, b) => (like(b) - like(a)) || (unpaid(b) - unpaid(a)) || (Math.abs(left(a) - d.amt) - Math.abs(left(b) - d.amt)));
+  const near = m.live.filter(o => !d.acct || o.kind === 'pppp').sort((a, b) => (like(b) - like(a)) || (unpaid(b) - unpaid(a)) || (Math.abs(left(a) - d.amt) - Math.abs(left(b) - d.amt)));
   openModal({
-    title: `${esc(d.who)} · ${won(d.amt)}`, sub: esc(d.at + (d.bank ? ' · ' + d.bank : '')),
+    title: `${esc(d.who)} · ${won(d.amt)}`, sub: esc(d.at + (d.bank ? ' · ' + d.bank : '') + (d.acct ? ' · PPPP 통장' : '')),
     body: `<div class="field"><label for="dO">연결할 주문</label><select class="inp" id="dO"><option value="">골라 주세요</option>${near.map(o => `<option value="${esc(o.id)}">${like(o) ? '★ ' : ''}${esc(o.payer || o.name)} (${esc(o.nick)}) · ${won(o.total)} · ${(PAY[o.pay] || [''])[0]}${o.depSum && unpaid(o) ? ' · 남은 ' + won(left(o)) : ''}</option>`).join('')}</select>
       <span class="hint">★ 이름 비슷한 주문이 위에 있어요. 이미 입금된 주문에도 연결할 수 있어요.</span></div>
       <div class="field" style="margin-top:12px"><label for="dAdd">추가로 산 족자봉 (추가 구매일 때만)</label><input class="inp" id="dAdd" placeholder="${jAlpha ? '예: F' : '예: 6'}" autocomplete="off"><span class="hint" id="dAddH"></span></div>`,
-    foot: `<button class="btn soft" data-act="newOrderFromDep" data-dep="${esc(d.key)}">이 입금으로 새 주문</button>${d.bank === MANUAL_BANK ? `<button class="btn danger" data-act="delDep" data-dep="${esc(d.key)}">기록 지우기</button>` : ''}<span class="sp"></span><button class="btn" data-act="close">취소</button><button class="btn pri" data-act="save">연결</button>`,
+    foot: `${d.acct ? '' : `<button class="btn soft" data-act="newOrderFromDep" data-dep="${esc(d.key)}">이 입금으로 새 주문</button>`}${d.bank === MANUAL_BANK ? `<button class="btn danger" data-act="delDep" data-dep="${esc(d.key)}">기록 지우기</button>` : ''}<span class="sp"></span><button class="btn" data-act="close">취소</button><button class="btn pri" data-act="save">연결</button>`,
     onSave: async () => {
       const id = $('#dO').value; if (!id) return toast('주문을 골라 주세요', true);
       const add = parseJokja($('#dAdd').value);
@@ -1511,6 +1525,8 @@ function linkDep(id, key, add = null) {
 // 원본 붙여넣기 (위치폼 / 통장)
 // ---------------------------------------------------------------------
 const NEED = { '입금기록': ['적요', '거래 금액'] };
+// 입금기록 탭에는 통장 두 개가 같이 들어가요. '통장' 칸이 PPPP면 PPPP 통장(개인), 비어 있으면 공동 통장.
+const ACCT_COL = '통장', ACCT_PPPP = 'PPPP';
 // 선입금 리스트: 순번 열에 숫자가 처음 나오는 줄의 바로 윗줄이 제목 줄이에요. (열 제목 글자는 안 봐요)
 const headerRow = (tab, rows) => {
   if (tab === PPPP_TAB) { const i = rows.findIndex(r => r.some(x => /타임스탬프|timestamp/i.test(String(x)))); return i >= 0 ? i : (rows.length ? 0 : -1); }
@@ -1578,9 +1594,11 @@ function pasteModal(tab) {
   openModal({
     title: `${tab} 넣기`, wide: true,
     sub: tab === PPPP_TAB ? '구글폼 응답 시트를 전체 선택(⌘A) → 복사해서 붙여넣어요. 다시 넣어도 입금 연결은 남아요.' : tab === '입금기록' ? '은행 앱에서 받은 거래내역(엑셀)을 통째로 복사해서 붙여넣어요. 토스뱅크처럼 PDF 거래내역서만 주는 은행은 파일 고르기로 PDF를 넣어요.' : '위치폼에서 받은 엑셀을 열고 전체 선택(⌘A) → 복사해서 붙여넣어요.',
-    body: `<div class="note"><b>${tab}</b> 탭 내용이 통째로 바뀌어요. 첫 줄 위에 제목 줄이 있어도 괜찮아요. 꼭 있어야 하는 열: ${need.map(n => `<code>${n}</code>`).join(' ')}</div>
+    body: `<div class="note">${tab === '입금기록' ? '아래에서 고른 통장의 내역이 통째로 바뀌어요.' : `<b>${tab}</b> 탭 내용이 통째로 바뀌어요.`} 첫 줄 위에 제목 줄이 있어도 괜찮아요. 꼭 있어야 하는 열: ${need.map(n => `<code>${n}</code>`).join(' ')}</div>
       <textarea class="inp" id="pTxt" style="min-height:220px;font-size:13px" placeholder="여기에 붙여넣기"></textarea>
-      <div class="acts" style="margin-top:10px"><button class="btn sm" data-act="pickFile">${tab === '입금기록' ? 'CSV·PDF 파일 고르기' : 'CSV 파일 고르기'}</button><span class="hint" id="pInfo"></span></div>`,
+      <div class="acts" style="margin-top:10px"><button class="btn sm" data-act="pickFile">${tab === '입금기록' ? 'CSV·PDF 파일 고르기' : 'CSV 파일 고르기'}</button><span class="hint" id="pInfo"></span></div>
+      ${tab === '입금기록' ? `<div class="field" style="margin-top:12px"><label for="pAcct">어느 통장 내역이에요?</label><select class="inp" id="pAcct"><option value="">골라 주세요</option><option value="shared">공동 통장 (엽서북·족자봉 선입금)</option><option value="pppp">PPPP 통장 (${esc(M().ppppOwner)} 개인 통장)</option></select>
+        <span class="hint">고른 통장의 내역만 바뀌고, 다른 통장 내역은 그대로 남아요.</span></div>` : ''}`,
     foot: `<span class="sp"></span><button class="btn" data-act="close">취소</button><button class="btn pri" data-act="save">시트에 저장</button>`,
     onSave: async () => {
       const rows = pasteRows(tab, $('#pTxt').value);
@@ -1588,14 +1606,29 @@ function pasteModal(tab) {
       if (hi < 0) return toast(NEED[tab] ? `${need.join(', ')} 열이 있는 줄을 못 찾았어요` : `${need[0]}에 숫자가 있는 줄을 못 찾았어요. 열 설정을 확인해 주세요`, true);
       let data = rows.slice(hi);
       if (tab === '선입금 리스트') { const c = orderCols(); data = [data[0], ...data.slice(1).filter(r => String(r[c.id] ?? '').trim() || String(r[c.num] ?? '').trim())]; }
-      // 직접 추가한 입금·출금은 통장 내역을 다시 넣어도 남겨요
-      let keep = 0;
       if (tab === '입금기록') {
-        const h = data[0].map(x => String(x).trim()), mine = T('입금기록').rows.filter(r => r.get('거래 기관') === MANUAL_BANK);
-        mine.forEach(r => data.push(h.map(c => r.get(c))));
-        keep = mine.length;
+        // 고른 통장의 내역만 바꿔요. 다른 통장 내역과 직접 추가한 입금·출금은 남겨요.
+        const acct = $('#pAcct').value;
+        if (!acct) return toast('어느 통장 내역인지 골라 주세요', true);
+        const isP = acct === 'pppp', n = data.length - 1, m = M();
+        const cur = T('입금기록'), h = data[0].map(x => String(x).trim());
+        const mine = r => r.get('거래 기관') === MANUAL_BANK, inP = r => r.get(ACCT_COL) === ACCT_PPPP;
+        const keepRows = cur.rows.filter(r => r.get('거래 일시') || r.get('적요')).filter(r => isP ? !inP(r) : inP(r) || mine(r));
+        [ACCT_COL, ...cur.header.map(x => String(x).trim()).filter(Boolean)].forEach(c => { if (!h.includes(c) && (c === ACCT_COL || keepRows.length)) h.push(c); });
+        const ai = h.indexOf(ACCT_COL), col = c => h.indexOf(c);
+        const fresh = data.slice(1).map(r => { const x = h.map((_, i) => r[i] ?? ''); x[ai] = isP ? ACCT_PPPP : ''; return x; });
+        // 주문에 연결된 입금이 새 내역에 없으면 다른 통장 내역을 잘못 고른 걸 수 있어요
+        const newKeys = new Set(fresh.map(x => [String(x[col('거래 일시')] ?? '').trim(), String(x[col('적요')] ?? '').trim(), Math.abs(toNum(x[col('거래 금액')]))].join('|')));
+        const lost = new Set(m.orders.flatMap(o => o.deps).filter(d => !!d.acct === isP && d.bank !== MANUAL_BANK && !newKeys.has(d.key)).map(d => d.key)).size;
+        const kOther = keepRows.filter(r => !mine(r)).length, kMine = keepRows.length - kOther;
+        const name = isP ? 'PPPP 통장' : '공동 통장';
+        if (!confirm(`${name} 내역을 ${n}줄로 바꿀까요?` + (kOther ? `\n${isP ? '공동 통장' : 'PPPP 통장'} 내역 ${kOther}줄은 그대로 남아요.` : '') + (kMine ? `\n직접 추가한 ${kMine}건도 남아요.` : '')
+          + (lost ? `\n\n⚠ 지금 주문에 연결된 입금 ${lost}건이 새 내역에 없어요. 다른 통장 내역이면 취소하고 통장을 다시 골라 주세요.` : ''))) return;
+        const rows = [h, ...fresh, ...keepRows.map(r => h.map(c => r.get(c)))];
+        if (await write('replace', { sheet: tab, rows }, `${name} ${n}줄을 저장했어요`)) closeModal();
+        return;
       }
-      if (!confirm(`${tab}에 ${data.length - 1 - keep}줄을 저장할까요? 지금 탭 내용은 지워져요.${keep ? ` (직접 추가한 ${keep}건은 남겨요)` : ''}`)) return;
+      if (!confirm(`${tab}에 ${data.length - 1}줄을 저장할까요? 지금 탭 내용은 지워져요.`)) return;
       if (await write('replace', { sheet: tab, rows: data }, `${data.length - 1}줄을 저장했어요`)) closeModal();
     },
   });
