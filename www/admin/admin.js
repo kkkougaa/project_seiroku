@@ -477,7 +477,8 @@ function build() {
       let id = tn.length >= 5 ? 'P' + tn.slice(0, 6).map((x, i) => i ? String(x).padStart(2, '0') : String(x)).join('') : 'P#' + r.row;
       if (seenP[id]) id += '-' + (++seenP[id]); else seenP[id] = 1;
       const p = proc[id] || {};
-      const n = pc.qty >= 0 ? toNum(g('qty')) : 1;
+      // 개수 칸에 '3개 (36,000원)'처럼 글을 섞어 적어도 맨 앞 숫자만 개수로 읽어요
+      const qtyRaw = g('qty'), n = pc.qty >= 0 ? Number((qtyRaw.match(/\d+/) || [0])[0]) : 1;
       const expect = n * ppppPrice;
       // 입금자명과 연락처를 한 칸에 받는 폼: '정성운(볼트) / 010-…' → 입금자 정성운, 닉네임 볼트, 연락처 010-…
       let nick = g('nick'), name = g('name'), payer = g('payer'), phone = g('phone');
@@ -493,7 +494,7 @@ function build() {
       orders.push({
         row: r.row, r, id, baseId: id, num: 'P', kind: 'pppp', owner: ppppOwner, pppp: n, nick, name, payer, recv: name, paidAt: g('paidAt'), refund: g('refund'),
         phone, books: 0, qty: 0, text: '', parsed: {}, fixed: null, jk: {}, jCount: 0, jState: 'none', bad: [],
-        total: pc.total >= 0 && toNum(g('total')) ? toNum(g('total')) : expect, expect, ship: 0, method: g('method'), formStatus: '', proc: p, pay: null, dep: null, deps: [], depSum: 0, cand: null, at: g('ts'),
+        total: pc.qty < 0 && pc.total >= 0 && toNum(g('total')) ? toNum(g('total')) : expect, expect, qtyRaw, ship: 0, method: g('method'), formStatus: '', proc: p, pay: null, dep: null, deps: [], depSum: 0, cand: null, at: g('ts'),
       });
     });
   }
@@ -603,6 +604,7 @@ function build() {
     const hasJ = o.qty > 0 || o.jCount > 0;
     if (o.kind === 'pppp') {
       if (!o.pppp) is.push(['empty', '수량 없음', 'PPPP2 수량이 0이에요']);
+      else if (o.qtyRaw && !/^\d+$/.test(o.qtyRaw)) is.push(['empty', '수량 확인', `폼에 "${o.qtyRaw}"라고 적어서 ${o.pppp}권으로 읽었어요`]);
     } else if (!o.books && !hasJ) is.push(['empty', '수량 없음', '엽서북도 족자봉도 0개예요']);
     if (!o.books && hasJ) is.push(['onlyJ', '족자봉만 주문', '엽서북을 1권 이상 사야 족자봉을 살 수 있어요']);
     if (o.qty > 0 && !o.fixed && !sumObj(o.parsed)) is.push(['noNum', '넘버 안 적음', `족자봉 ${o.qty}개를 주문했는데 넘버가 없어요`]);
@@ -1235,7 +1237,7 @@ function orderModal(id) {
   const pool = [...o.deps, ...m.freeFor(o).filter(d => !o.deps.includes(d)).sort((a, b) => (like(b) - like(a)) || (Math.abs(a.amt - left) - Math.abs(b.amt - left)))];
   const depItems = pool.map(d => `<label class="depi" data-q="${esc(normName(d.who))}"><input type="checkbox" value="${esc(d.key)}" data-amt="${d.amt}" ${o.deps.includes(d) ? 'checked' : ''}>
       <span class="t"><b>${esc(d.who)}</b>${like(d) ? ' <span class="badge blue">이름 비슷</span>' : ''}<small>${esc(d.at)}</small></span><b class="num">${won(d.amt)}</b></label>`).join('');
-  const info = [['닉네임', o.nick], ['주문자', o.name], ['입금자', o.payer], ['수령자', o.recv], ['연락처', o.phone], ['수령 방법', o.method], ['주문번호', o.id], ['폼 진행상태', o.formStatus], ...(o.kind === 'pppp' ? [['입금한 시간', o.paidAt], ['환불 계좌', o.refund]] : [])]
+  const info = [['닉네임', o.nick], ['주문자', o.name], ['입금자', o.payer], ['수령자', o.recv], ['연락처', o.phone], ['수령 방법', o.method], ['주문번호', o.id], ['폼 진행상태', o.formStatus], ...(o.kind === 'pppp' ? [['폼에 적은 개수', o.qtyRaw], ['입금한 시간', o.paidAt], ['환불 계좌', o.refund]] : [])]
     .map(([k, v]) => `<div class="kv"><span>${k}</span><b>${esc(v || '-')}</b></div>`).join('');
   openModal({
     title: esc(o.nick || o.name), sub: `${esc(o.num)}번 주문 · 엽서북 ${o.books} · 족자봉 ${o.qty} · ${won(o.total)}`, wide: true,
