@@ -503,7 +503,7 @@ function build() {
   const formCancel = o => !o.proc.pay && (o.formStatus.includes('취소') || o.formStatus.includes('환불완료'));
   // 합친 주문: 주문 처리의 '합침'에 적힌 주문으로 수량·금액을 더하고, 목록에서는 빼요 (원본 시트는 그대로예요)
   const byId = {}; orders.forEach(o => { byId[o.id] = o; });
-  const part = o => ({ id: o.id, num: o.num, nick: o.nick, name: o.name, books: o.books, qty: o.qty, jk: o.jk, total: o.total, formStatus: o.formStatus });
+  const part = o => ({ id: o.id, num: o.num, nick: o.nick, name: o.name, books: o.books, qty: o.qty, jk: o.jk, pppp: o.pppp || 0, total: o.total, formStatus: o.formStatus });
   const addObj = (x, y) => { const z = { ...x }; Object.entries(y).forEach(([k, v]) => { z[k] = (z[k] || 0) + v; }); return z; };
   for (const b of orders.slice()) {
     const a = byId[b.proc.merge];
@@ -511,13 +511,14 @@ function build() {
     if (!a.parts) a.parts = [part(a)];
     a.parts.push(part(b));
     a.books += b.books; a.qty += b.qty; a.total += b.total; a.ship += b.ship;
+    if (a.pppp || b.pppp) a.pppp = (a.pppp || 0) + (b.pppp || 0);
     a.text = [a.text, b.text].filter(Boolean).join(' / ');
     a.parsed = addObj(a.parsed, b.parsed); a.jk = addObj(a.jk, b.jk); a.jCount += b.jCount;
     a.bad = [...new Set([...a.bad, ...b.bad])];
     a.alt = [...(a.alt || []), b.payer, b.name, b.recv, b.nick]; // 합친 주문 쪽 이름으로 들어온 입금도 찾아요
     a.fixed = a.fixed || b.fixed ? a.jk : null;
     a.jState = a.fixed ? 'fixed' : (sumObj(a.jk) !== a.jCount || a.bad.length) ? 'check' : a.qty ? 'ok' : 'none';
-    a.expect = a.books * priceBook + a.jCount * priceJ + a.ship;
+    a.expect = a.books * priceBook + a.jCount * priceJ + a.ship + (a.pppp || 0) * ppppPrice;
     a.proc = { ...a.proc, dep: [a.proc.dep, b.proc.dep].filter(Boolean).join('\n') };
     orders.splice(orders.indexOf(b), 1);
   }
@@ -1238,17 +1239,23 @@ function orderModal(id) {
   const pool = [...o.deps, ...m.freeFor(o).filter(d => !o.deps.includes(d)).sort((a, b) => (like(b) - like(a)) || (Math.abs(a.amt - left) - Math.abs(b.amt - left)))];
   const depItems = pool.map(d => `<label class="depi" data-q="${esc(normName(d.who))}"><input type="checkbox" value="${esc(d.key)}" data-amt="${d.amt}" ${o.deps.includes(d) ? 'checked' : ''}>
       <span class="t"><b>${esc(d.who)}</b>${like(d) ? ' <span class="badge blue">이름 비슷</span>' : ''}<small>${esc(d.at)}</small></span><b class="num">${won(d.amt)}</b></label>`).join('');
-  const info = [['닉네임', o.nick], ['주문자', o.name], ['입금자', o.payer], ['수령자', o.recv], ['연락처', o.phone], ['수령 방법', o.method], ['주문번호', o.id], ['폼 진행상태', o.formStatus], ...(o.kind === 'pppp' ? [['폼에 적은 개수', o.qtyRaw], ['입금한 시간', o.paidAt], ['환불 계좌', o.refund]] : [])]
+  const info = [['닉네임', o.nick], ['주문자', o.name], ['입금자', o.payer], ['수령자', o.recv], ['연락처', o.phone], ['수령 방법', o.method], ['주문번호', o.id], ...(o.kind === 'pppp' ? [['입금한 시간', o.paidAt], ['환불 계좌', o.refund]] : [['폼 진행상태', o.formStatus]])]
     .map(([k, v]) => `<div class="kv"><span>${k}</span><b>${esc(v || '-')}</b></div>`).join('');
+  const isP = o.kind === 'pppp';
+  // 주문 내용 한 줄: PPPP 주문은 권수만, 나머지는 엽서북·족자봉
+  const what = x => isP ? `PPPP2 ${x.pppp || 0}권` : `엽서북 ${x.books} · 족자봉 ${x.qty}`;
   openModal({
-    title: esc(o.nick || o.name), sub: `${esc(o.num)}번 주문 · 엽서북 ${o.books} · 족자봉 ${o.qty} · ${won(o.total)}`, wide: true,
-    body: `${o.issues.length ? `<div style="margin-bottom:10px">${o.issues.map(([k, t, d]) => `<div class="kv sub"><span><span class="badge red">${t}</span></span><b>${esc(d)}${k === 'dup' ? ' ' + mergeBtn(o) : ''}</b></div>`).join('')}</div>` : ''}${o.parts ? `<div style="margin-bottom:10px">${o.parts.slice(1).map(p => `<div class="kv sub"><span><span class="badge blue">합친 주문</span> ${esc(p.num)}번 · 엽서북 ${p.books} · 족자봉 ${p.qty} · ${won(p.total)}</span><b><button class="btn sm" data-act="unmerge" data-id="${esc(p.id)}">합치기 풀기</button></b></div>`).join('')}</div>` : ''}<div class="grid2"><div>
-        <h4 style="margin:4px 0 6px">족자봉</h4>
+    title: esc(o.nick || o.name), sub: `${esc(o.num)}번 주문 · ${what(o)} · ${won(o.total)}`, wide: true,
+    body: `${o.issues.length ? `<div style="margin-bottom:10px">${o.issues.map(([k, t, d]) => `<div class="kv sub"><span><span class="badge red">${t}</span></span><b>${esc(d)}${k === 'dup' ? ' ' + mergeBtn(o) : ''}</b></div>`).join('')}</div>` : ''}${o.parts ? `<div style="margin-bottom:10px">${o.parts.slice(1).map(p => `<div class="kv sub"><span><span class="badge blue">합친 주문</span> ${esc(p.num)}번 · ${what(p)} · ${won(p.total)}</span><b><button class="btn sm" data-act="unmerge" data-id="${esc(p.id)}">합치기 풀기</button></b></div>`).join('')}</div>` : ''}<div class="grid2"><div>
+        ${isP ? `<h4 style="margin:4px 0 6px">PPPP2</h4>
+        <div class="kv"><span>주문 권수</span><b class="num">${o.pppp}권</b></div>
+        ${o.parts ? o.parts.map(p => `<div class="kv sub"><span>${esc(p.id)}</span><b class="num">${p.pppp || 0}권</b></div>`).join('') : `<div class="kv sub"><span>폼에 적은 개수</span><b>${esc(o.qtyRaw || '-')}</b></div>`}
+        <div class="kv sub"><span>수익</span><b>${esc(o.owner)} 몫</b></div>` : `<h4 style="margin:4px 0 6px">족자봉</h4>
         <div class="raw">${esc(o.text || '(적은 내용 없음)')}</div>
         <div class="kv"><span>자동으로 읽은 넘버</span><b>${jokjaChips(o.parsed)}</b></div>
         <div class="kv"><span>신청 개수 / 읽은 개수</span><b class="num" style="${sumObj(o.parsed) !== o.qty ? 'color:var(--orange)' : ''}">${o.qty} / ${sumObj(o.parsed)}</b></div>
         ${o.bad.length ? `<div class="note warn">없는 넘버: ${o.bad.map(jName).join(', ')}</div>` : ''}
-        <div class="field" style="margin-top:8px"><label for="oJ">확정 넘버 (고칠 때만)</label><input class="inp" id="oJ" placeholder="${jAlpha ? '예: A, C×2, F' : '예: 2, 7×2, 18'}" value="${esc(o.proc.j || '')}"><span class="hint">비워두면 자동으로 읽은 값을 써요.</span></div>
+        <div class="field" style="margin-top:8px"><label for="oJ">확정 넘버 (고칠 때만)</label><input class="inp" id="oJ" placeholder="${jAlpha ? '예: A, C×2, F' : '예: 2, 7×2, 18'}" value="${esc(o.proc.j || '')}"><span class="hint">비워두면 자동으로 읽은 값을 써요.</span></div>`}
         <h4 style="margin:18px 0 6px">주문 정보</h4>${info}
       </div><div>
         <h4 style="margin:4px 0 6px">입금</h4>
@@ -1261,7 +1268,7 @@ function orderModal(id) {
         <div class="kv"><span>신청 금액</span><b class="num">${won(o.total)}</b></div>
         ${o.refunds.map(d => `<div class="kv sub minus"><span>환불 · ${esc(d.who)} · ${esc(d.at)}</span><b class="num">${won(-d.amt)}</b></div>`).join('')}
         ${o.deps.length || o.pay === 'form' ? `<div class="kv"><span>받은 금액${o.refundSum ? ' (환불 뺌)' : ''}${o.pay === 'form' && o.depSum ? ' (폼 결제 + 추가 입금)' : ''}</span><b class="num">${won(o.paidAmt)}</b></div>` : ''}
-        ${o.amtWarn ? `<div class="note warn">${o.cmpLabel}이 계산보다 <b>${won(Math.abs(o.cmpAmt - o.expect))} ${o.cmpAmt > o.expect ? '많아요' : '적어요'}</b>. 족자봉 넘버나 입금 연결을 확인해 주세요.</div>` : '<div class="kv sub"><span style="color:var(--green)">✓ 금액이 맞아요</span><b></b></div>'}
+        ${o.amtWarn ? `<div class="note warn">${o.cmpLabel}이 계산보다 <b>${won(Math.abs(o.cmpAmt - o.expect))} ${o.cmpAmt > o.expect ? '많아요' : '적어요'}</b>. ${isP ? '권수나' : '족자봉 넘버나'} 입금 연결을 확인해 주세요.</div>` : '<div class="kv sub"><span style="color:var(--green)">✓ 금액이 맞아요</span><b></b></div>'}
         ${o.how ? `<div class="kv sub"><span>${esc(o.how)}으로 자동 연결됨</span><b></b></div>` : ''}
         <div class="field" style="margin-top:8px"><label for="oPay">입금 처리</label><select class="inp" id="oPay">
           ${[['', '자동 (폼 상태·통장 대조)'], ['확인', '입금 확인 (통장 밖에서 받음)'], ['미입금', '미입금으로 표시'], ['취소', '주문 취소·환불']].map(([v, t]) => `<option value="${v}" ${o.proc.pay === v ? 'selected' : ''}>${t}</option>`).join('')}
@@ -1274,7 +1281,7 @@ function orderModal(id) {
       </div></div>`,
     foot: `${o.manualOrder ? `<button class="btn" data-act="editOrder" data-id="${esc(o.id)}">주문 정보 고치기</button>` : ''}<span class="sp"></span><button class="btn" data-act="close">닫기</button><button class="btn pri" data-act="save">저장</button>`,
     onSave: async () => {
-      const j = $('#oJ').value.trim(), pay = $('#oPay').value, memo = $('#oMemo').value;
+      const j = $('#oJ') ? $('#oJ').value.trim() : '', pay = $('#oPay').value, memo = $('#oMemo').value;
       let keys = [...document.querySelectorAll('#oDepList input:checked')].map(x => x.value);
       if (o.pay === 'auto' && keys.length === 1 && keys[0] === o.dep.key) keys = []; // 자동 연결 그대로
       const values = { '족자봉 확정': j ? jokjaText(parseJokja(j)) : '', '입금 처리': pay, '입금 키': keys.join('\n'), '메모': memo, '수정 시각': new Date().toLocaleString('ko-KR') };
@@ -1648,7 +1655,7 @@ function mergeModal(id) {
   const jk = group.reduce((a, x) => { Object.entries(x.jk).forEach(([k, v]) => { a[k] = (a[k] || 0) + v; }); return a; }, {});
   const sum = k => group.reduce((a, x) => a + x[k], 0);
   const card = x => `<div class="card" style="margin:0"><div class="card-h"><h2>${esc(x.num)}번 · ${esc(x.nick || x.name)}</h2>${payBadge(x)}</div>
-      ${[['이름', esc(x.name)], ['입금자', esc(x.payer)], ['연락처', esc(x.phone)], ['엽서북', x.books + '권'], ['족자봉', jokjaChips(x.jk)], ['금액', won(x.total)]].map(([k, v]) => `<div class="kv"><span>${k}</span><b>${v || '-'}</b></div>`).join('')}</div>`;
+      ${[['이름', esc(x.name)], ['입금자', esc(x.payer)], ['연락처', esc(x.phone)], ...(x.kind === 'pppp' ? [['PPPP2', (x.pppp || 0) + '권']] : [['엽서북', x.books + '권'], ['족자봉', jokjaChips(x.jk)]]), ['금액', won(x.total)]].map(([k, v]) => `<div class="kv"><span>${k}</span><b>${v || '-'}</b></div>`).join('')}</div>`;
   openModal({
     title: '정말 합칠까요?', wide: true,
     body: `<div class="grid2">${group.map(card).join('')}</div>
