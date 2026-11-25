@@ -136,6 +136,11 @@ button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px }
 .btn[disabled] { opacity: .4; pointer-events: none }
 /* 홈: 남은 팩 수, 다 팔리면 SOLD OUT */
 .hudr { display: flex; align-items: center; gap: 2cqw }
+.pleft { display: inline-flex; align-items: baseline; gap: 1.4cqw; padding: 1.4cqw 3cqw; border-radius: 99px; border: 1px solid var(--hair2); background: rgba(26,30,40,.7);
+  font-size: 3.6cqw; font-weight: 600; color: var(--fg2); font-variant-numeric: tabular-nums; white-space: nowrap }
+.pleft b { font-family: var(--title); font-weight: 900; font-size: 6cqw; line-height: 1; color: var(--gold) }
+.pleft.out { color: var(--orange); border-color: var(--orange) }
+.pleft.out b { color: var(--orange); font-size: 4.4cqw }
 .sold { position: absolute; inset: 0; z-index: 5; display: none; place-items: center; pointer-events: none }
 .sold span { transform: rotate(-12deg); padding: 2cqw 5cqw; border: .8cqw solid var(--orange); border-radius: 1.6cqw; color: var(--orange); background: rgba(11,13,20,.82);
   font-family: var(--title); font-weight: 900; font-size: 11cqw; letter-spacing: .02em; line-height: 1; white-space: nowrap }
@@ -277,7 +282,7 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
     <section class="layer" id="home">
       <div class="hud">
         <span class="label"><b>SEIROKU : WORK</b>VOL.3</span>
-        <div class="hudr"><span class="count" id="homeLeft"></span>
+        <div class="hudr"><span class="pleft" id="homeLeft"></span>
         <button class="icon" id="gear" aria-label="직원 설정"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
       </div>
       <div class="hero"><div class="sold" aria-hidden="true"><span>SOLD OUT</span></div><div class="packwrap" id="packwrap">
@@ -389,9 +394,11 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
     n = Math.max(0, Math.min(left(), v));
     $('n').innerHTML = `<span>${n}<small>장</small></span>`;
     $('go').disabled = n === 0;
-    // 남은 팩 수, 다 팔리면 SOLD OUT
-    const L = left(), so = L === 0;
-    $('homeLeft').innerHTML = so ? '<b>SOLD OUT</b>' : `남은 팩 <b>${L}</b>`;
+    // 남은 포스터 수, 포스터(또는 팩)가 다 나가면 SOLD OUT
+    const P = winList.filter(k => k > opened && k <= packs).length, so = P === 0 || left() === 0;
+    $('homeLeft').innerHTML = so ? '<b>SOLD OUT</b>' : `남은 포스터 <b>${P}</b>장`;
+    $('homeLeft').classList.toggle('out', so);
+    if (so) $('go').disabled = true;
     $('home').classList.toggle('soldout', so);
     $('go').querySelector('.word').textContent = so ? 'SOLD OUT' : 'OPEN';
   };
@@ -543,7 +550,7 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
   // ---- 개봉: 팩이 아래로 → 팡 → 카드가 슈슈슉 위로 → 위에서 판으로 ----
   let total = 0, wins = new Set(), start = 1, hits = 0, done = false;
   $('go').onclick = async () => {
-    if (busy || !n) return; busy = true; A(); fxSize();
+    if (busy || !n || $('go').disabled) return; busy = true; A(); fxSize();
     total = n; const base = opened;
     // 한 번에 여러 장 연 손님은 포스터를 1장만: 이번 범위에 당첨이 2개 이상이면 첫 번째만 남기고,
     //  나머지는 이번 범위 뒤의 빈 번호로 다시 랜덤 배치해요. 뒤에 빈 번호가 모자라면 어쩔 수 없이 이번 범위에 남겨요.
