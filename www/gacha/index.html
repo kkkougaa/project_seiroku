@@ -232,7 +232,7 @@ button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px }
 .field .btn { flex: none; padding: 0 4cqw }
 .meta2 { display: flex; justify-content: space-between; align-items: center; gap: 2cqw; font-size: 3.2cqw; color: var(--fg2); font-variant-numeric: tabular-nums }
 .link { border: 0; background: none; padding: 1cqw 0; font-size: 3.2cqw; color: var(--fg); text-decoration: underline; text-underline-offset: .6cqw }
-.link.warn { color: var(--orange) }
+.link.warn, .field .btn.warn { color: var(--orange) }
 .sheet h2 { margin: 0; font-family: var(--title); font-weight: 700; font-size: 5.2cqw }
 .sheet p { margin: -2cqw 0 0; font-size: 3.2cqw; color: var(--fg2) }
 .sheet .row { display: grid; gap: 2cqw; grid-template-columns: minmax(0, 1fr); min-width: 0 }
@@ -340,6 +340,10 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
           <div class="field"><input id="wIn" type="text" inputmode="text" autocomplete="off" placeholder="예: 1, 2, 6, 24, 67, 123"><button class="btn" id="wAdd">저장</button></div>
           <div class="meta2" id="wStat"></div>
         </div>
+        <div class="row"><label for="rIn">랜덤 배치 (남은 팩에 포스터 몇 장을 넣을지)</label>
+          <div class="field"><input id="rIn" type="number" inputmode="numeric" min="1" max="9999" placeholder="예: 10"><span>장</span><button class="btn" id="rGo">랜덤 배치</button></div>
+          <div class="meta2" id="rStat"><span>이미 연 팩의 당첨 위치는 그대로 두고, 아직 안 연 팩의 위치만 새로 뽑아요</span></div>
+        </div>
         <div class="row"><span>효과음</span><div class="seg"><button class="btn" id="sOn" aria-pressed="true">켜기</button><button class="btn" id="sOff" aria-pressed="false">끄기</button></div></div>
         <button class="btn pri" id="cfgOk">닫기</button>
       </div>
@@ -407,12 +411,30 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
     winList = [...new Set(nums)].sort((a, b) => a - b); save(); drawW();
   };
   $('wAdd').onclick = readW; $('wIn').onchange = readW;
+  // 랜덤 배치: 아직 안 연 팩(opened+1 ~ packs) 중에서 겹치지 않게 k개를 뽑아요. 이미 연 팩의 당첨 위치는 그대로 둬요.
+  const rnd = m => { try { const a = new Uint32Array(1); crypto.getRandomValues(a); return a[0] % m; } catch { return Math.floor(Math.random() * m); } };
+  const drawR = msg => { const r = $('rGo'); r.textContent = '랜덤 배치'; r.dataset.arm = ''; r.classList.remove('warn');
+    $('rStat').innerHTML = `<span>${msg || '이미 연 팩의 당첨 위치는 그대로 두고, 아직 안 연 팩의 위치만 새로 뽑아요'}</span>`; };
+  $('rIn').oninput = () => drawR();
+  $('rGo').onclick = () => {
+    const k = Math.round(+$('rIn').value), free = left(), r = $('rGo');
+    if (!(k >= 1)) return drawR('넣을 포스터 장 수를 입력해 주세요');
+    if (k > free) return drawR(`남은 팩이 ${free}팩이라 ${k}장은 못 넣어요`);
+    const future = winList.filter(x => x > opened).length;
+    // 남은 당첨 위치가 이미 있으면 한 번 더 눌러야 바꿔요
+    if (future && !r.dataset.arm) { r.dataset.arm = '1'; r.textContent = '한 번 더 누르면 바꿔요'; r.classList.add('warn');
+      $('rStat').innerHTML = `<span>남은 당첨 위치 ${future}개를 지우고 새로 ${k}개를 뽑아요</span>`; return; }
+    const pick = new Set();
+    while (pick.size < k) pick.add(opened + 1 + rnd(free));
+    winList = [...winList.filter(x => x <= opened), ...pick].sort((a, b) => a - b); save(); drawW();
+    drawR(`${opened + 1}~${packs}번 팩 중 ${k}곳에 넣었어요`);
+  };
   $('wIn').onkeydown = e => { if (e.key === 'Enter') { readW(); $('wIn').blur(); } };
   drawT(); drawW();
   // 비밀번호 키패드
   let code = '';
   const drawDots = () => [...$('dots').children].forEach((d, i) => d.classList.toggle('on', i < code.length));
-  $('gear').onclick = () => { code = ''; drawDots(); $('lock').hidden = false; $('cfgSheet').hidden = true; $('cfg').hidden = false; };
+  $('gear').onclick = () => { drawR(); code = ''; drawDots(); $('lock').hidden = false; $('cfgSheet').hidden = true; $('cfg').hidden = false; };
   $('pad').querySelectorAll('button').forEach(b => b.onclick = () => {
     const k = b.dataset.k;
     if (k === 'x') { $('cfg').hidden = true; return; }
