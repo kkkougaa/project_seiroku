@@ -41,16 +41,16 @@ self.BOOTH_CONFIG = {
           pool: 'photocard', units: 10, badge: '10', image: 'images/photocard.jpg' },
         // 족자봉 넘버는 숫자(1~25, 작가 No와 같아요). 관리 사이트에서 명단을 받으면 확정 작가 수에 맞춰 바뀌어요. 목록에 없는 넘버도 그대로 읽어요
         { id: 'jokja', name: '족자봉', price: 25000, preorderOnly: true, variants: Array.from({ length: 25 }, (_, i) => String(i + 1)) },
-        // 하치 님 책: 현장 판매만, 수익은 전부 하치 몫. 이름은 가제, 가격·수량은 기본값(바뀔 수 있어요). id는 이름이 바뀌어도 그대로 둬요.
-        { id: 'hachibook', name: '녹스책', sub: '가제', price: 5000, stock: 200, noPreorder: true, owner: '하치' },
       ],
     },
     B: {
       name: 'PPPP2',
-      owner: '잏엫', // 이 부스 수익(선입금 + 현장 판매)은 전부 잏엫 몫
+      owner: '잏엫', // 이 부스 수익(선입금 + 현장 판매)은 전부 잏엫 몫 (owner가 따로 있는 녹스책은 빼고)
       account: { bank: '은행 이름', number: '계좌번호를 넣어 주세요', owner: '예금주' },
       products: [
         { id: 'pppp2', name: 'PPPP2', r18: true, price: 12000, stock: TODO, image: 'images/pppp2.jpg' }, // 수량 미정
+        // 하치 님 책: PPPP2 부스에서 현장 판매만, 수익은 전부 하치 몫(부스 owner인 잏엫보다 우선). 이름은 가제, 가격·수량은 기본값(바뀔 수 있어요). id는 이름이 바뀌어도 그대로 둬요.
+        { id: 'hachibook', name: '녹스책', sub: '가제', price: 5000, stock: 200, noPreorder: true, owner: '하치' },
       ],
     },
   },
