@@ -134,6 +134,14 @@ button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px }
 .btn.pri { border: 0; height: 14cqw; font-family: var(--title); letter-spacing: .02em; background: var(--paper); color: var(--ink); font-weight: 900; font-size: 5.6cqw; box-shadow: inset 0 -1px 0 rgba(0,0,0,.12) }
 .btn.pri:active { background: #e4dccc }
 .btn[disabled] { opacity: .4; pointer-events: none }
+/* 홈: 남은 팩 수, 다 팔리면 SOLD OUT */
+.hudr { display: flex; align-items: center; gap: 2cqw }
+.sold { position: absolute; inset: 0; z-index: 5; display: none; place-items: center; pointer-events: none }
+.sold span { transform: rotate(-12deg); padding: 2cqw 5cqw; border: .8cqw solid var(--orange); border-radius: 1.6cqw; color: var(--orange); background: rgba(11,13,20,.82);
+  font-family: var(--title); font-weight: 900; font-size: 11cqw; letter-spacing: .02em; line-height: 1; white-space: nowrap }
+#home.soldout .sold { display: grid }
+#home.soldout .pack { filter: grayscale(1) brightness(.55) }
+#home.soldout .panel .row1 { visibility: hidden }
 .btn .n { font-family: var(--title); font-weight: 900; color: #7d6c55 }
 
 /* 카드 판 */
@@ -269,9 +277,10 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
     <section class="layer" id="home">
       <div class="hud">
         <span class="label"><b>SEIROKU : WORK</b>VOL.3</span>
-        <button class="icon" id="gear" aria-label="직원 설정"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button>
+        <div class="hudr"><span class="count" id="homeLeft"></span>
+        <button class="icon" id="gear" aria-label="직원 설정"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
       </div>
-      <div class="hero"><div class="packwrap" id="packwrap">
+      <div class="hero"><div class="sold" aria-hidden="true"><span>SOLD OUT</span></div><div class="packwrap" id="packwrap">
         <div class="shoot" id="shoot"></div>
         <div class="pack" id="deck">
           <div class="seal top" id="sealTop">
@@ -380,6 +389,11 @@ canvas.fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-eve
     n = Math.max(0, Math.min(left(), v));
     $('n').innerHTML = `<span>${n}<small>장</small></span>`;
     $('go').disabled = n === 0;
+    // 남은 팩 수, 다 팔리면 SOLD OUT
+    const L = left(), so = L === 0;
+    $('homeLeft').innerHTML = so ? '<b>SOLD OUT</b>' : `남은 팩 <b>${L}</b>`;
+    $('home').classList.toggle('soldout', so);
+    $('go').querySelector('.word').textContent = so ? 'SOLD OUT' : 'OPEN';
   };
   $('minus').onclick = () => setN(n - 1); $('plus').onclick = () => setN(n + 1);
   // +5, +10: 기본값 1장일 때 처음 누르면 5장·10장으로 맞추고, 그다음부터는 더해요
