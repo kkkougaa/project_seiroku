@@ -10,7 +10,7 @@ const dataKey = b => 'boothpos:v1:' + b;
 const REASONS_OUT = ['파손·불량', '전시용 샘플', '증정·서비스', '분실', '기타'];
 const REASONS_IN = ['추가 입고', '재고 정정', '기타'];
 const BACKUP_WARN_MIN = 60;
-const APP_VERSION = '29';
+const APP_VERSION = '30';
 
 /* ---------------- 저장소 ---------------- */
 const ls = {
@@ -434,7 +434,7 @@ function panelPre() {
 function recent(n) { return D.preorders.filter(p => p.at).sort((a, b) => b.at - a.at).slice(0, n); }
 function lastRecv() {
   const p = recent(1)[0]; if (!p) return '';
-  return `<div class="lastrecv"><span>마지막 수령 <b>${esc(p.name)}</b> <span class="num">${esc(p.last4)} · ${hhmm(p.at)}</span></span><button data-ungive="${esc(p.key)}">수령 취소</button></div>`;
+  return `<div class="lastrecv"><span>마지막 수령 <b>${esc(p.name)}</b> <span class="num">${esc(l4(p))} · ${hhmm(p.at)}</span></span><button data-ungive="${esc(p.key)}">수령 취소</button></div>`;
 }
 function nameRows() {
   const q = nq.trim(); if (!q) return '';
@@ -444,7 +444,7 @@ function nameRows() {
   const onlyCho = /^[ㄱ-ㅎ]+$/.test(q.replace(/\s/g, '')); // "ㅎㅈㅅ" 처럼 초성만 쳤을 때만 초성으로 찾아요
   const rows = D.preorders.filter(p => names(p).some(n => n.includes(q) || (onlyCho && cho(n).includes(qc)))).slice(0, 12);
   if (!rows.length) return '<div class="empty"><b>검색 결과 없음</b></div>';
-  return rows.map(p => `<button class="row pick-row" data-pickname="${esc(p.key)}"><div class="l"><div class="t">${esc(p.name)} <span class="num l4">${esc(p.last4)}</span>${p.alt ? ` <span class="s" style="display:inline">${esc(p.alt.join(' · '))}</span>` : ''}</div><div class="s">${p.at ? hhmm(p.at) + ' 수령' : '상품 ' + cnt(p.items) + '개'}</div></div><span class="chev">›</span></button>`).join('');
+  return rows.map(p => `<button class="row pick-row" data-pickname="${esc(p.key)}"><div class="l"><div class="t">${esc(p.name)} <span class="num l4">${esc(l4(p))}</span>${p.alt ? ` <span class="s" style="display:inline">${esc(p.alt.join(' · '))}</span>` : ''}</div><div class="s">${p.at ? hhmm(p.at) + ' 수령' : '상품 ' + cnt(p.items) + '개'}</div></div><span class="chev">›</span></button>`).join('');
 }
 function preDetail(p) {
   // 족자봉처럼 종류를 골라 챙겨야 하는 상품을 맨 위에 보여줘요
@@ -456,7 +456,7 @@ function preDetail(p) {
     <div class="recvrow">${p.at ? `<p class="recvcount done num">${hhmm(p.at)}에 받아갔어요</p>` : `<p class="recvcount num">받을 상품 <b>${allKeys(p).reduce((a, id) => a + effQty(p, id), 0)}개</b></p>`}
       <button class="siren" data-act="openFail" aria-label="전달 못 한 상품 기록">${IC.siren}</button></div>${p.manual ? '<span class="badge gray">직접 추가</span>' : ''}
     ${(() => { const f = failedOf(p); return Object.keys(f.items).length ? `<div class="failnote">미전달: ${itemsText(f.items, f.vars)}</div>` : ''; })()}
-    <p class="who">${esc(p.name)}님</p><p class="sub num">010-••••-${esc(p.last4)}${p.no ? ' · ' + esc(p.no) : ''}</p>
+    <p class="who">${esc(p.name)}님</p><p class="sub num">${p.noTel ? '연락처 없음 (0000)' : '010-••••-' + esc(p.last4)}${p.no ? ' · ' + esc(p.no) : ''}</p>
     <div class="list big">${lines.map(g => `<div class="row ${p.vars && p.vars[g.key] ? 'tall' : ''}"><div class="l"><div class="t">${esc(g.name)}${g.sub ? ` <span class="s">${esc(g.sub)}</span>` : ''}${g.pool && g.parts.length > 1 ? ` <span class="s num">${partsText(g)}</span>` : ''}</div>
       ${p.vars && p.vars[g.key] ? vchips(p.vars[g.key]) : ''}</div><span class="num qty">${g.qty}${g.unit}</span></div>`).join('')}
       ${groupItems(giftEff).map(g => `<div class="row gift"><div class="l"><div class="t">${esc(g.name)} <span class="badge gift">사은품</span></div></div><span class="num qty">${g.qty}${g.unit}</span></div>`).join('')}</div>
@@ -472,7 +472,7 @@ function listRows() {
     (!s || [p.name, ...(p.alt || [])].some(n => n.toLowerCase().includes(s) || (/^[ㄱ-ㅎ]+$/.test(s.replace(/\s/g, '')) && cho(n).includes(cho(s)))) || p.last4.includes(s) || (p.no || '').toLowerCase().includes(s)));
   if (!D.preorders.length) return `<div class="empty" style="padding:40px 0"><b>명단 없음</b></div>`;
   if (!rows.length) return `<div class="empty" style="padding:40px 0"><b>검색 결과 없음</b></div>`;
-  return rows.map(p => `<div class="sr"><div class="l"><div class="t">${esc(p.name)} <span class="num l4">${esc(p.last4)}</span>${p.alt ? ` <span class="s" style="display:inline">${esc(p.alt.join(' · '))}</span>` : ''}</div>
+  return rows.map(p => `<div class="sr"><div class="l"><div class="t">${esc(p.name)} <span class="num l4">${esc(l4(p))}</span>${p.alt ? ` <span class="s" style="display:inline">${esc(p.alt.join(' · '))}</span>` : ''}</div>
     <div class="s num">${itemsText(allItems(p), p.vars)}</div></div>
     ${p.at ? `<span class="badge gray">${hhmm(p.at)} 수령</span>` : `<button class="mini" data-go="${esc(p.key)}">수령 처리</button>`}</div>`).join('');
 }
@@ -485,7 +485,7 @@ function listView() {
       <div class="seg sm" role="tablist">${f.map(([k, l]) => `<button role="tab" class="num" aria-selected="${lf === k}" data-lf="${k}">${l}</button>`).join('')}</div>
       <button class="mini gray" data-act="openAddPre" style="height:46px;padding:0 16px">직접 추가</button></div>
     <div id="prelist">${listRows()}</div></div>
-    <div class="box"><h2>최근 수령</h2>${recent(10).map(p => `<div class="sr"><div class="l"><div class="t">${esc(p.name)} <span class="num l4">${esc(p.last4)}</span></div><div class="s num">${hhmm(p.at)} · ${itemsText(p.items, p.vars)}</div></div>
+    <div class="box"><h2>최근 수령</h2>${recent(10).map(p => `<div class="sr"><div class="l"><div class="t">${esc(p.name)} <span class="num l4">${esc(l4(p))}</span></div><div class="s num">${hhmm(p.at)} · ${itemsText(p.items, p.vars)}</div></div>
       <button class="mini red" data-ungive="${esc(p.key)}">수령 취소</button></div>`).join('') || '<p class="cap">없음</p>'}</div></div>`;
 }
 
@@ -775,7 +775,7 @@ function sheetView() {
     <div class="kv"><span>파일 전체</span><b class="num">${r.total}줄</b></div>
     <div class="kv hl"><span>${esc(B().name)} 상품이 있는 분</span><b class="num">${r.list.length}명</b></div>
     ${r.unpaid ? `<div class="kv"><span>입금 확인이 안 돼서 뺀 분</span><b class="num">${r.unpaid}명</b></div>` : ''}
-    ${r.noPhone ? `<div class="kv bad"><span>전화번호가 없어서 뺀 줄</span><b class="num">${r.noPhone}줄</b></div>` : ''}
+    ${r.noPhone ? `<div class="kv"><span>연락처 없이 넣은 분 (뒷자리 0000 또는 이름으로 찾아요)</span><b class="num">${r.noPhone}명</b></div>` : ''}
     ${r.unknownVar ? `<div class="kv bad"><span>족자봉 종류를 못 읽은 수량</span><b class="num">${r.unknownVar}개</b></div>` : ''}
     <div class="preview">찾은 상품 열: ${r.matched.length ? r.matched.map(esc).join(', ') : '<b style="color:var(--red)">없음</b>'}
       ${r.unknown.length ? `<ul><li>모르는 열이라 건너뛴 것: ${r.unknown.map(esc).join(', ')}</li></ul>` : ''}</div>
@@ -832,6 +832,8 @@ const META = {
 };
 const IGNORE = ['타임스탬프', 'timestamp', '메모', '비고', '이메일', 'email', '이메일주소', '주소', '트위터', 'x', '계정', '합계', '총액', '금액', '총금액', '입금액', '입금일', '수령방법'];
 const truthy = v => /^(o|y|yes|true|1|확인|완료|입금|ㅇ|v|✓|✔|●|○)/i.test(String(v).trim());
+const NO_TEL = '0000'; // 연락처 없는 선입금은 뒷자리 0000으로 찾아요
+const l4 = p => p.noTel ? '연락처 없음' : p.last4;
 const qtyOf = v => { v = String(v || '').trim(); const d = v.match(/\d+/); return d ? parseInt(d[0], 10) : (v && truthy(v) ? 1 : 0); };
 
 // "A, C, C" / "A×2 C" / "a2, c1" 같은 값을 {A:1, C:2} 로 읽어요
@@ -891,11 +893,13 @@ function analyzeCSV(rows, file) {
     }
     if (!cnt(items)) continue;
     const phone = String(r[col.phone] ?? '').replace(/\D/g, '');
-    if (phone.length < 4) { noPhone++; continue; }
+    // 연락처가 없어도 빼지 않아요. 뒷자리 0000 또는 이름으로 찾아요
+    const noTel = phone.length < 4; if (noTel) noPhone++;
     const cell = k => col[k] !== undefined ? String(r[col[k]] ?? '').trim() : '';
     const name = cell('name') || cell('real') || cell('payer') || '(이름 없음)';
     const no = col.no !== undefined ? String(r[col.no] || '').trim() : '';
-    const o = { key: no ? 'no:' + no : 'np:' + name + '|' + phone, no, name, last4: phone.slice(-4), items, at: null };
+    const o = { key: no ? 'no:' + no : 'np:' + name + '|' + phone, no, name, last4: noTel ? NO_TEL : phone.slice(-4), items, at: null };
+    if (noTel) o.noTel = true;
     const alt = [...new Set([cell('real'), cell('payer')].filter(x => x && x !== name))];
     if (alt.length) o.alt = alt; // 본명·입금자명으로도 찾을 수 있게
     if (Object.keys(vars).length) o.vars = vars;
