@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment2.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - name: 관리 사이트 파일 버전 붙이기 (브라우저 캐시 때문에 옛 파일이 안 보이게)
@@ -24,5 +24,12 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: www
+      # 가끔 GitHub가 방금 올린 파일을 바로 못 찾아서("No artifacts named github-pages") 실패해요. 잠깐 기다렸다가 한 번 더 해요.
       - id: deployment
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+      - if: steps.deployment.outcome == 'failure'
+        run: sleep 30
+      - id: deployment2
+        if: steps.deployment.outcome == 'failure'
         uses: actions/deploy-pages@v4
