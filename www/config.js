@@ -49,8 +49,8 @@ self.BOOTH_CONFIG = {
       account: { bank: '은행 이름', number: '계좌번호를 넣어 주세요', owner: '예금주' },
       products: [
         { id: 'pppp2', name: 'PPPP2', r18: true, price: 12000, stock: TODO, image: 'images/pppp2.jpg' }, // 수량 미정
-        // 하치 님 책: PPPP2 부스에서 현장 판매만, 수익은 전부 하치 몫(부스 owner인 잏엫보다 우선). 이름은 가제, 가격·수량은 기본값(바뀔 수 있어요). id는 이름이 바뀌어도 그대로 둬요.
-        { id: 'hachibook', name: '녹스책', sub: '가제', price: 5000, stock: 200, noPreorder: true, owner: '하치' },
+        // 하치 님 책(녹스책): PPPP2 부스에서 현장 판매만, 수익은 전부 하치 몫(부스 owner인 잏엫보다 우선). 수량 200권은 기본값(바뀔 수 있어요). id는 이름이 바뀌어도 그대로 둬요.
+        { id: 'hachibook', name: '이어서, 다음 사연입니다.', price: 5000, stock: 200, noPreorder: true, owner: '하치', image: 'images/hachibook.jpg' },
       ],
     },
   },
