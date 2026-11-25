@@ -641,11 +641,13 @@ function build() {
   const cardTotal = cardSet !== null ? cardSet : cardOrder + cardExtra;
 
   // 정산
-  // 받는 사람: 비우면 공동. 보관: 그 돈이 공동 통장·현금에 있는지(공동), 받는 사람이 따로 갖고 있는지(본인)
+  // 받는 사람: 비우면 공동. 보관: 그 돈이 공동 통장·현금에 있는지(공동), 받는 사람이 따로 갖고 있는지(본인),
+  //  다른 사람이 갖고 있는지(그 사람 이름 — 그 사람이 받는 사람에게 전달해요. 분배에서 떼지 않아요)
   const SHARED = v => !v || v === '공동';
   const income = T('수입').rows.filter(r => r.get('항목') || r.get('금액')).map(r => {
     const owner = SHARED(r.get('받는 사람')) ? '' : r.get('받는 사람');
-    return { row: r.row, r, name: r.get('항목'), amt: toNum(r.get('금액')), memo: r.get('메모'), owner, held: owner && r.get('보관') !== '공동' };
+    const keep = r.get('보관'), held = !!owner && keep !== '공동';
+    return { row: r.row, r, name: r.get('항목'), amt: toNum(r.get('금액')), memo: r.get('메모'), owner, held, holder: held && keep && keep !== '본인' ? keep : owner };
   });
   const costs = T('비용').rows.filter(r => r.get('내용') || r.get('항목') || r.get('단가')).map(r => {
     const unit = toNum(r.get('단가')), n = r.get('개수') === '' ? 1 : toNum(r.get('개수'));
@@ -660,13 +662,18 @@ function build() {
   // 개인 몫: PPPP2처럼 한 사람이 다 가져가는 수익. 공동 통장·현금에 들어온 건 분배 전에 떼서 그 사람에게 줘요.
   //  그 사람이 부담할 비용을 공금이나 다른 사람이 냈으면 개인 몫에서 빼요. 본인이 따로 보관한 돈은 표시만 해요.
   const own = {};
-  const ownOf = n => (own[n] = own[n] || { pre: 0, preCount: 0, inc: 0, cost: 0, held: 0, heldPre: 0, heldCount: 0, items: [] });
+  const ownOf = n => (own[n] = own[n] || { pre: 0, preCount: 0, inc: 0, cost: 0, held: 0, heldPre: 0, heldCount: 0, items: [], give: {}, recv: {} });
   //  PPPP 통장 내역이 있으면 PPPP 선입금은 그 사람 통장에 있는 돈이에요 (공동 통장 입금과 연결한 주문만 빼고). 분배에서 떼지 않아요.
   paid.filter(o => o.owner).forEach(o => {
     const x = ownOf(o.owner);
     if (pSep && !o.deps.some(d => !d.acct)) { x.held += o.paidAmt; x.heldPre += o.paidAmt; x.heldCount++; } else { x.pre += o.paidAmt; x.preCount++; }
   });
-  income.filter(i => i.owner).forEach(i => { const x = ownOf(i.owner); if (i.held) x.held += i.amt; else x.inc += i.amt; x.items.push(i); });
+  income.filter(i => i.owner).forEach(i => {
+    const x = ownOf(i.owner); x.items.push(i);
+    if (!i.held) x.inc += i.amt;
+    else if (i.holder === i.owner) x.held += i.amt;
+    else { x.recv[i.holder] = (x.recv[i.holder] || 0) + i.amt; const h = ownOf(i.holder).give; h[i.owner] = (h[i.owner] || 0) + i.amt; } // 사람끼리 직접 전달
+  });
   costs.filter(c => c.burden && c.who !== c.burden).forEach(c => { ownOf(c.burden).cost += c.amt; });
   Object.values(own).forEach(x => { x.net = x.pre + x.inc - x.cost; });
   const ownSum = Object.values(own).reduce((a, x) => a + x.net, 0);
@@ -706,7 +713,7 @@ function build() {
     const w = (ratios.find(x => x.name === name) || {}).w || 0;
     const share = pool === null || !wsum ? 0 : pool * w / wsum;
     const mine = own[name] ? own[name].net : 0;
-    return { name, w, share, pre: personal[name] || 0, own: mine, held: own[name] ? own[name].held : 0, total: share + (personal[name] || 0) + mine };
+    return { name, w, share, pre: personal[name] || 0, own: mine, held: own[name] ? own[name].held : 0, give: own[name] ? own[name].give : {}, recv: own[name] ? own[name].recv : {}, total: share + (personal[name] || 0) + mine };
   });
 
 
@@ -1002,7 +1009,8 @@ function viewMoney() {
   const ownList = Object.entries(m.own).map(([n, x]) => `<div class="kv"><span><b>${esc(n)} 몫</b></span><b class="num">${won(x.net)}</b></div>
       ${x.preCount ? `<div class="kv sub"><span>PPPP2 선입금 ${x.preCount}건 (통장)</span><b class="num">${won(x.pre)}</b></div>` : ''}
       ${x.heldCount ? `<div class="kv sub"><span>PPPP2 선입금 ${x.heldCount}건 · PPPP 통장 (본인 보관)</span><b class="num">${won(x.heldPre)}</b></div>` : ''}
-      ${x.items.map(i => `<div class="kv sub"><span>${esc(i.name)}${i.held ? ' · 본인 보관' : ''}</span><b class="num">${won(i.amt)}</b></div>`).join('')}
+      ${x.items.map(i => `<div class="kv sub"><span>${esc(i.name)}${!i.held ? '' : i.holder === n ? ' · 본인 보관' : ` · ${esc(i.holder)} 보관 → 전달받기`}</span><b class="num">${won(i.amt)}</b></div>`).join('')}
+      ${Object.entries(x.give).map(([to, a]) => `<div class="kv sub"><span>${esc(to)}에게 전달할 돈 (${esc(n)}이 보관 중, 분배와 별도)</span><b class="num">${won(a)}</b></div>`).join('')}
       ${x.cost ? `<div class="kv sub minus"><span>${esc(n)} 부담 비용</span><b class="num">${won(-x.cost)}</b></div>` : ''}
       ${x.held ? `<div class="kv sub"><span>그중 본인이 따로 보관한 돈은 분배에서 빼지 않아요</span><b></b></div>` : ''}`).join('');
   const dist = m.balanceIn === null
@@ -1017,7 +1025,7 @@ function viewMoney() {
        <div class="kv total"><span>분배할 금액</span><b class="num">${won(m.pool)}</b></div>`;
   st.distHtml = `<h4 style="margin:4px 0 2px">분배</h4><p class="hint" style="margin:0 0 6px">${esc(m.ratios.map(r => r.name + ' ' + r.w).join(' : ') || '설정에서 분배 비율을 넣어 주세요')}</p>${dist}
     <h4 style="margin:22px 0 2px">사람별 받을 돈</h4><p class="hint" style="margin:0 0 6px">분배 금액 + 개인 선정산 + 개인 몫</p>
-    ${m.people.length ? m.people.map(p => `<div class="kv"><span>${esc(p.name)}${p.w ? ` <span class="muted">(${p.w})</span>` : ''}</span><b class="num">${won(p.total)}</b></div><div class="kv sub"><span>분배 ${won(p.share)} · 선정산 ${won(p.pre)}${p.own ? ` · 개인 몫 ${won(p.own)}` : ''}${p.held ? ` · 따로 보관 ${won(p.held)}` : ''}</span><b></b></div>`).join('') : '<div class="empty">아직 없어요</div>'}`;
+    ${m.people.length ? m.people.map(p => `<div class="kv"><span>${esc(p.name)}${p.w ? ` <span class="muted">(${p.w})</span>` : ''}</span><b class="num">${won(p.total)}</b></div><div class="kv sub"><span>분배 ${won(p.share)} · 선정산 ${won(p.pre)}${p.own ? ` · 개인 몫 ${won(p.own)}` : ''}${p.held ? ` · 따로 보관 ${won(p.held)}` : ''}${Object.entries(p.recv).map(([f, a]) => ` · ${esc(f)}에게서 직접 받기 ${won(a)}`).join('')}${Object.entries(p.give).map(([t, a]) => ` · ${esc(t)}에게 직접 주기 ${won(a)}`).join('')}</span><b></b></div>`).join('') : '<div class="empty">아직 없어요</div>'}`;
   const nPre = Object.keys(m.personal).length;
   return head('정산', '', `${st.admin ? '<button class="btn soft" data-act="dist">분배 · 받을 돈 보기</button>' : ''}<button class="btn" data-act="posSettle">포스 정산 넣기</button><button class="btn" data-act="newRow" data-tab="수입">수입 추가</button><button class="btn pri" data-act="newRow" data-tab="비용">비용 추가</button>`) +
     `<div class="grid2">
@@ -1382,7 +1390,9 @@ function posSettleParse(text, pickBooth) {
     let owner = v('수익');
     if (!owner) { const pr = (bc.products || []).find(p => p.name === v('상품')); owner = (pr && pr.owner) || bc.owner || ''; }
     if (owner === '공동') owner = '';
-    const key = bk + '|' + owner, g = groups[key] = groups[key] || { booth: bk, boothName: bc.name || ('부스 ' + bk), owner, held: !!owner && owner === bc.owner, amt: 0, cash: 0, tr: 0, n: 0 };
+    //  부스에 owner가 있으면 그 부스 현금·계좌는 owner가 갖고 있어요. 다른 사람 몫(예: PPPP2 부스의 녹스책 → 하치)이면 owner가 그 사람에게 전달해요.
+    const holder = owner && bc.owner ? bc.owner : '';
+    const key = bk + '|' + owner, g = groups[key] = groups[key] || { booth: bk, boothName: bc.name || ('부스 ' + bk), owner, holder, held: !!holder, amt: 0, cash: 0, tr: 0, n: 0 };
     const a = toNum(v('금액')); g.amt += a; g.n++;
     if (/현금/.test(v('결제수단'))) g.cash += a; else if (/이체|계좌/.test(v('결제수단'))) g.tr += a;
   }
@@ -1402,14 +1412,14 @@ function posSettleModal() {
       if (!r || !r.groups.length) return toast('현장 판매 기록을 못 찾았어요', true);
       let ok = true;
       for (const g of r.groups) ok = await write('upsert', { sheet: '수입', keyCol: '항목', keyVal: `포스 현장 판매 · ${g.boothName}${g.owner ? ' · ' + g.owner + ' 몫' : ''}`,
-        values: { '금액': String(g.amt), '받는 사람': g.owner || '공동', '보관': g.owner ? (g.held ? '본인' : '공동') : '', '메모': `현금 ${won(g.cash)} · 계좌이체 ${won(g.tr)} · ${g.n}건 (포스 정산 CSV)` } }) && ok;
+        values: { '금액': String(g.amt), '받는 사람': g.owner || '공동', '보관': g.owner ? (!g.held ? '공동' : g.holder === g.owner ? '본인' : g.holder) : '', '메모': `현금 ${won(g.cash)} · 계좌이체 ${won(g.tr)} · ${g.n}건 (포스 정산 CSV)` } }) && ok;
       if (ok) { closeModal(); toast('수입에 적었어요'); }
     },
   });
   const prev = () => {
     const r = posSettleParse($('#pTxt').value, $('#psBooth').value);
     $('#psBoothBox').hidden = !r || r.hasBooth;
-    $('#psPrev').innerHTML = !r ? '' : r.groups.length ? r.groups.map(g => `<div class="kv"><span><b>${esc(g.boothName)}</b> · ${g.owner ? `${esc(g.owner)} 몫${g.held ? ' (본인 보관)' : ' (공동 통장·현금)'}` : '공동'}</span><b class="num">${won(g.amt)}</b></div><div class="kv sub"><span>현금 ${won(g.cash)} · 계좌이체 ${won(g.tr)} · ${g.n}건</span><b></b></div>`).join('') : '<div class="note warn">현장 판매 기록이 없어요</div>';
+    $('#psPrev').innerHTML = !r ? '' : r.groups.length ? r.groups.map(g => `<div class="kv"><span><b>${esc(g.boothName)}</b> · ${g.owner ? `${esc(g.owner)} 몫${!g.held ? ' (공동 통장·현금)' : g.holder === g.owner ? ' (본인 보관)' : ` (${esc(g.holder)} 보관 → ${esc(g.owner)}에게 전달)`}` : '공동'}</span><b class="num">${won(g.amt)}</b></div><div class="kv sub"><span>현금 ${won(g.cash)} · 계좌이체 ${won(g.tr)} · ${g.n}건</span><b></b></div>`).join('') : '<div class="note warn">현장 판매 기록이 없어요</div>';
   };
   $('#pTxt').addEventListener('input', prev); $('#psBooth').addEventListener('change', prev);
 }

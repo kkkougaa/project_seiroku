@@ -48,6 +48,8 @@ self.BOOTH_CONFIG = {
       owner: '잏엫', // 이 부스 수익(선입금 + 현장 판매)은 전부 잏엫 몫 (owner가 따로 있는 녹스책은 빼고)
       account: { bank: '은행 이름', number: '계좌번호를 넣어 주세요', owner: '예금주' },
       products: [
+        // PPPP1: 현장 판매만(선입금 없음), 가격은 PPPP2와 같아요. 수익은 부스 owner(잏엫) 몫. 수량·사진·R18 여부는 미정
+        { id: 'pppp1', name: 'PPPP1', r18: true, price: 12000, stock: TODO, noPreorder: true }, // 수량 미정
         { id: 'pppp2', name: 'PPPP2', r18: true, price: 12000, stock: TODO, image: 'images/pppp2.jpg' }, // 수량 미정
         // 하치 님 책(녹스책): PPPP2 부스에서 현장 판매만, 수익은 전부 하치 몫(부스 owner인 잏엫보다 우선). 수량 200권은 기본값(바뀔 수 있어요). id는 이름이 바뀌어도 그대로 둬요.
         { id: 'hachibook', name: '이어서, 다음 사연입니다.', price: 5000, stock: 200, noPreorder: true, owner: '하치', image: 'images/hachibook.jpg' },
