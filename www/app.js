@@ -10,7 +10,7 @@ const dataKey = b => 'boothpos:v1:' + b;
 const REASONS_OUT = ['파손·불량', '전시용 샘플', '증정·서비스', '분실', '기타'];
 const REASONS_IN = ['추가 입고', '재고 정정', '기타'];
 const BACKUP_WARN_MIN = 60;
-const APP_VERSION = '27';
+const APP_VERSION = '28';
 
 /* ---------------- 저장소 ---------------- */
 const ls = {
@@ -20,7 +20,14 @@ const ls = {
 };
 const emptyData = () => ({ v: 1, preorders: [], sales: [], adj: [], seq: 0, savedAt: null, backupAt: null, importInfo: null, ov: { price: {}, stock: {} }, fails: [] });
 
-let booth = ls.get(DEVICE_KEY);
+// 부스 전용 링크: 주소에 ?booth=A 처럼 붙여 열면 이 기기를 그 부스로 고정해요.
+//  홈 화면 앱은 ?booth 없이 열릴 수도 있어서, 고정은 기기에 저장해 둬요. (설정 → '부스 고정 풀기'로 풀어요)
+const LOCK_KEY = 'boothpos:lock';
+const urlBooth = (() => { try { return new URLSearchParams(location.search).get('booth'); } catch { return null; } })();
+if (urlBooth && CFG.booths[urlBooth]) { ls.set(DEVICE_KEY, urlBooth); ls.set(LOCK_KEY, urlBooth); }
+let locked = ls.get(LOCK_KEY);
+if (locked && !CFG.booths[locked]) { locked = null; ls.del(LOCK_KEY); }
+let booth = locked || ls.get(DEVICE_KEY);
 if (booth && !CFG.booths[booth]) booth = null;
 let D = booth ? load(booth) : null;
 
@@ -649,7 +656,9 @@ function settingsView() {
       <div class="kv"><span>저장 위치</span><b>이 기기 안</b></div>
       <div class="kv"><span>앱 버전</span><b class="num">${APP_VERSION}</b></div>
       <a class="link" href="monitor.html?booth=${booth}" target="_blank" rel="noopener"><span>족자봉 모니터 열기</span><span class="chev">›</span></a>
-      <button class="link" data-act="switchBooth"><span>다른 부스로 바꾸기</span><span class="chev">›</span></button></div>
+      ${locked ? `<div class="kv"><span>부스 고정</span><b>전용 링크로 고정됨</b></div>
+      <button class="link" data-act="askUnlock"><span>부스 고정 풀기<span class="s">풀면 '다른 부스로 바꾸기'가 다시 보여요</span></span><span class="chev">›</span></button>`
+      : `<button class="link" data-act="switchBooth"><span>다른 부스로 바꾸기</span><span class="chev">›</span></button>`}</div>
     <div class="box"><button class="link danger" data-act="askClear"><span>판매·선입금 기록만 지우기<span class="s">상품 설정은 그대로</span></span><span class="chev">›</span></button>
       <button class="link danger" data-act="askReset"><span>전부 초기화<span class="s">상품 설정까지 config.js 기본값으로</span></span><span class="chev">›</span></button></div>
   </div></div></div>`;
@@ -786,6 +795,8 @@ function sheetView() {
     <div class="foot"><button class="back" data-act="close">닫기</button><button class="cta danger" data-act="clearGo">기록 지우기</button></div>`;
   if (sheet === 'reset') h = `<h3>${esc(B().name)} 전부 초기화할까요?</h3><p class="amt">기록과 상품 설정이 모두 지워지고 config.js 기본값으로 돌아가요. 되돌릴 수 없어요</p>
     <div class="foot"><button class="back" data-act="close">닫기</button><button class="cta danger" data-act="resetGo">모두 지우기</button></div>`;
+  if (sheet === 'unlock') h = `<h3>부스 고정을 풀까요?</h3><p class="amt">이 기기는 ${esc(B().name)} 전용 링크로 열어서 부스가 고정돼 있어요. 풀면 설정에서 다른 부스로 바꿀 수 있어요. 기록은 그대로예요</p>
+    <div class="foot"><button class="back" data-act="close">닫기</button><button class="cta" data-act="unlockGo">고정 풀기</button></div>`;
   if (sheet === 'booth') h = `<h3>부스 선택</h3>
     ${Object.entries(CFG.booths).map(([k, b]) => `<button class="opt" data-pick="${k}"><span><span class="t">${esc(b.name)}</span><br><span class="s">${k === booth ? '지금 쓰는 부스' : '상품 ' + b.products.length + '개'}</span></span></button>`).join('')}`;
   return `<div class="dim" data-act="close"></div><div class="sheet" role="dialog" aria-modal="true"><div class="grab"></div>${h}</div>`;
@@ -1193,7 +1204,11 @@ app.addEventListener('click', e => {
       cart = {}; digits = ''; selKey = null; justDone = null; toast('백업 내용으로 되살렸어요'); break;
     }
     case 'exportCsv': doSave(`부스포스_${booth}_정산_${stamp()}.csv`, settlementCSV(), 'text/csv'); return;
-    case 'switchBooth': sheet = 'booth'; break;
+    case 'switchBooth': if (!locked) sheet = 'booth'; break;
+    case 'askUnlock': sheet = 'unlock'; break;
+    case 'unlockGo': ls.del(LOCK_KEY); locked = null; sheet = null; toast('부스 고정을 풀었어요');
+      if (urlBooth) history.replaceState(null, '', location.pathname); // 주소의 ?booth 때문에 새로고침하면 다시 고정되지 않게
+      break;
     case 'askReset': sheet = 'reset'; break;
     case 'askClear': sheet = 'clear'; break;
     case 'clearGo': {
@@ -1278,6 +1293,7 @@ $('#fileBackup').addEventListener('change', async e => {
   try {
     const j = JSON.parse(await readTextFile(f));
     if (j.app !== 'booth-pos' || !j.data || !CFG.booths[j.booth]) throw new Error();
+    if (locked && j.booth !== locked) { toast(`${CFG.booths[j.booth].name} 백업이에요. 이 기기는 ${CFG.booths[locked].name} 전용이라 되살릴 수 없어요`); return; }
     restoreDraft = { file: f.name, booth: j.booth, exportedAt: j.exportedAt, data: Object.assign(emptyData(), j.data), images: j.images || {} }; sheet = 'restore'; render();
   } catch { toast('부스 포스 백업 파일이 아니에요'); }
 });
