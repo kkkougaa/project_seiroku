@@ -18,6 +18,18 @@ const ls = {
   set(k, v) { try { localStorage.setItem(k, v); return true; } catch { return false; } },
   del(k) { try { localStorage.removeItem(k); } catch {} },
 };
+
+// 화면 밝기 모드 (자동/밝게/어둡게). 부스와 상관없이 이 기기 전체에 적용돼요
+const THEME_KEY = 'boothpos:theme';
+const themeMq = window.matchMedia ? matchMedia('(prefers-color-scheme: dark)') : null;
+function applyTheme() {
+  const t = ls.get(THEME_KEY), root = document.documentElement;
+  if (t === 'light' || t === 'dark') root.dataset.theme = t; else delete root.dataset.theme;
+  const dark = t === 'dark' || (t !== 'light' && themeMq && themeMq.matches);
+  const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = dark ? '#000000' : '#ffffff';
+}
+applyTheme();
+if (themeMq) { try { themeMq.addEventListener('change', applyTheme); } catch { themeMq.addListener && themeMq.addListener(applyTheme); } }
 const emptyData = () => ({ v: 1, preorders: [], sales: [], adj: [], seq: 0, savedAt: null, backupAt: null, importInfo: null, ov: { price: {}, stock: {} }, fails: [] });
 
 // 부스 전용 링크: 주소에 ?booth=A 처럼 붙여 열면 이 기기를 그 부스로 고정해요.
@@ -535,7 +547,7 @@ function stockView() {
       <div class="box"><p class="cap">현장 매출</p><p class="money num">${won(cash + tr)}</p>
         <div class="kv"><span>현금</span><b class="num">${won(cash)}</b></div><div class="kv"><span>계좌이체</span><b class="num">${won(tr)}</b></div><div class="kv"><span>판매 건수</span><b class="num">${live.length}건</b></div>
         ${(() => { const t = ownerTotals(live), ks = Object.keys(t); return ks.some(Boolean) ? `<div class="kv" style="margin-top:8px;border-top:1px solid var(--line);padding-top:12px"><span>수익 나누기</span><b></b></div>${ks.sort().map(k => `<div class="kv"><span>${k ? esc(k) + ' 몫' : '공동'}</span><b class="num">${won(t[k])}</b></div>`).join('')}` : ''; })()}</div>
-      <div class="box"><h2>현금 시재</h2>
+    <div class="box"><h2>현금 시재</h2>
         <div class="kv"><span>시작 현금</span><b class="num">${won(D.cashStart || 0)}</b></div>
         <div class="kv"><span>현금 매출</span><b class="num">+ ${won(cash)}</b></div>
         <div class="kv hl"><span>금고에 있어야 할 현금</span><b class="num">${won((D.cashStart || 0) + cash)}</b></div>
@@ -632,6 +644,8 @@ function settingsView() {
       <p class="lbl">몇 개 줄까요</p><div class="chips"><button class="${!(g && g.per) ? 'on' : ''}" data-gper="">1인당 1개</button>${need.map(id => prod(id)).filter(Boolean).map(p => `<button class="${g && g.per === p.id ? 'on' : ''}" data-gper="${esc(p.id)}">${esc(p.name)} 1개당 1개</button>`).join('')}</div>
       ${on ? `<p class="cap num">지금 명단에서 ${n}명</p>` : ''}</div>`;
     })()}
+    ${(() => { const t = ls.get(THEME_KEY) || 'auto', b = (v, n) => `<button class="${t === v ? 'on' : ''}" data-theme-set="${v}">${n}</button>`;
+      return `<div class="box"><h2>화면</h2><p class="lbl">다크 모드 (배경이 검정이라 배터리를 아껴요)</p><div class="chips">${b('auto', '기기 설정 따라가기')}${b('light', '밝게')}${b('dark', '어둡게')}</div></div>`; })()}
     <div class="box"><h2>현금 시재</h2>
       <div class="sr"><div class="l"><div class="t">시작 현금</div></div>
         <label class="fld"><span>금액</span><input class="num" type="number" inputmode="numeric" min="0" step="1000" data-cashstart value="${D.cashStart || 0}"></label></div>
@@ -1093,6 +1107,8 @@ app.addEventListener('click', e => {
   if (gneed) { const c = giftCfg(), id = gneed.dataset.gneed; c.need = c.need.includes(id) ? c.need.filter(x => x !== id) : [...c.need, id]; save(); }
   if (ggive) { const c = giftCfg(); c.give = c.give === ggive.dataset.ggive ? '' : ggive.dataset.ggive; save(); }
   if (gper) { const c = giftCfg(); c.per = gper.dataset.gper; save(); }
+  const ths = g('[data-theme-set]');
+  if (ths) { const v = ths.dataset.themeSet; if (v === 'auto') ls.del(THEME_KEY); else ls.set(THEME_KEY, v); applyTheme(); }
   if (pedit) { openEditor(products().find(x => x.id === pedit.dataset.pedit)); }
   if (pmove) { const cat = ensureCatalog(), i = +pmove.dataset.pmove, j = i + (+pmove.dataset.d); if (j >= 0 && j < cat.products.length) { [cat.products[i], cat.products[j]] = [cat.products[j], cat.products[i]]; save(); } }
   if (ptg) { pe[ptg.dataset.ptg] = !pe[ptg.dataset.ptg]; if (ptg.dataset.ptg === 'preorderOnly' && pe.preorderOnly) { pe.pool = ''; pe.newPool = null; } }

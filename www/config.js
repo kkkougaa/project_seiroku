@@ -30,14 +30,14 @@ self.BOOTH_CONFIG = {
       //  지금: 족자봉 1개당 랜덤 포토카드(카드팩) 1세트. 설정에서 바꿀 수 있어요
       gift: { on: true, need: ['jokja'], give: 'pc1', per: 'jokja' },
       pools: {
-        photocard: { name: '랜덤 포토카드', unit: '세트', stock: 500 }, // 1세트 기준 전체 수량
+        photocard: { name: '랜덤 포토카드', unit: '세트', stock: 431 }, // 1세트 기준 전체 수량
       },
       products: [
         { id: 'postcardbook', name: '엽서북', sub: '청록 : WORK!', price: 20000, stock: 300, image: 'images/postcardbook.jpg' },
-        { id: 'pc1', name: '랜덤 포토카드 1세트', price: 2000, pool: 'photocard', units: 1, badge: '1', image: 'images/photocard.jpg' },
-        { id: 'pc5', name: '랜덤 포토카드 5세트', price: 10000, // 임시: 1세트 가격 × 5
+        { id: 'pc1', name: '랜덤 포토카드 1세트', price: 5000, pool: 'photocard', units: 1, badge: '1', image: 'images/photocard.jpg' },
+        { id: 'pc5', name: '랜덤 포토카드 5세트', price: 25000, // 임시: 1세트 가격 × 5
           pool: 'photocard', units: 5, badge: '5', image: 'images/photocard.jpg' },
-        { id: 'pc10', name: '랜덤 포토카드 10세트', price: 20000, // 임시: 1세트 가격 × 10
+        { id: 'pc10', name: '랜덤 포토카드 10세트', price: 50000, // 임시: 1세트 가격 × 10
           pool: 'photocard', units: 10, badge: '10', image: 'images/photocard.jpg' },
         // 족자봉 넘버는 숫자(1~25, 작가 No와 같아요). 관리 사이트에서 명단을 받으면 확정 작가 수에 맞춰 바뀌어요. 목록에 없는 넘버도 그대로 읽어요
         { id: 'jokja', name: '족자봉', price: 25000, preorderOnly: true, variants: Array.from({ length: 25 }, (_, i) => String(i + 1)) },
