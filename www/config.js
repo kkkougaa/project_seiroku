@@ -8,7 +8,7 @@
 //    price     가격 (원). 0이면 '가격 미정'으로 보이고 팔 수 없어요.
 //    stock     처음 재고
 //    image     www/images 폴더 안 사진 파일
-//    badge     사진 위에 크게 쓰는 글자 (포토카드 1·5·10)
+//    badge     사진 위에 크게 쓰는 글자 (포토카드 1세트·5세트·10세트)
 //    pool      같은 pool 이름을 가진 상품끼리 재고를 같이 써요.
 //    units     pool 재고를 몇 개씩 쓰는지 (10세트 = 10)
 //    preorderOnly  선입금 전용 (판매 화면에 안 보여요)
@@ -34,11 +34,11 @@ self.BOOTH_CONFIG = {
       },
       products: [
         { id: 'postcardbook', name: '엽서북', sub: '청록 : WORK!', price: 20000, stock: 300, image: 'images/postcardbook.jpg' },
-        { id: 'pc1', name: '랜덤 포토카드 1세트', price: 5000, pool: 'photocard', units: 1, badge: '1', image: 'images/photocard.jpg' },
+        { id: 'pc1', name: '랜덤 포토카드 1세트', price: 5000, pool: 'photocard', units: 1, badge: '1세트', image: 'images/cardback.jpg' },
         { id: 'pc5', name: '랜덤 포토카드 5세트', price: 25000, // 임시: 1세트 가격 × 5
-          pool: 'photocard', units: 5, badge: '5', image: 'images/photocard.jpg' },
+          pool: 'photocard', units: 5, badge: '5세트', image: 'images/cardback.jpg' },
         { id: 'pc10', name: '랜덤 포토카드 10세트', price: 50000, // 임시: 1세트 가격 × 10
-          pool: 'photocard', units: 10, badge: '10', image: 'images/photocard.jpg' },
+          pool: 'photocard', units: 10, badge: '10세트', image: 'images/cardback.jpg' },
         // 족자봉 넘버는 숫자(1~25, 작가 No와 같아요). 관리 사이트에서 명단을 받으면 확정 작가 수에 맞춰 바뀌어요. 목록에 없는 넘버도 그대로 읽어요
         { id: 'jokja', name: '족자봉', price: 25000, preorderOnly: true, variants: Array.from({ length: 25 }, (_, i) => String(i + 1)) },
       ],

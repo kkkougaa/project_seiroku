@@ -277,6 +277,7 @@ function renderToast() {
 
 /* ---------------- 아이콘 ---------------- */
 const IC = {
+  reload: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M19.5 12a7.5 7.5 0 11-2.2-5.3M19.5 4.5v4h-4" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   siren: '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6.5 18v-5.5a5.5 5.5 0 0111 0V18" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M4 18h16v2.5H4z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 9.5v4M12 2.5v2M4.2 5.2l1.4 1.4M19.8 5.2l-1.4 1.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
   check: '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   del: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 6h10a1 1 0 011 1v10a1 1 0 01-1 1H9l-5-6 5-6z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 10l4 4M16 10l-4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
@@ -343,7 +344,8 @@ function topView() {
     <div class="tabs" role="tablist">${t('sell', '판매')}${t('list', '선입금 명단')}${t('stock', '재고·정산')}${t('report', '판매 현황')}${t('settings', '설정')}</div>
     ${hist.length || redo.length ? `<span class="undo-wrap">${hist.length ? `<button class="undo-btn" data-act="undo">되돌리기<small>${esc(hist[hist.length - 1].label)}</small></button>` : ''}${redo.length ? `<button class="undo-btn" data-act="redo">다시 실행<small>${esc(redo[redo.length - 1].label)}</small></button>` : ''}</span>` : ''}
     ${old && hasData ? `<button class="saved" data-tab="settings" style="color:var(--orange);font-weight:600">${D.backupAt ? '백업한 지 1시간이 넘었어요' : '아직 백업하지 않았어요'}</button>`
-      : `<span class="saved"><i></i>이 기기에 저장됨${D.savedAt ? ' · ' + hhmm(D.savedAt) : ''}</span>`}</div>`;
+      : `<span class="saved"><i></i>이 기기에 저장됨${D.savedAt ? ' · ' + hhmm(D.savedAt) : ''}</span>`}
+    <button class="reload" data-act="askReload" aria-label="새로고침" title="새로고침">${IC.reload}</button></div>`;
 }
 
 function welcomeView() {
@@ -719,7 +721,7 @@ function sheetView() {
         <label class="frow"><span>가격</span><input id="pe_price" class="search num" type="number" inputmode="numeric" min="0" step="500" value="${e.price}"></label>
         ${!e.pool && !e.preorderOnly ? `<label class="frow"><span>처음 재고</span><input id="pe_stock" class="search num" type="number" inputmode="numeric" min="0" value="${e.stock}"></label>` : ''}
       </div>
-      <label class="frow"><span>사진 위 큰 글자</span><input id="pe_badge" class="search" value="${esc(e.badge)}" placeholder="예: 1, 5, 10" maxlength="4" autocomplete="off"></label>
+      <label class="frow"><span>사진 위 큰 글자</span><input id="pe_badge" class="search" value="${esc(e.badge)}" placeholder="예: 1세트" maxlength="4" autocomplete="off"></label>
       <div class="toggles">
         <button class="tg ${e.r18 ? 'on' : ''}" data-ptg="r18">R18</button>
         <button class="tg ${e.preorderOnly ? 'on' : ''}" data-ptg="preorderOnly">선입금 전용</button>
@@ -1152,6 +1154,8 @@ app.addEventListener('click', e => {
     case 'clear': cart = {}; break;
     case 'toggleSound': D.sound = D.sound === false; save(); if (D.sound) chime(); break;
     case 'testSound': chime(); return;
+    // 화면이 멈추거나 이상할 때 강제 새로고침. 기록은 누를 때마다 기기에 저장돼 있어서 그대로 남아요
+    case 'askReload': if (confirm('화면을 새로고침할까요?\n판매·선입금 기록은 그대로 남아요.' + (Object.keys(cart).length ? '\n(담아 둔 장바구니는 비워져요)' : ''))) { save(); location.reload(); } return;
     case 'pickSound': $('#fileSound').value = ''; $('#fileSound').click(); return;
     case 'clearSound': ls.del(SOUND_KEY); ls.del(SOUND_KEY + ':name'); customLoaded = false; customBuf = null; toast('기본 소리로 바꿨어요'); break;
     case 'openOut': adj = { id: null, dir: 'out', q: 1, reason: '', memo: '' }; sheet = 'adj'; break;

@@ -38,6 +38,8 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--blue);outline-o
 .tabs button[aria-selected="true"]::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--ink);border-radius:2px}
 .saved{margin-left:auto;font-size:20px;color:var(--ink3);padding-bottom:13px;display:flex;align-items:center;gap:6px;white-space:nowrap}
 .saved i{width:6px;height:6px;border-radius:50%;background:var(--green)}
+.reload{flex:none;width:52px;height:52px;margin:0 -8px 10px 0;border-radius:14px;display:grid;place-items:center;color:var(--ink3)}
+.reload:active{background:var(--press);color:var(--ink)}
 
 /* 판매 */
 .sell{flex:1;display:grid;grid-template-columns:minmax(0,1fr) 440px;min-height:0}
@@ -152,7 +154,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--blue);outline-o
 .kv.bad b{color:var(--red)}
 .acct{background:var(--fill);border-radius:16px;padding:18px;margin:6px 0 16px}
 .acct .bank{font-size:20px;color:var(--ink3)}
-.acct .no{font-size:28px;font-weight:700;margin:2px 0;-webkit-user-select:all;user-select:all}
+.acct .no{font-size:28px;font-weight:700;margin:2px 0}
 .acct .own{font-size:21px;color:var(--ink2)}
 .sheet .foot{display:flex;gap:8px;margin-top:18px}
 .sheet .foot .back{flex:0 0 110px;height:68px;border-radius:16px;background:var(--fill);font-weight:600;color:var(--ink2)}
@@ -281,6 +283,8 @@ a.link{color:inherit;text-decoration:none}
   .panel{border-left:0;border-top:1px solid var(--line);min-height:600px}
   .top{gap:16px;flex-wrap:wrap;padding-left:max(16px,var(--sal));padding-right:max(16px,var(--sar))}
   .saved{display:none}
+  .reload{margin-left:auto}
+  .undo-wrap ~ .reload{margin-left:0}
   .goods,.page{padding-left:max(16px,var(--sal));padding-right:max(16px,var(--sar))}
   .dim,.sheet,.toast{position:fixed}
 }
