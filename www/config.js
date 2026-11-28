@@ -15,6 +15,8 @@
 //    noPreorder    선입금이 없는 상품 (상품 카드에 선입금 잔여 칸을 안 보여줘요)
 //    variants  종류 목록 (족자봉 1~25)
 //    owner     수익을 전부 가져가는 사람 (없으면 부스의 owner, 그것도 없으면 공동 수익)
+//  account   계좌이체를 고르면 손님 화면 맨 위에 보여줘요. bank·number·owner, link(QR로 만들 링크, 예: 'toss.me/아이디')
+//            앱 설정 → 계좌이체 안내에서 기기마다 고칠 수도 있어요 (기기 값이 우선)
 //    r18       true면 받기를 누를 때 '성인 인증 팔찌 확인' 경고가 떠요
 //
 //  파일을 고친 뒤에는 sw.js의 VERSION 숫자를 하나 올려 주세요.
@@ -25,7 +27,7 @@ self.BOOTH_CONFIG = {
   booths: {
     A: {
       name: '초건전회지위원회',
-      account: { bank: '은행 이름', number: '계좌번호를 넣어 주세요', owner: '예금주' },
+      account: { bank: '은행 이름', number: '계좌번호를 넣어 주세요', owner: '예금주', link: '' },
       // 선입금 사은품: need 상품을 산 분께 give 상품을 줘요. per 가 있으면 그 상품 1개당 1개, 없으면 1인당 1개.
       //  지금: 족자봉 1개당 랜덤 포토카드(카드팩) 1세트. 설정에서 바꿀 수 있어요
       gift: { on: true, need: ['jokja'], give: 'pc1', per: 'jokja' },
@@ -46,7 +48,7 @@ self.BOOTH_CONFIG = {
     B: {
       name: 'PPPP2',
       owner: '잏엫', // 이 부스 수익(선입금 + 현장 판매)은 전부 잏엫 몫 (owner가 따로 있는 녹스책은 빼고)
-      account: { bank: '은행 이름', number: '계좌번호를 넣어 주세요', owner: '예금주' },
+      account: { bank: '은행 이름', number: '계좌번호를 넣어 주세요', owner: '예금주', link: '' },
       products: [
         // PPPP1: 현장 판매만(선입금 없음), 가격 10,000원. 수익은 부스 owner(잏엫) 몫. 수량은 미정
         { id: 'pppp1', name: 'PPPP1', r18: true, price: 10000, stock: TODO, noPreorder: true, image: 'images/pppp1.jpg' }, // 수량 미정

@@ -10,7 +10,7 @@ const dataKey = b => 'boothpos:v1:' + b;
 const REASONS_OUT = ['파손·불량', '전시용 샘플', '증정·서비스', '분실', '기타'];
 const REASONS_IN = ['추가 입고', '재고 정정', '기타'];
 const BACKUP_WARN_MIN = 60;
-const APP_VERSION = '30';
+const APP_VERSION = '31';
 
 /* ---------------- 저장소 ---------------- */
 const ls = {
@@ -128,6 +128,32 @@ const allItems = p => { const it = { ...p.items }; for (const [id, q] of Object.
 const effQty = (p, id) => Math.max(0, (p.items[id] || 0) + (giftOf(p)[id] || 0) - (failedOf(p).items[id] || 0));
 const saleCash = s => s.m === 'cash' ? s.total : s.m === 'split' ? s.cashPart : 0;
 const saleTr = s => s.m === 'transfer' ? s.total : s.m === 'split' ? s.trPart : 0;
+/* ---------- 계좌이체 안내 (손님한테 보여주는 계좌·QR) ---------- */
+// 설정에서 고친 값이 있으면 그걸 쓰고, 없으면 config.js의 account를 써요
+const acct = () => ({ bank: '', number: '', owner: '', link: '', ...(B().account || {}), ...(D.account || {}) });
+const acctPlaceholder = v => !v || /넣어 주세요|^은행 이름$|^예금주$/.test(v);
+// 토스 아이디 링크(toss.me/아이디)는 금액까지 붙여서, 찍으면 금액이 채워진 송금 화면이 떠요
+function acctLink(a, amount) {
+  let u = (a.link || '').trim();
+  if (!u) return '';
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(u)) u = 'https://' + u;
+  const m = u.match(/^https?:\/\/toss\.me\/([^/?#]+)\/?$/i);
+  return m && amount > 0 ? `https://toss.me/${m[1]}/${amount}` : u;
+}
+function qrSvg(text) {
+  try { qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8']; const q = qrcode(0, 'M'); q.addData(text); q.make(); return q.createSvgTag({ cellSize: 6, margin: 2, scalable: true }); } catch { return ''; }
+}
+function acctCard(amount) {
+  const a = acct(), noNum = acctPlaceholder(a.number);
+  const link = acctLink(a, amount);
+  const qr = a.qrImg ? `<img src="${esc(a.qrImg)}" alt="송금 QR">` : link ? qrSvg(link) : '';
+  if (noNum && !qr) return `<div class="acct empty"><b>계좌가 아직 없어요</b><span>설정 → 계좌이체 안내에서 넣어 주세요</span></div>`;
+  return `<div class="acct">${qr ? `<div class="aqr">${qr}</div>` : ''}<div class="ainfo">
+    ${acctPlaceholder(a.bank) ? '' : `<span class="abank">${esc(a.bank)}</span>`}
+    ${noNum ? '' : `<b class="anum num">${esc(a.number)}</b>`}
+    ${acctPlaceholder(a.owner) ? '' : `<span class="aown">예금주 ${esc(a.owner)}</span>`}
+    ${qr ? `<span class="ahint">카메라로 QR을 찍어 주세요</span>` : ''}</div></div>`;
+}
 const mLabel = s => s.m === 'cash' ? '현금' : s.m === 'transfer' ? '계좌이체' : `복합 (현금 ${won(s.cashPart)} + 이체 ${won(s.trPart)})`;
 function cho(str) {
   const C = 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
@@ -646,6 +672,14 @@ function settingsView() {
       <p class="lbl">몇 개 줄까요</p><div class="chips"><button class="${!(g && g.per) ? 'on' : ''}" data-gper="">1인당 1개</button>${need.map(id => prod(id)).filter(Boolean).map(p => `<button class="${g && g.per === p.id ? 'on' : ''}" data-gper="${esc(p.id)}">${esc(p.name)} 1개당 1개</button>`).join('')}</div>
       ${on ? `<p class="cap num">지금 명단에서 ${n}명</p>` : ''}</div>`;
     })()}
+    ${(() => { const a = acct(), f = (k, n, ph, cls = '') => `<label class="frow"><span>${n}</span><input class="search ${cls}" data-acct="${k}" value="${esc(acctPlaceholder(a[k]) && k !== 'link' ? '' : a[k])}" placeholder="${ph}" autocomplete="off"></label>`;
+      return `<div class="box"><h2>계좌이체 안내</h2><p class="cap">계좌이체를 고르면 손님한테 보이는 화면 맨 위에 나와요</p>
+      <div class="pform">${f('bank', '은행', '예: 카카오뱅크')}${f('number', '계좌번호', '예: 3333-01-2345678', 'num')}${f('owner', '예금주', '예: 홍길동')}
+      ${f('link', 'QR 링크', '예: toss.me/아이디 (없으면 비워 두세요)')}</div>
+      <p class="cap">토스 아이디 링크(toss.me/…)를 넣으면 QR을 찍었을 때 금액까지 채워져요. 은행·페이 앱에서 받은 QR 사진이 있으면 사진이 먼저예요</p>
+      <div class="sr"><div class="l"><div class="t">QR 사진</div><div class="s">${a.qrImg ? '사진을 쓰는 중' : a.link ? '링크로 QR을 만들어요' : '없음'}</div></div>
+        ${a.qrImg ? `<span class="pthumb"><img src="${esc(a.qrImg)}" alt=""></span>` : ''}<button class="mini gray" data-act="qrImg">사진 고르기</button>${a.qrImg ? '<button class="mini gray" data-act="qrImgDel">사진 빼기</button>' : ''}</div>
+      ${D.account ? '<button class="txtbtn" data-act="acctReset" style="padding-left:0">config.js 기본 계좌로 되돌리기</button>' : ''}</div>`; })()}
     ${(() => { const t = ls.get(THEME_KEY) || 'auto', b = (v, n) => `<button class="${t === v ? 'on' : ''}" data-theme-set="${v}">${n}</button>`;
       return `<div class="box"><h2>화면</h2><p class="lbl">다크 모드 (배경이 검정이라 배터리를 아껴요)</p><div class="chips">${b('auto', '기기 설정 따라가기')}${b('light', '밝게')}${b('dark', '어둡게')}</div></div>`; })()}
     <div class="box"><h2>현금 시재</h2>
@@ -691,7 +725,7 @@ function sheetView() {
     <button class="opt" data-m="split"><span class="ico">${IC.cash}</span><span><span class="t">복합결제</span><br><span class="s">현금 + 계좌이체</span></span></button>`;
   if (sheet === 'split') {
     const rest = total - splitCash, ok = splitCash > 0 && rest > 0;
-    h = `<h3>복합결제</h3><p class="amt num">합계 ${won(total)}</p>
+    h = `${ok ? acctCard(rest) : ''}<h3>복합결제</h3><p class="amt num">합계 ${won(total)}</p>
     <div class="kv"><span>현금으로 받은 금액</span><b class="num" style="font-size:30px">${won(splitCash)}</b></div>
     <div class="chips" style="margin-top:10px"><button data-split="1000">+1천원</button><button data-split="5000">+5천원</button><button data-split="10000">+1만원</button><button data-split="50000">+5만원</button><button data-split="0">지우기</button></div>
     <div class="kv ${splitCash >= total ? 'bad' : 'hl'}"><span>계좌이체로 받을 금액</span><b class="num">${splitCash >= total ? '현금이 합계보다 많아요' : won(rest)}</b></div>
@@ -706,7 +740,7 @@ function sheetView() {
     <div class="foot"><button class="back" data-act="back">이전</button><button class="cta" data-act="done" ${cashIn >= total ? '' : 'disabled'}>판매 완료</button></div>`;
   }
   if (sheet === 'transfer') {
-    h = `<h3>계좌이체</h3><p class="bigamt num">${won(total)}</p>
+    h = `${acctCard(total)}<h3>계좌이체</h3><p class="bigamt num">${won(total)}</p>
     <div class="foot"><button class="back" data-act="back">이전</button><button class="cta" data-act="done">입금 확인했어요</button></div>`;
   }
   if (sheet === 'prod') {
@@ -1002,6 +1036,21 @@ function settlementCSV() {
 }
 
 /* ================= 상품 사진 (기기 안에 저장) ================= */
+let imgFor = null;
+// QR 사진: 비율은 그대로, 긴 쪽 720px, 선명하게 PNG로
+function squareImage(file) {
+  return new Promise((ok, no) => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      const r = Math.min(1, 720 / Math.max(img.width, img.height)), cv = document.createElement('canvas');
+      cv.width = Math.round(img.width * r); cv.height = Math.round(img.height * r);
+      const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); g.imageSmoothingEnabled = false; g.drawImage(img, 0, 0, cv.width, cv.height);
+      URL.revokeObjectURL(url); ok(cv.toDataURL('image/png'));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); no(new Error('이미지를 읽지 못했어요')); };
+    img.src = url;
+  });
+}
 function resizeImage(file) {
   return new Promise((ok, no) => {
     const url = URL.createObjectURL(file), img = new Image();
@@ -1202,7 +1251,10 @@ app.addEventListener('click', e => {
     case 'importGo': applyImport(importDraft); toast(`선입금 ${importDraft.list.length}명을 불러왔어요`); importDraft = null; sheet = null; break;
     case 'giftToggle': { const c = (D.gift = D.gift !== undefined ? D.gift : JSON.parse(JSON.stringify(B().gift || { on: false, need: [], give: '' }))); c.on = !giftRule(); save(); toast(c.on ? '선입금 사은품을 켰어요' : '선입금 사은품을 껐어요'); break; }
     case 'peNew': openEditor(null); break;
-    case 'peImg': $('#fileImg').value = ''; $('#fileImg').click(); return;
+    case 'peImg': imgFor = 'prod'; $('#fileImg').value = ''; $('#fileImg').click(); return;
+    case 'qrImg': imgFor = 'qr'; $('#fileImg').value = ''; $('#fileImg').click(); return;
+    case 'qrImgDel': D.account = { ...(D.account || {}) }; delete D.account.qrImg; save(); toast('QR 사진을 뺐어요'); break;
+    case 'acctReset': delete D.account; save(); toast('config.js 기본 계좌로 되돌렸어요'); break;
     case 'peImgDel': pe.img = ''; pe.imgNew = null; pe.imgDel = true; break;
     case 'pePoolNew': pe.newPool = { name: '', unit: '세트' }; pe.pool = ''; break;
     case 'peSave': if (pe && pe.name.trim()) saveEditor(); break;
@@ -1271,6 +1323,7 @@ app.addEventListener('change', e => {
   const t = e.target, v = Math.max(0, Math.round(+t.value || 0));
   if (t.dataset.ovp) { ov().price[t.dataset.ovp] = v; save(); toast('가격을 바꿨어요'); render(); }
   if (t.dataset.ovr) { ov().r18[t.dataset.ovr] = t.checked; save(); toast(t.checked ? 'R18 상품으로 표시했어요' : 'R18 표시를 껐어요'); render(); return; }
+  if (t.dataset.acct) { D.account = { ...(D.account || {}), [t.dataset.acct]: t.value.trim() }; save(); toast('계좌 안내를 저장했어요'); render(); return; }
   if (t.id === 'boothName') { const nm = t.value.trim(); if (nm) { ensureCatalog().name = nm; save(); toast('부스 이름을 바꿨어요'); render(); } return; }
   if (t.hasAttribute('data-cashstart')) { D.cashStart = v; save(); toast('시작 현금을 저장했어요'); render(); return; }
   if (t.hasAttribute('data-cashcount')) { D.cashCount = t.value === '' ? null : v; D.cashCountAt = Date.now(); save(); render(); return; }
@@ -1296,7 +1349,13 @@ $('#fileCsv').addEventListener('change', async e => {
   } catch (err) { toast('CSV 파일을 읽지 못했어요'); }
 });
 $('#fileImg').addEventListener('change', async e => {
-  const f = e.target.files[0]; if (!f || !pe) return;
+  const f = e.target.files[0]; if (!f) return;
+  if (imgFor === 'qr') {
+    imgFor = null;
+    try { D.account = { ...(D.account || {}), qrImg: await squareImage(f) }; save(); toast('QR 사진을 넣었어요'); render(); } catch { toast('이 사진은 쓸 수 없어요'); }
+    return;
+  }
+  if (!pe) return;
   try { pe.imgNew = await resizeImage(f); pe.img = pe.imgNew; pe.imgDel = false; render(); } catch { toast('이 사진은 쓸 수 없어요'); }
 });
 $('#fileSound').addEventListener('change', e => {
