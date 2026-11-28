@@ -27,7 +27,8 @@ self.BOOTH_CONFIG = {
   booths: {
     A: {
       name: '초건전회지위원회',
-      account: { bank: '은행 이름', number: '계좌번호를 넣어 주세요', owner: '예금주', link: '' },
+      // link: 카카오페이 송금 QR(김예준)에서 읽은 링크. 이 링크로 QR을 새로 그려요
+      account: { bank: '은행 이름', number: '계좌번호를 넣어 주세요', owner: '예금주', link: 'https://qr.kakaopay.com/281006011198015431004082' },
       // 선입금 사은품: need 상품을 산 분께 give 상품을 줘요. per 가 있으면 그 상품 1개당 1개, 없으면 1인당 1개.
       //  지금: 족자봉 1개당 랜덤 포토카드(카드팩) 1세트. 설정에서 바꿀 수 있어요
       gift: { on: true, need: ['jokja'], give: 'pc1', per: 'jokja' },
