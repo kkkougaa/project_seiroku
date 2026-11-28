@@ -10,7 +10,7 @@ const dataKey = b => 'boothpos:v1:' + b;
 const REASONS_OUT = ['파손·불량', '전시용 샘플', '증정·서비스', '분실', '기타'];
 const REASONS_IN = ['추가 입고', '재고 정정', '기타'];
 const BACKUP_WARN_MIN = 60;
-const APP_VERSION = '31';
+const APP_VERSION = '32';
 
 /* ---------------- 저장소 ---------------- */
 const ls = {
@@ -849,7 +849,7 @@ function sheetView() {
     <div class="foot"><button class="back" data-act="close">닫기</button><button class="cta" data-act="unlockGo">고정 풀기</button></div>`;
   if (sheet === 'booth') h = `<h3>부스 선택</h3>
     ${Object.entries(CFG.booths).map(([k, b]) => `<button class="opt" data-pick="${k}"><span><span class="t">${esc(b.name)}</span><br><span class="s">${k === booth ? '지금 쓰는 부스' : '상품 ' + b.products.length + '개'}</span></span></button>`).join('')}`;
-  return `<div class="dim" data-act="close"></div><div class="sheet" role="dialog" aria-modal="true"><div class="grab"></div>${h}</div>`;
+  return `<div class="dim" data-act="close"></div><div class="sheet${h.includes('class="acct"') ? ' wide' : ''}" role="dialog" aria-modal="true"><div class="grab"></div>${h}</div>`;
 }
 const addPreOk = () => addPre && addPre.name.trim() && /^\d{4}$/.test(addPre.last4) && cnt(addPre.items) > 0;
 
